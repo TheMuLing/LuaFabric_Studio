@@ -77,8 +77,8 @@
     <string name="cd_more_options">More options</string>
 
     <!-- About screen -->
-    <string name="tech_stack_title">Tech Stack</string>
-    <string name="community_title">Community</string>
+    <string name="tech_stack_title">Developers</string>
+    <string name="community_title">Official Community</string>
     <string name="licenses_title">Licenses</string>
     <string name="qq_group_name">Official Community Group</string>
     <string name="qq_group_number">1106643491</string>
@@ -338,6 +338,8 @@
     <string name="code_editor_layout_helper">Layout Helper</string>
     <string name="code_editor_project_property">Project Properties</string>
     <string name="code_editor_build">Build Project</string>
+    <string name="project_build">Build</string>
+    <string name="code_editor_building">Building %s…</string>
     <string name="code_editor_analyse">Import Analysis</string>
     <string name="code_editor_api_viewer">API Viewer</string>
     <string name="code_editor_backup">Backup</string>
@@ -372,6 +374,7 @@
     <string name="code_editor_close_all">Close All</string>
     <string name="code_editor_bottom_area_content">Bottom area content</string>
     <string name="code_editor_build_success">Build Successful</string>
+    <string name="code_editor_build_cancelled">Build cancelled</string>
     <string name="code_editor_apk_built">APK built successfully!</string>
     <string name="code_editor_apk_path">%s</string>
     <string name="code_editor_install_prompt">Install this APK now?</string>

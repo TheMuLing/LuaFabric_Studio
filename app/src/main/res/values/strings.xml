@@ -77,8 +77,8 @@
     <string name="cd_more_options">更多操作</string>
 
     <!-- 关于页面 -->
-    <string name="tech_stack_title">Tech Stack</string>
-    <string name="community_title">Community</string>
+    <string name="tech_stack_title">开发者</string>
+    <string name="community_title">官方社区</string>
     <string name="licenses_title">Licenses</string>
     <string name="qq_group_name">官方交流群</string>
     <string name="qq_group_number">1106643491</string>
@@ -340,6 +340,8 @@
     <string name="code_editor_layout_helper">布局助手</string>
     <string name="code_editor_project_property">项目属性</string>
     <string name="code_editor_build">构建项目</string>
+    <string name="project_build">构建</string>
+    <string name="code_editor_building">正在构建 %s…</string>
     <string name="code_editor_analyse">导入分析</string>
     <string name="code_editor_api_viewer">API阅览器</string>
     <string name="code_editor_backup">备份</string>
@@ -377,6 +379,7 @@
     <string name="code_editor_close_all">关闭全部</string>
     <string name="code_editor_bottom_area_content">底部区域内容</string>
     <string name="code_editor_build_success">构建成功</string>
+    <string name="code_editor_build_cancelled">构建已取消</string>
     <string name="code_editor_apk_built">APK 构建成功！</string>
     <string name="code_editor_apk_path">%s</string>
     <string name="code_editor_install_prompt">是否立即安装此 APK？</string>
