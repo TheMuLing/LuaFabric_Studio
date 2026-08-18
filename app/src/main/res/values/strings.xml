@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 通用 -->
-    <string name="app_name">LuaForge Studio</string>
+    <string name="app_name">LuaFabric Studio</string>
     <string name="accsibility_service_description">辅助功能</string>
     <string name="open_drawer">打开侧滑</string>
     <string name="close_drawer">关闭侧滑</string>
@@ -88,7 +88,7 @@
     <string name="error_check_failed">检查文件失败: %s</string>
     <string name="unknown_error">未知错误</string>
     <string name="file_label">文件: %s</string>
-    <string name="author_note">LuaForge Studio 致力于为 Lua 开发者提供最佳的移动端开发体验，支持完整的 Lua 5.5 标准库和常用扩展。</string>
+    <string name="author_note">LuaFabric Studio 致力于为 Lua 开发者提供最佳的移动端开发体验，支持完整的 Lua 5.5 标准库和常用扩展。</string>
     <string name="build_time_label">构建时间: %s</string>
     <string name="close">关闭</string>
     <string name="copy">复制</string>
@@ -108,7 +108,7 @@
     <string name="dev_compose_role">UI Framework</string>
 
     <!-- 版权和版本 -->
-    <string name="copyright">© %s LuaForge Studio</string>
+    <string name="copyright">© %s LuaFabric Studio</string>
     <string name="version">版本 %s</string>
 
     <!-- 卡片标题 -->
@@ -287,7 +287,7 @@
     <string name="java_api_category_androidx">AndroidX类</string>
     <string name="java_api_category_material">谷歌质感类</string>
     <string name="java_api_category_androlua">androlua</string>
-    <string name="java_api_category_luaforge">luaforge</string>
+    <string name="java_api_category_LuaFabric">LuaFabric</string>
     <string name="java_api_category_gson">Gson类</string>
     <string name="java_api_category_glide">Glide类</string>
     <string name="java_api_category_okhttp">OkHttp类</string>

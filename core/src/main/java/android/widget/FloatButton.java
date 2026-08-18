@@ -7,7 +7,7 @@ import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.View;
 
-import com.luaforge.studio.core.R;
+import com.luafabric.studio.falling.core.R;
 
 public class FloatButton extends ImageView {
 

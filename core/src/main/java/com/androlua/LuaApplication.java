@@ -155,7 +155,7 @@ public class LuaApplication extends Application implements LuaContext {
         //初始化AndroLua工作目录
         if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
             String sdDir = Environment.getExternalStorageDirectory().getAbsolutePath();
-            luaExtDir = sdDir + "/LuaForge-Studio";
+            luaExtDir = sdDir + "/LuaFabric-Studio";
         } else {
             File[] fs = new File("/storage").listFiles();
             for (File f : fs) {
@@ -163,10 +163,10 @@ public class LuaApplication extends Application implements LuaContext {
                 if (ls == null)
                     continue;
                 if (ls.length > 5)
-                    luaExtDir = f.getAbsolutePath() + "/LuaForge-Studio";
+                    luaExtDir = f.getAbsolutePath() + "/LuaFabric-Studio";
             }
             if (luaExtDir == null)
-                luaExtDir = getDir("LuaForge-Studio", Context.MODE_PRIVATE).getAbsolutePath();
+                luaExtDir = getDir("LuaFabric-Studio", Context.MODE_PRIVATE).getAbsolutePath();
         }
 
         File destDir = new File(luaExtDir);

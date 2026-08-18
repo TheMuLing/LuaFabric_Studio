@@ -5,7 +5,7 @@
         android:name="com.androlua.LuaApplication"
         android:allowBackup="true"
         android:icon="@drawable/icon"
-        android:label="LuaForge Studio Core"
+        android:label="LuaFabric Studio Core"
         android:supportsRtl="true"
         android:largeHeap="true"
         android:usesCleartextTraffic="true"
@@ -50,7 +50,7 @@
             android:enabled="true" />
 
         <service
-            android:label="LuaForge Studio"
+            android:label="LuaFabric Studio"
             android:name="com.androlua.LuaAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:enabled="true"

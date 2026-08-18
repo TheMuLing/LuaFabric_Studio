@@ -21,7 +21,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LuaForge Studio"
+rootProject.name = "LuaFabric Studio"
 include(
     ":editor",
     ":app",

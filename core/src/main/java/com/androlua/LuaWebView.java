@@ -44,7 +44,7 @@ import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import com.luaforge.studio.core.R;
+import com.luafabric.studio.falling.core.R;
 import com.luajava.LuaException;
 import com.luajava.LuaFunction;
 

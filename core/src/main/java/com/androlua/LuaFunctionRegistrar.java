@@ -5,7 +5,7 @@ import android.util.Log;
 
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.luaforge.studio.utils.LuaRecyclerAdapter;
+import muling.views.tool.utils.LuaRecyclerAdapter;
 import com.luajava.JavaFunction;
 import com.luajava.LuaException;
 import com.luajava.LuaObject;
@@ -30,12 +30,12 @@ public class LuaFunctionRegistrar {
     private static final Map<String, String> UTIL_CLASS_MAP =
             new HashMap<String, String>() {
                 {
-                    put("BitmapUtil", "com.luaforge.studio.utils.BitmapUtil");
-                    put("GlideUtil", "com.luaforge.studio.utils.GlideUtil");
-                    put("OkHttpUtil", "com.luaforge.studio.utils.OkHttpUtil");
-                    put("UiUtil", "com.luaforge.studio.utils.UiUtil");
-                    put("RecyclerAdapterUtil", "com.luaforge.studio.utils.RecyclerAdapterUtil");
-                    put("ThemeUtil", "com.luaforge.studio.utils.ThemeUtil");
+                    put("BitmapUtil", "muling.views.tool.utils.BitmapUtil");
+                    put("GlideUtil", "muling.views.tool.utils.GlideUtil");
+                    put("OkHttpUtil", "muling.views.tool.utils.OkHttpUtil");
+                    put("UiUtil", "muling.views.tool.utils.UiUtil");
+                    put("RecyclerAdapterUtil", "muling.views.tool.utils.RecyclerAdapterUtil");
+                    put("ThemeUtil", "muling.views.tool.utils.ThemeUtil");
                 }
             };
 
@@ -277,8 +277,8 @@ public class LuaFunctionRegistrar {
                                                     @Override
                                                     public void run() {
                                                         try {
-                                                            com.luaforge.studio.utils.OkHttpUtil.HttpResponse response =
-                                                                    com.luaforge.studio.utils.OkHttpUtil.get(
+                                                            muling.views.tool.utils.OkHttpUtil.HttpResponse response =
+                                                                    muling.views.tool.utils.OkHttpUtil.get(
                                                                             context, // 使用传入的Context
                                                                             url,
                                                                             finalCookie,
@@ -448,8 +448,8 @@ public class LuaFunctionRegistrar {
                                                     @Override
                                                     public void run() {
                                                         try {
-                                                            com.luaforge.studio.utils.OkHttpUtil.HttpResponse response =
-                                                                    com.luaforge.studio.utils.OkHttpUtil.post(
+                                                            muling.views.tool.utils.OkHttpUtil.HttpResponse response =
+                                                                    muling.views.tool.utils.OkHttpUtil.post(
                                                                             context,
                                                                             url,
                                                                             finalFormData,
@@ -580,8 +580,8 @@ public class LuaFunctionRegistrar {
                                                     @Override
                                                     public void run() {
                                                         try {
-                                                            com.luaforge.studio.utils.OkHttpUtil.HttpResponse response =
-                                                                    com.luaforge.studio.utils.OkHttpUtil.download(
+                                                            muling.views.tool.utils.OkHttpUtil.HttpResponse response =
+                                                                    muling.views.tool.utils.OkHttpUtil.download(
                                                                             context, url, fullSavePath, finalCookie, finalHeaders);
 
                                                             ((android.app.Activity) context)
@@ -707,8 +707,8 @@ public class LuaFunctionRegistrar {
                                                     @Override
                                                     public void run() {
                                                         try {
-                                                            com.luaforge.studio.utils.OkHttpUtil.HttpResponse response =
-                                                                    com.luaforge.studio.utils.OkHttpUtil.upload(
+                                                            muling.views.tool.utils.OkHttpUtil.HttpResponse response =
+                                                                    muling.views.tool.utils.OkHttpUtil.upload(
                                                                             context,
                                                                             url,
                                                                             fullFilePath,
@@ -879,7 +879,7 @@ public class LuaFunctionRegistrar {
 
                         // 调用RecyclerAdapterUtil.createAdapter
                         LuaRecyclerAdapter adapter =
-                                com.luaforge.studio.utils.RecyclerAdapterUtil.createAdapter(
+                                muling.views.tool.utils.RecyclerAdapterUtil.createAdapter(
                                         context,
                                         dataList,
                                         listItem,

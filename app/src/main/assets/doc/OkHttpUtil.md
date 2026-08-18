@@ -47,7 +47,7 @@ get("https://api.example.com/data", function(code, content, cookie, headers)
     end
 end)
 -- 带自定义头和Cookie的GET请求
-local headers = {["Authorization"] = "Bearer token123", ["User-Agent"] = "LuaForge/1.0"}
+local headers = {["Authorization"] = "Bearer token123", ["User-Agent"] = "LuaFabric/1.0"}
 get("https://api.example.com/user", "session=abc123", "UTF-8", headers, function(code, content)
     if code == 200 then
         local userData = json.decode(content)

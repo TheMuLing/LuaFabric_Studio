@@ -136,7 +136,7 @@ local classNames = {
   "com.google.android.material.floatingtoolbar.FloatingToolbarLayout",
   "com.google.android.material.button.MaterialButtonGroup",
   "com.google.android.material.search.SearchBar",
-  "com.luaforge.studio.widget.textfield.MaterialTextField"
+  "com.luafabric.studio.falling.core.widget.textfield.MaterialTextField"
 }
 
 for _, v in ipairs(classNames) do

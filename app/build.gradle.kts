@@ -7,16 +7,16 @@ plugins {
 }
 
 android {
-    namespace = "com.luaforge.studio"
+    namespace = "com.luafabric.studio.falling"
     compileSdk = 36
     ndkVersion = "27.2.12479018"
 
     defaultConfig {
-        applicationId = "com.luaforge.studio"
+        applicationId = "com.luafabric.studio.falling"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.6.0"
+        versionCode = 260818
+        versionName = "26.08.18"
 
         vectorDrawables {
             useSupportLibrary = true

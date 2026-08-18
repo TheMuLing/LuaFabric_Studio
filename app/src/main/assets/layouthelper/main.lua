@@ -22,7 +22,7 @@ local loadlayout = require "loadlayout"
 local loadlayout2 = require "loadlayout2"
 
 function Error(str)
-  local logPath = "/storage/emulated/0/LuaForge-Studio/luaforge.log"
+  local logPath = "/storage/emulated/0/LuaFabric-Studio/LuaFabric.log"
   local file = io.open(logPath, "a+")
   if file then
     file:write(string.format("[%s] [ERROR] [Layouthelper] %s\n", os.date("%Y-%m-%d %H:%M:%S"), tostring(str)))
@@ -304,7 +304,7 @@ end
 function onCreateOptionsMenu(menu)
   menu.add("保存")
   .setShowAsAction(2)
-  .setIcon(bindClass "com.luaforge.studio.R".drawable.ic_content_save_outline)
+  .setIcon(bindClass "com.luafabric.studio.falling.R".drawable.ic_content_save_outline)
   .onMenuItemClick = function()
     save()
   end

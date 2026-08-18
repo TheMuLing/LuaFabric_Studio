@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LuaForge Studio Core</string>
+    <string name="app_name">LuaFabric Studio Core</string>
     <string name="accsibility_service_description">辅助功能</string>
     <string name="open_drawer">打开侧滑</string>
     <string name="close_drawer">关闭侧滑</string>

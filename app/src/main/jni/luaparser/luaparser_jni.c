@@ -308,7 +308,7 @@ static void parse_lua_error(const char *errmsg, int *line, char *message, size_t
  * @brief JNI函数：检查解析器是否可用
  */
 JNIEXPORT jboolean JNICALL
-Java_com_luaforge_studio_utils_LuaParserUtil_isParserAvailable(JNIEnv *env, jclass clazz) {
+Java_muling_views_tool_utils_LuaParserUtil_isParserAvailable(JNIEnv *env, jclass clazz) {
     LOGI("isParserAvailable() called");
 
     // 尝试初始化Lua状态机（init_lua_state 内部已加锁）
@@ -325,7 +325,7 @@ Java_com_luaforge_studio_utils_LuaParserUtil_isParserAvailable(JNIEnv *env, jcla
  * @brief JNI函数：释放解析器资源
  */
 JNIEXPORT void JNICALL
-Java_com_luaforge_studio_utils_LuaParserUtil_releaseParser(JNIEnv *env, jclass clazz) {
+Java_muling_views_tool_utils_LuaParserUtil_releaseParser(JNIEnv *env, jclass clazz) {
     LOGI("releaseParser() called");
     cleanup_lua_state();  // 内部已加锁
 }
@@ -334,7 +334,7 @@ Java_com_luaforge_studio_utils_LuaParserUtil_releaseParser(JNIEnv *env, jclass c
  * @brief JNI函数：分析Lua代码语法
  */
 JNIEXPORT jstring JNICALL
-Java_com_luaforge_studio_utils_LuaParserUtil_parseLuaSyntax(JNIEnv *env, jclass clazz,
+Java_muling_views_tool_utils_LuaParserUtil_parseLuaSyntax(JNIEnv *env, jclass clazz,
                                                             jstring luaCode) {
     LOGI("parseLuaSyntax() called");
 

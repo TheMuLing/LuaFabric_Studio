@@ -1,4 +1,19 @@
+# LuaFabric Studio
+
 # 更新日志
+
+## 26.08.18
+- 软件更名：LuaForge Studio → **LuaFabric Studio**
+- 包名迁移：
+  - 应用包名 `com.luaforge.studio` → `com.luafabric.studio.falling`
+  - 工具库包名 `com.luaforge.studio.utils.*` → `muling.views.tool.utils.*`
+  - 组件包名 → `com.luafabric.studio.falling.core.widget.textfield`
+- 存储路径变更：`/storage/emulated/0/LuaForge-Studio/` → `/storage/emulated/0/LuaFabric-Studio/`
+  - 注意：**不提供自动迁移**，旧项目需手动移动到新路径
+- 修复 RecyclerView 适配器只能添加 8 项的问题（Lua 表通过 `push()` 传递）
+- 修复全新安装时无存储权限导致的日志写入报错（日志文件改为应用私有目录）
+- 修复 `import` 模块缺失问题（Splash 启动时幂等解包 lua 运行库）
+- 版本号切换为年份命名：`versionName 26.08.18` / `versionCode 260818`
 
 ## 1.6.0
 - 新增 `libdecrypt.so`，支持 Lua 加密脚本自动解密加载
@@ -14,7 +29,7 @@
 - 优化应用启动流程
 
 ## 1.3.0
-- 增加 `com.luaforge.studio.widget.textfield.MaterialTextField` 组件
+- 增加 `com.luafabric.studio.falling.core.widget.textfield.MaterialTextField` 组件
 
 ## 1.2.1
 - 增加 `onActivityReenter` 回调函数

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- General -->
-    <string name="app_name">LuaForge Studio</string>
+    <string name="app_name">LuaFabric Studio</string>
     <string name="accsibility_service_description">Accessibility Service</string>
     <string name="open_drawer">Open drawer</string>
     <string name="close_drawer">Close drawer</string>
@@ -88,7 +88,7 @@
     <string name="error_check_failed">Failed to check file: %s</string>
     <string name="unknown_error">Unknown error</string>
     <string name="file_label">File: %s</string>
-    <string name="author_note">LuaForge Studio is dedicated to providing the best mobile development experience for Lua developers, with full support for the Lua 5.5 standard library and common extensions.</string>
+    <string name="author_note">LuaFabric Studio is dedicated to providing the best mobile development experience for Lua developers, with full support for the Lua 5.5 standard library and common extensions.</string>
     <string name="build_time_label">Build time: %s</string>
     <string name="close">Close</string>
     <string name="copy">Copy</string>
@@ -108,7 +108,7 @@
     <string name="dev_compose_role">UI Framework</string>
 
     <!-- Copyright and version -->
-    <string name="copyright">© %s LuaForge Studio</string>
+    <string name="copyright">© %s LuaFabric Studio</string>
     <string name="version">Version %s</string>
 
     <!-- Card titles -->
@@ -287,7 +287,7 @@
     <string name="java_api_category_androidx">AndroidX classes</string>
     <string name="java_api_category_material">Material Design classes</string>
     <string name="java_api_category_androlua">androlua</string>
-    <string name="java_api_category_luaforge">luaforge</string>
+    <string name="java_api_category_LuaFabric">LuaFabric</string>
     <string name="java_api_category_gson">Gson classes</string>
     <string name="java_api_category_glide">Glide classes</string>
     <string name="java_api_category_okhttp">OkHttp classes</string>

@@ -15,7 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView.ScaleType;
 
-import com.luaforge.studio.core.R;
+import com.luafabric.studio.falling.core.R;
 
 public class ToolBar extends LinearLayout {
 

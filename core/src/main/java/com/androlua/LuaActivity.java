@@ -57,7 +57,7 @@ import com.luajava.LuaObject;
 import com.luajava.LuaState;
 import com.luajava.LuaStateFactory;
 
-import com.luaforge.studio.core.R;
+import com.luafabric.studio.falling.core.R;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -1161,7 +1161,7 @@ public class LuaActivity extends AppCompatActivity
     L.getGlobal("activity");
     L.setGlobal("this");
 
-    L.pushJavaObject(com.luaforge.studio.core.R.class);
+    L.pushJavaObject(com.luafabric.studio.falling.core.R.class);
     L.setGlobal("R");
 
     L.newTable();
@@ -1245,7 +1245,7 @@ public class LuaActivity extends AppCompatActivity
       L.setUpValue(-2, 1);
 
       Map<String, Object> jsonMap =
-          com.luaforge.studio.utils.JsonUtil.parseObject(
+          muling.views.tool.utils.JsonUtil.parseObject(
               com.androlua.util.FileUtil.read(luaDir + "/settings.json"));
 
       Map<String, Object> application = (Map<String, Object>) jsonMap.get("application");

@@ -30,7 +30,7 @@
 
 
 /* mark for precompiled code ('<esc>Lua') */
-#define LUA_SIGNATURE    "LuaForge-Studio\n"
+#define LUA_SIGNATURE    "LuaFabric-Studio\n"
 
 /* option for multiple returns in 'lua_pcall' and 'lua_call' */
 #define LUA_MULTRET    (-1)
