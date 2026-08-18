@@ -25,6 +25,7 @@ import com.luafabric.studio.falling.langs.lua.LuaIncrementalAnalyzeManager
 import com.luafabric.studio.falling.langs.lua.LuaLanguage
 import com.luafabric.studio.falling.langs.lua.completion.CompletionName
 import com.luafabric.studio.falling.ui.editor.EditorColorSchemeManager
+import com.luafabric.studio.falling.ui.editor.LuaPatternTranslator
 import com.luafabric.studio.falling.ui.settings.FontManager
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import muling.views.tool.utils.LogCatcher
@@ -997,15 +998,50 @@ class EditorViewModel : ViewModel(), CompletionDataManager.OnCompletionDataListe
     // 搜索
     private var lastSearchQuery by mutableStateOf("")
     private var isIgnoreCase by mutableStateOf(true)
-    fun searchText(query: String, ignoreCase: Boolean = isIgnoreCase) {
+    var searchPatternError by mutableStateOf<String?>(null)
+        private set
+    fun clearSearchPatternError() { searchPatternError = null }
+    fun searchText(
+        query: String,
+        caseSensitive: Boolean = false,
+        wholeWord: Boolean = false,
+        useRegex: Boolean = false
+    ) {
         lastSearchQuery = query
-        isIgnoreCase = ignoreCase
+        isIgnoreCase = !caseSensitive
         getActiveEditor()?.apply {
-            if (query.isNotEmpty()) searcher.search(
-                query,
-                EditorSearcher.SearchOptions(ignoreCase, false)
-            )
-            else searcher.stopSearch()
+            if (query.isNotEmpty()) {
+                val type = when {
+                    wholeWord && !useRegex -> EditorSearcher.SearchOptions.TYPE_WHOLE_WORD
+                    useRegex -> EditorSearcher.SearchOptions.TYPE_REGULAR_EXPRESSION
+                    else -> EditorSearcher.SearchOptions.TYPE_NORMAL
+                }
+                var pattern = query
+                searchPatternError = null
+                if (useRegex) {
+                    if (LuaPatternTranslator.isLuaPattern(query)) {
+                        val translated = LuaPatternTranslator.translate(query)
+                        if (translated == null) {
+                            searchPatternError = "Lua模式错误: ${LuaPatternTranslator.lastError}"
+                            searcher.stopSearch()
+                            return
+                        }
+                        pattern = translated
+                    }
+                    if (wholeWord) {
+                        pattern = "(?<![a-zA-Z0-9_])" + pattern + "(?![a-zA-Z0-9_])"
+                    }
+                }
+                try {
+                    searcher.search(pattern, EditorSearcher.SearchOptions(type, !caseSensitive))
+                } catch (e: Exception) {
+                    searchPatternError = "无效的正则表达式"
+                    searcher.stopSearch()
+                }
+            } else {
+                searchPatternError = null
+                searcher.stopSearch()
+            }
         }
     }
 

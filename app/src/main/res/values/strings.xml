@@ -81,7 +81,7 @@
     <string name="community_title">Community</string>
     <string name="licenses_title">Licenses</string>
     <string name="qq_group_name">官方交流群</string>
-    <string name="qq_group_number">655320112</string>
+    <string name="qq_group_number">1106643491</string>
     <string name="no_license_info">暂无协议信息</string>
     <string name="loading_doc">加载文档中…</string>
     <string name="error_doc_not_found">文档文件不存在: %s</string>
@@ -96,6 +96,8 @@
     <string name="license_label">许可证</string>
 
     <!-- 开发人员信息 -->
+    <string name="dev_muling_name">墓棱</string>
+    <string name="dev_muling_role">Developer</string>
     <string name="dev_w_name">W.</string>
     <string name="dev_w_role">Developer</string>
     <string name="dev_kotlin_name">Kotlin</string>
@@ -359,6 +361,9 @@
     <string name="code_editor_replace_all">全部</string>
     <string name="code_editor_previous">上一个</string>
     <string name="code_editor_next">下一个</string>
+    <string name="search_ignore_case">区分大小写</string>
+    <string name="search_whole_word">全词匹配</string>
+    <string name="search_use_regex">正则匹配</string>
     <string name="code_editor_select_type">选择类型:</string>
     <string name="code_editor_file">文件</string>
     <string name="code_editor_folder">文件夹</string>

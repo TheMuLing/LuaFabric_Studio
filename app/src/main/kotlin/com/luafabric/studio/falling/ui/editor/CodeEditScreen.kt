@@ -153,17 +153,31 @@ fun CodeEditScreen(
     var isSearchVisible by remember { mutableStateOf(false) }
     var searchText by remember { mutableStateOf("") }
     var replaceText by remember { mutableStateOf("") }
-    var ignoreCase by remember { mutableStateOf(true) }
+    var caseSensitive by remember { mutableStateOf(false) }
+    var wholeWord by remember { mutableStateOf(false) }
+    var useRegex by remember { mutableStateOf(false) }
 
     val onSearchTextChange: (String) -> Unit = { text ->
         searchText = text
-        viewModel.searchText(text, ignoreCase)
+        viewModel.searchText(text, caseSensitive, wholeWord, useRegex)
     }
     val onReplaceTextChange: (String) -> Unit = { replaceText = it }
-    val onIgnoreCaseChange: (Boolean) -> Unit = { newIgnoreCase ->
-        ignoreCase = newIgnoreCase
+    val onCaseSensitiveChange: (Boolean) -> Unit = { newCaseSensitive ->
+        caseSensitive = newCaseSensitive
         if (searchText.isNotEmpty()) {
-            viewModel.searchText(searchText, newIgnoreCase)
+            viewModel.searchText(searchText, newCaseSensitive, wholeWord, useRegex)
+        }
+    }
+    val onWholeWordChange: (Boolean) -> Unit = { newWholeWord ->
+        wholeWord = newWholeWord
+        if (searchText.isNotEmpty()) {
+            viewModel.searchText(searchText, caseSensitive, newWholeWord, useRegex)
+        }
+    }
+    val onUseRegexChange: (Boolean) -> Unit = { newUseRegex ->
+        useRegex = newUseRegex
+        if (searchText.isNotEmpty()) {
+            viewModel.searchText(searchText, caseSensitive, wholeWord, newUseRegex)
         }
     }
     val onCloseSearch: () -> Unit = {
@@ -229,6 +243,13 @@ fun CodeEditScreen(
     LaunchedEffect(Unit) {
         if (!viewModel.isInitialized) {
             viewModel.initialize(context)
+        }
+    }
+
+    LaunchedEffect(viewModel.searchPatternError) {
+        viewModel.searchPatternError?.let {
+            toast.showToast(it)
+            viewModel.clearSearchPatternError()
         }
     }
 
@@ -645,8 +666,12 @@ fun CodeEditScreen(
                                             onSearchTextChange = onSearchTextChange,
                                             replaceText = replaceText,
                                             onReplaceTextChange = onReplaceTextChange,
-                                            ignoreCase = ignoreCase,
-                                            onIgnoreCaseChange = onIgnoreCaseChange,
+                                            caseSensitive = caseSensitive,
+                                            onCaseSensitiveChange = onCaseSensitiveChange,
+                                            wholeWord = wholeWord,
+                                            onWholeWordChange = onWholeWordChange,
+                                            useRegex = useRegex,
+                                            onUseRegexChange = onUseRegexChange,
                                             onCloseSearch = onCloseSearch,
                                             onSearchNext = onSearchNext,
                                             onSearchPrev = onSearchPrev,
@@ -913,8 +938,12 @@ fun EditorContent(
     onSearchTextChange: (String) -> Unit,
     replaceText: String,
     onReplaceTextChange: (String) -> Unit,
-    ignoreCase: Boolean,
-    onIgnoreCaseChange: (Boolean) -> Unit,
+    caseSensitive: Boolean,
+    onCaseSensitiveChange: (Boolean) -> Unit,
+    wholeWord: Boolean,
+    onWholeWordChange: (Boolean) -> Unit,
+    useRegex: Boolean,
+    onUseRegexChange: (Boolean) -> Unit,
     onCloseSearch: () -> Unit,
     onSearchNext: () -> Unit,
     onSearchPrev: () -> Unit,
@@ -970,8 +999,12 @@ fun EditorContent(
                 onSearchTextChange = onSearchTextChange,
                 replaceText = replaceText,
                 onReplaceTextChange = onReplaceTextChange,
-                ignoreCase = ignoreCase,
-                onIgnoreCaseChange = onIgnoreCaseChange,
+                caseSensitive = caseSensitive,
+                onCaseSensitiveChange = onCaseSensitiveChange,
+                wholeWord = wholeWord,
+                onWholeWordChange = onWholeWordChange,
+                useRegex = useRegex,
+                onUseRegexChange = onUseRegexChange,
                 onClose = onCloseSearch,
                 onSearchNext = onSearchNext,
                 onSearchPrev = onSearchPrev,

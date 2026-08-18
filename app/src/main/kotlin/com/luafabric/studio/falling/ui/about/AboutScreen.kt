@@ -197,6 +197,14 @@ fun AboutScreen(onBack: () -> Unit) {
     val teamMembers = remember {
         listOf(
             Developer(
+                nameResId = R.string.dev_muling_name,
+                roleResId = R.string.dev_muling_role,
+                description = "",
+                color = Color(0xFF8D4A5A),
+                iconResId = R.drawable.ic_muling,
+                url = ""
+            ),
+            Developer(
                 nameResId = R.string.dev_w_name,
                 roleResId = R.string.dev_w_role,
                 description = "",

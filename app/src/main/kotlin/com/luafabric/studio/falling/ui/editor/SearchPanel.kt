@@ -1,6 +1,7 @@
 package com.luafabric.studio.falling.ui.editor
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,11 +18,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -53,8 +58,12 @@ fun SearchPanel(
     onSearchTextChange: (String) -> Unit,
     replaceText: String,
     onReplaceTextChange: (String) -> Unit,
-    ignoreCase: Boolean,
-    onIgnoreCaseChange: (Boolean) -> Unit,
+    caseSensitive: Boolean,
+    onCaseSensitiveChange: (Boolean) -> Unit,
+    wholeWord: Boolean,
+    onWholeWordChange: (Boolean) -> Unit,
+    useRegex: Boolean,
+    onUseRegexChange: (Boolean) -> Unit,
     onClose: () -> Unit,
     onSearchNext: () -> Unit,
     onSearchPrev: () -> Unit,
@@ -62,6 +71,7 @@ fun SearchPanel(
     onReplaceAll: (String) -> Unit
 ) {
     var isReplaceVisible by remember { mutableStateOf(false) }
+    var isMoreExpanded by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -80,18 +90,6 @@ fun SearchPanel(
                         .weight(1f)
                         .defaultMinSize(minHeight = 40.dp),
                     placeholder = { Text(stringResource(R.string.search_placeholder), style = MaterialTheme.typography.bodyMedium) },
-                    leadingIcon = {
-                        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-                            IconButton(onClick = { onIgnoreCaseChange(!ignoreCase) }) {
-                                Text(
-                                    "Aa",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = if (!ignoreCase) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (!ignoreCase) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        }
-                    },
                     trailingIcon = {
                         if (searchText.isNotEmpty()) {
                             IconButton(
@@ -127,15 +125,74 @@ fun SearchPanel(
                         ) {
                             Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.code_editor_next))
                         }
-                        IconButton(
-                            onClick = { isReplaceVisible = !isReplaceVisible },
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.FindReplace,
-                                contentDescription = stringResource(R.string.code_editor_replace),
-                                tint = if (isReplaceVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
+                        Box {
+                            IconButton(
+                                onClick = { isMoreExpanded = true },
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.more),
+                                    tint = if (isReplaceVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = isMoreExpanded,
+                                onDismissRequest = { isMoreExpanded = false }
+                            ) {
+                                // 菜单上方：选项复选框
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = caseSensitive,
+                                        onCheckedChange = { isMoreExpanded = false; onCaseSensitiveChange(it) },
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(R.string.search_ignore_case), style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = wholeWord,
+                                        onCheckedChange = { isMoreExpanded = false; onWholeWordChange(it) },
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(R.string.search_whole_word), style = MaterialTheme.typography.bodyMedium)
+                                }
+                                // 正则匹配
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = useRegex,
+                                        onCheckedChange = { isMoreExpanded = false; onUseRegexChange(it) },
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(R.string.search_use_regex), style = MaterialTheme.typography.bodyMedium)
+                                }
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                // 替换开关（仅文字）
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.code_editor_replace),
+                                            fontWeight = if (isReplaceVisible) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    onClick = {
+                                        isMoreExpanded = false
+                                        isReplaceVisible = !isReplaceVisible
+                                    }
+                                )
+                            }
                         }
                         IconButton(onClick = onClose, modifier = Modifier.padding(start = 4.dp)) {
                             Icon(Icons.Default.Close, stringResource(R.string.close))
