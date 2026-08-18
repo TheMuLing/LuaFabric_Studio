@@ -958,6 +958,12 @@ class ApkBuilder {
         // 加密Aly文件
         private fun encryptAlyFile(L: LuaState, alyFile: File): Boolean {
             return try {
+                // 空文件无法编译，跳过加密
+                if (alyFile.length() == 0L) {
+                    LogCatcher.w("ApkBuilder", "跳过空ALY文件: ${alyFile.absolutePath}")
+                    return true
+                }
+
                 // 使用 ConsoleUtil.build 编译文件
                 val result = ConsoleUtil.build(L, alyFile.absolutePath)
 
