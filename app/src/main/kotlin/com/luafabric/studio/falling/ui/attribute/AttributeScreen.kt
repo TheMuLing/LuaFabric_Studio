@@ -68,13 +68,6 @@ class PermissionItem(
 
 // SDK 版本信息映射（使用资源 ID）
 private val sdkDisplayMap = mapOf(
-    21 to R.string.sdk_21,
-    22 to R.string.sdk_22,
-    23 to R.string.sdk_23,
-    24 to R.string.sdk_24,
-    25 to R.string.sdk_25,
-    26 to R.string.sdk_26,
-    27 to R.string.sdk_27,
     28 to R.string.sdk_28,
     29 to R.string.sdk_29,
     30 to R.string.sdk_30,
@@ -171,7 +164,7 @@ fun AttributeScreen(
     var packageName by remember { mutableStateOf("") }
     var versionName by remember { mutableStateOf("") }
     var versionCode by remember { mutableStateOf("") }
-    var minSdkVersion by remember { mutableStateOf(21) }
+    var minSdkVersion by remember { mutableStateOf(29) }
     var targetSdkVersion by remember { mutableStateOf(29) }
     var debugMode by remember { mutableStateOf(false) }
 
@@ -215,7 +208,7 @@ fun AttributeScreen(
                             ?: false
 
                     val usesSdk = jsonMap["uses_sdk"] as? Map<*, *>
-                    minSdkVersion = (usesSdk?.get("minSdkVersion") as? String)?.toIntOrNull() ?: 21
+                    minSdkVersion = (usesSdk?.get("minSdkVersion") as? String)?.toIntOrNull() ?: 29
                     targetSdkVersion =
                         (usesSdk?.get("targetSdkVersion") as? String)?.toIntOrNull() ?: 29
 
@@ -664,14 +657,12 @@ fun PermissionSelectionSheet(
     onSearchQueryChange: (String) -> Unit,
     onConfirm: () -> Unit
 ) {
-    val filteredPermissions = remember(allPermissions, searchQuery) {
-        allPermissions.filter {
-            it.label.contains(searchQuery, ignoreCase = true) || it.name.contains(
-                searchQuery,
-                ignoreCase = true
-            )
-        }
-    }
+    val filteredPermissions = allPermissions.filter {
+        it.label.contains(searchQuery, ignoreCase = true) || it.name.contains(
+            searchQuery,
+            ignoreCase = true
+        )
+    }.sortedWith(compareByDescending<PermissionItem> { it.isChecked }.thenBy { it.label })
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {

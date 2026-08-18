@@ -2,6 +2,11 @@
 
 # 更新日志
 
+## 26.08.18（后续）
+- 新增 `libmmkv.so`（MMKV v2.4.1 高性能键值存储）Lua 绑定，支持类型化读写、过期时间、多实例
+- 新增 `libzstd.so`（Zstandard 1.6.0 压缩）Lua 绑定，支持压缩/解压/流式接口
+- 新增 README「Lua 库接口文档」章节，涵盖 mmkv / zstd / aes / sodium / cjson / ffi
+
 ## 26.08.18
 - 软件更名：LuaForge Studio → **LuaFabric Studio**
 - 包名迁移：
@@ -679,3 +684,185 @@ end
 | 资源管理 | Defer | `defer cleanup() end` |
 | 语法糖 | 局部声明 | `$ var = value` |
 | | 标签 | `@label@` |
+
+---
+
+# Lua 库接口文档
+
+所有库均为编译进 APK 的原生模块，通过 `require` 直接加载。
+
+## 1. mmkv —— 高性能键值存储
+
+`require "mmkv"`，基于 [MMKV](https://github.com/Tencent/MMKV) v2.4.1。
+
+| 函数 | 说明 |
+|------|------|
+| `mmkv.version()` | 返回版本号字符串，如 `"2.4.1"` |
+| `mmkv.initialize(rootDir)` | 初始化存储根目录，成功返回 `true`；失败返回 `false, errmsg`。首次读写前必须调用 |
+| `mmkv.set(id, key, value[, expireSeconds])` | 写入值。`value` 支持 string / boolean / integer / number；传 `nil` 等价于删除该 key；`expireSeconds` 为过期秒数（可选，大于 0 时启用，到期自动删除） |
+| `mmkv.get(id, key)` | 读取值，key 不存在返回 `nil`。根据底层编码自动推断类型 |
+| `mmkv.contains(id, key)` | 返回 `boolean`，是否包含该 key |
+| `mmkv.remove(id, key)` | 删除该 key，返回 `boolean` |
+| `mmkv.clear(id)` | 清空该实例全部数据 |
+| `mmkv.count(id)` | 返回该实例的 key 数量 |
+| `mmkv.totalSize(id)` | 返回该实例存储文件大小（字节） |
+| `mmkv.allKeys(id)` | 返回全部 key 组成的表（数组） |
+
+`id` 为存储实例名（如 `"default"`），不同 `id` 之间数据互相隔离。
+
+```lua
+local mmkv = require "mmkv"
+mmkv.initialize("/data/data/com.luafabric.studio.falling/files/mmkv")
+mmkv.set("default", "name", "Alice", 3600)  -- 1 小时后过期
+print(mmkv.get("default", "name"))          -- Alice
+```
+
+**类型推断说明**：`get` 依据底层编码推断类型，少数边界情形可能产生歧义：
+
+- boolean 优先于整数 `0 / 1`；
+- 大于 2^49 的整数可能被当作 number 读取；
+- 恰好 4 字节的整数可能被当作 float 读取；
+- 极端 float 字节序列可能被当作 string 读取。
+
+建议 `set` / `get` 使用一致的类型读写。
+
+## 2. zstd —— Zstandard 压缩
+
+`require "zstd"`，基于 [Zstandard](https://github.com/facebook/zstd) v1.6.0。
+
+| 函数 | 说明 |
+|------|------|
+| `zstd.version()` | 返回版本号字符串，如 `"1.6.0"` |
+| `zstd.compress(data[, level])` | 压缩，`level` 默认 3。成功返回压缩后字符串；失败返回 `nil, errmsg` |
+| `zstd.decompress(packed)` | 解压。失败返回 `nil, errmsg`（如 `"not a valid zstd frame"`） |
+| `zstd.compressBound(len)` | 返回长度为 `len` 的数据压缩后的最大尺寸 |
+| `zstd.decompressedSize(packed)` | 返回解压后的原始尺寸；无法确定时返回 -1 |
+| `zstd.minCLevel()` / `zstd.maxCLevel()` | 压缩级别范围（实测 -131072 ~ 22） |
+| `zstd.defaultCLevel()` | 默认压缩级别（3） |
+| `zstd.compressStream(data[, level])` | 流式压缩（结果与 compress 等价） |
+| `zstd.decompressStream(packed)` | 流式解压 |
+
+```lua
+local zstd = require "zstd"
+local packed = zstd.compress(("A"):rep(5600), 3)  -- 5600 字节 → 46 字节
+local original = zstd.decompress(packed)          -- 还原 5600 字节
+```
+
+## 3. aes —— AES-256 加密
+
+`require "aes"`，内置 micro AES 实现（AES-256：密钥 32 字节，块大小 16 字节）。
+
+**常量**：`BLOCKSIZE`=16、`KEYLENGTH`=32，及各模式长度常量 `GCM_NONCE_LEN`=12、`GCM_TAG_LEN`=16、`CCM_NONCE_LEN`=11、`CCM_TAG_LEN`=16、`OCB_NONCE_LEN`=12、`OCB_TAG_LEN`=16、`EAX_NONCE_LEN`=16、`EAX_TAG_LEN`=16、`SIV_TAG_LEN`=16、`GCM_SIV_NONCE_LEN`=12、`GCM_SIV_TAG_LEN`=16、`POLY1305_TAG_LEN`=16、`CTR_IV_LENGTH`=12。
+
+### 3.1 分组模式
+
+加密自动补齐到块边界；解密时密文长度必须是 16 的整数倍。
+
+| 函数 | 说明 |
+|------|------|
+| `aes.ecb_encrypt(key, data)` / `aes.ecb_decrypt(key, data)` | ECB |
+| `aes.cbc_encrypt(key, iv, data)` / `aes.cbc_decrypt(key, iv, data)` | CBC，iv 16 字节 |
+| `aes.cfb_encrypt(key, iv, data)` / `aes.cfb_decrypt(key, iv, data)` | CFB，iv 16 字节 |
+| `aes.ofb_encrypt(key, iv, data)` / `aes.ofb_decrypt(key, iv, data)` | OFB，iv 16 字节（加解密相同） |
+| `aes.ctr_crypt(key, iv, data)` | CTR，加解密共用，iv 12 字节 |
+| `aes.xts_encrypt(keys, tweak, data)` / `aes.xts_decrypt(keys, tweak, data)` | XTS，`keys` 为两个 32 字节密钥拼接（64 字节），`tweak` 16 字节或空，数据至少 16 字节 |
+
+### 3.2 AEAD 认证加密
+
+输出为 `密文 + 16 字节 tag`；解密或认证失败时抛错。
+
+| 函数 | 说明 |
+|------|------|
+| `aes.gcm_encrypt(key, nonce, aad, data)` / `aes.gcm_decrypt(...)` | GCM，nonce 12 字节 |
+| `aes.ccm_encrypt(...)` / `aes.ccm_decrypt(...)` | CCM，nonce 11 字节 |
+| `aes.ocb_encrypt(...)` / `aes.ocb_decrypt(...)` | OCB，nonce 12 字节 |
+| `aes.eax_encrypt(...)` / `aes.eax_decrypt(...)` | EAX，nonce 16 字节 |
+| `aes.gcm_siv_encrypt(...)` / `aes.gcm_siv_decrypt(...)` | GCM-SIV，nonce 12 字节 |
+| `aes.siv_encrypt(keys, aad, data)` / `aes.siv_decrypt(keys, aad, data)` | SIV（RFC 5297），`keys` 64 字节，无独立 nonce（IV 内嵌于输出前 16 字节） |
+
+### 3.3 认证与其它
+
+| 函数 | 说明 |
+|------|------|
+| `aes.cmac(key, data)` | CMAC 消息认证码，返回 16 字节 |
+| `aes.poly1305(keys, data)` | Poly1305-AES，`keys` 48 字节（32 字节 AES 密钥 + 16 字节 r） |
+| `aes.key_wrap(kek, secret)` / `aes.key_unwrap(kek, wrapped)` | NIST SP 800-38F 密钥封装；`kek` 32 字节，`secret` 为 16 字节倍数 |
+| `aes.fpe_encrypt(key, tweak, text)` / `aes.fpe_decrypt(key, tweak, text)` | FF1 保形加密（NIST SP 800-38G），默认字母表为数字 0-9，输出长度不变 |
+
+```lua
+local aes = require "aes"
+local key = ("k"):rep(32)                    -- 32 字节密钥
+local iv  = ("i"):rep(16)
+local ct  = aes.cbc_encrypt(key, iv, "hello")  -- 自动补齐到 16 字节
+local pt  = aes.cbc_decrypt(key, iv, ct)
+```
+
+## 4. sodium —— libsodium 加密库
+
+`require "sodium"`，封装 libsodium 核心接口。
+
+**常量**：`KEYBYTES`=32（secretbox 密钥）、`NONCEBYTES`=24、`SIGN_PUBLICKEYBYTES`=32、`SIGN_SECRETKEYBYTES`=64、`PWHASH_SALTBYTES`=16、`B64_ORIGINAL`、`B64_URLSAFE`（base64 变体参数）。
+
+| 函数 | 说明 |
+|------|------|
+| `sodium.version()` | libsodium 版本号 |
+| `sodium.randombytes(n)` | 生成 n 字节安全随机数 |
+| `sodium.bin2hex(bin)` / `sodium.hex2bin(hex[, ignore])` | 二进制 ↔ 十六进制（`ignore` 为需跳过的字符） |
+| `sodium.bin2base64(bin[, variant])` / `sodium.base642bin(b64[, variant[, ignore]])` | 二进制 ↔ Base64 |
+| `sodium.generichash(msg[, out_len[, key]])` | BLAKE2b 通用哈希，默认输出 32 字节 |
+| `sodium.secretbox_easy(msg, nonce, key)` | XSalsa20-Poly1305 对称加密，输出含 16 字节 MAC |
+| `sodium.secretbox_open_easy(ct, nonce, key)` | 解密；密钥/nonce 错误或数据被篡改时报错 |
+| `sodium.sign_keypair()` | 生成 Ed25519 签名密钥对，返回 `pubkey, secretkey` |
+| `sodium.sign_detached(msg, sk)` | 签名，返回 64 字节签名 |
+| `sodium.sign_verify_detached(sig, msg, pk)` | 验签，返回 `boolean` |
+| `sodium.scalarmult_base(scalar)` | Curve25519 标量乘基点，返回 32 字节公钥 |
+| `sodium.pwhash(pw, salt[, out_len[, ops[, mem]]])` | Argon2i 密码哈希；`salt` 16 字节，默认 ops/mem 为交互式参数 |
+
+## 5. cjson —— JSON 编解码
+
+`require "cjson"`，标准 lua-cjson 2.1.0.11（另有 `cjson.safe` 变体，错误时不抛异常）。
+
+| 函数 | 说明 |
+|------|------|
+| `cjson.encode(value)` | Lua 值 → JSON 字符串 |
+| `cjson.decode(json)` | JSON 字符串 → Lua 值 |
+| `cjson.new()` | 新建独立配置的 cjson 模块表 |
+
+**配置函数**（标准 lua-cjson）：`encode_empty_table_as_object`、`decode_array_with_array_mt`、`decode_allow_comment`、`encode_sparse_array`、`encode_max_depth`、`decode_max_depth`、`encode_number_precision`、`encode_keep_buffer`、`encode_invalid_numbers`、`decode_invalid_numbers`、`encode_escape_forward_slash`、`encode_skip_unsupported_value_types`、`encode_indent`。
+
+**特殊值**：`cjson.null`、`cjson.empty_array`、`cjson.array_mt`、`cjson.empty_array_mt`，以及 `cjson._NAME` / `cjson._VERSION`。
+
+## 6. ffi —— C 接口调用
+
+`require "ffi"`，LuaJIT 风格 FFI（cffi 移植），可在 Lua 中声明并调用任意 C 函数与结构体。
+
+```lua
+local ffi = require "ffi"
+ffi.cdef[[
+  int strlen(const char *s);
+]]
+local lib = ffi.load("libc.so")
+print(lib.strlen("hello"))   -- 5
+```
+
+| 函数 | 说明 |
+|------|------|
+| `ffi.cdef(decl)` | 声明 C 类型与函数原型 |
+| `ffi.load(name)` | 加载动态库，返回库句柄 |
+| `ffi.new(ct, ...)` | 创建 cdata 对象（可带初值） |
+| `ffi.cast(ct, value)` | 类型转换 |
+| `ffi.metatype(ct, mt)` | 为 cdata 类型绑定元表 |
+| `ffi.typeof(ct)` | 获取类型对象 |
+| `ffi.addressof(cd)` | 取 cdata 地址 |
+| `ffi.gc(cd, finalizer)` | 设置析构回调 |
+| `ffi.sizeof(ct)` / `ffi.alignof(ct)` / `ffi.offsetof(ct, field)` | 尺寸 / 对齐 / 字段偏移 |
+| `ffi.istype(ct, value)` | 判断类型 |
+| `ffi.errno([err])` | 读取 / 设置 errno |
+| `ffi.string(cdata[, len])` | cdata → Lua 字符串 |
+| `ffi.copy(dst, src, len)` | 内存拷贝 |
+| `ffi.fill(dst, len[, c])` | 内存填充 |
+| `ffi.toretval(...)` / `ffi.eval(...)` / `ffi.type(...)` | 进阶工具 |
+| `ffi.getLuaState()` | 返回当前 `lua_State` 指针 |
+| `ffi.luatopointer(v)` | 任意 Lua 值 → 指针 |
+
+**环境常量**：`ffi.os`（如 `"Linux"`）、`ffi.arch`（如 `"arm64"`）、`ffi.abi`（ABI 特性表）、`ffi.nullptr`、`ffi.tonumber`、`ffi.L`、`ffi.INFO`。
