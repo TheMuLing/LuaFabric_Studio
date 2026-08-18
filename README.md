@@ -2,11 +2,6 @@
 
 # 更新日志
 
-## 26.08.18（后续）
-- 新增 `libmmkv.so`（MMKV v2.4.1 高性能键值存储）Lua 绑定，支持类型化读写、过期时间、多实例
-- 新增 `libzstd.so`（Zstandard 1.6.0 压缩）Lua 绑定，支持压缩/解压/流式接口
-- 新增 README「Lua 库接口文档」章节，涵盖 mmkv / zstd / aes / sodium / cjson / ffi
-
 ## 26.08.18
 - 软件更名：LuaForge Studio → **LuaFabric Studio**
 - 包名迁移：
@@ -18,7 +13,11 @@
 - 修复 RecyclerView 适配器只能添加 8 项的问题（Lua 表通过 `push()` 传递）
 - 修复全新安装时无存储权限导致的日志写入报错（日志文件改为应用私有目录）
 - 修复 `import` 模块缺失问题（Splash 启动时幂等解包 lua 运行库）
-- 版本号切换为年份命名：`versionName 26.08.18` / `versionCode 260818`
+- 版本号切换为年份命名：`versionName 26.08.18` / `versionCode 260818`（alpha 版：`26.08.18-alpha` / `26081801`）
+- 新增 `libmmkv.so`（MMKV v2.4.1 高性能键值存储）Lua 绑定，支持类型化读写、过期时间、多实例
+- 新增 `libzstd.so`（Zstandard 1.6.0 压缩）Lua 绑定，支持压缩/解压/流式接口
+- 新增 README「Lua 库接口文档」章节，涵盖 mmkv / zstd / aes / sodium / cjson / ffi
+- 修复应用内构建 APK 签名失败问题（签名密钥凭据与代码不匹配，更换新签名密钥）
 
 ## 1.6.0
 - 新增 `libdecrypt.so`，支持 Lua 加密脚本自动解密加载
