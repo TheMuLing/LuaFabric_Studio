@@ -386,7 +386,7 @@ fun NewProjectScreen(
                                     strokeWidth = 2.dp
                                 )
                             } else {
-                                Icon(Icons.Filled.Create, contentDescription = stringResource(R.string.create_project))
+                                Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.create_project))
                             }
                         },
                         text = {

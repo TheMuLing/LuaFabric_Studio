@@ -425,7 +425,7 @@ object ProjectUtil {
             "versionName" to "1.0",
             "versionCode" to "1",
             "uses_sdk" to mapOf(
-                "minSdkVersion" to "21",
+                "minSdkVersion" to "29",
                 "targetSdkVersion" to "29"
             ),
             "package" to packageName,
