@@ -25,8 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
@@ -202,7 +200,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 description = "",
                 color = Color(0xFF8D4A5A),
                 iconResId = R.drawable.ic_muling,
-                url = ""
+                url = "https://github.com/TheMuLing"
             ),
             Developer(
                 nameResId = R.string.dev_w_name,
@@ -211,38 +209,6 @@ fun AboutScreen(onBack: () -> Unit) {
                 color = Color(0xFF8D4A5A),
                 iconResId = R.drawable.ic_w,
                 url = "https://github.com/wisyh"
-            ),
-            Developer(
-                nameResId = R.string.dev_kotlin_name,
-                roleResId = R.string.dev_kotlin_role,
-                description = "",
-                color = Color(0xFF7F52FF),
-                iconResId = R.drawable.ic_kotlin,
-                url = "https://kotlinlang.org"
-            ),
-            Developer(
-                nameResId = R.string.dev_lua_name,
-                roleResId = R.string.dev_lua_role,
-                description = "",
-                color = Color(0xFF36618E),
-                iconResId = R.drawable.ic_lua,
-                url = "https://www.lua.org"
-            ),
-            Developer(
-                nameResId = R.string.dev_android_name,
-                roleResId = R.string.dev_android_role,
-                description = "",
-                color = Color(0xFF2E6A44),
-                iconResId = R.drawable.ic_android,
-                url = "https://developer.android.com"
-            ),
-            Developer(
-                nameResId = R.string.dev_compose_name,
-                roleResId = R.string.dev_compose_role,
-                description = "",
-                color = Color(0xFFD97757),
-                iconResId = R.drawable.ic_compose,
-                url = "https://developer.android.com/jetpack/compose"
             )
         )
     }
@@ -261,17 +227,6 @@ fun AboutScreen(onBack: () -> Unit) {
         }
 
         item {
-            SectionTitle(stringResource(R.string.tech_stack_title))
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(teamMembers) { dev ->
-                    DeveloperChip(dev)
-                }
-            }
-
             AnimatedVisibility(
                 visible = showAuthorNote,
                 enter = expandVertically() + fadeIn(),
@@ -285,6 +240,18 @@ fun AboutScreen(onBack: () -> Unit) {
                     }
                 )
             }
+
+            SectionTitle(stringResource(R.string.tech_stack_title))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                teamMembers.forEach { dev ->
+                    DeveloperChip(dev, modifier = Modifier.fillMaxWidth())
+                }
+            }
         }
 
         item {
@@ -297,7 +264,7 @@ fun AboutScreen(onBack: () -> Unit) {
                         LogCatcher.i("AboutScreen", "打开QQ群")
                         val intent = Intent(
                             Intent.ACTION_VIEW,
-                            "https://qun.qq.com/universal-share/share?ac=1&authKey=fHBSdBajwT9XrPXNUDcaHH17V%2F9xWMrW1qoPGaRgnznVc5MnD%2BW9%2BJr9dtl5J&busi_data=eyJncm91cENvZGUiOiI2NTUzMjAxMTIiLCJ0b2tlbiI6ImdpYmcxUG16a2JvZHROVzJzVkVKdTBrekxEankxNlYza0NwaXNUNW9xNHk1bVBCNXdrMG40ZnVzK0Y2Z0VwbnEiLCJ1aW4iOiIxNDQ3MDE3NzAxIn0%3D&data=9sSl5HKUN9A82WDrHO0ixxwNEEKTiRmbpG-5AhdhGft7lEaUrorDneokip8GNMS47lVst25Mi8NE4MAod9SdPA&svctype=4&tempid=h5_group_info".toUri()
+                            "https://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=I96XEdCObX_xJ6sdtqIbL4iMyOL4Sx51&authKey=vB%2FWu7tABJtyweVPuTUtiwChmFPg3IyO6lZkAsb49r5puqX202vw%2FozUarawnEaz&noverify=0&group_code=1106643491".toUri()
                         )
                         context.startActivity(intent)
                     } catch (e: Exception) {
@@ -837,7 +804,8 @@ fun SectionTitle(text: String) {
 @Composable
 fun DeveloperChip(
     dev: Developer,
-    iconResId: Int? = null
+    iconResId: Int? = null,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val actualIconResId = iconResId ?: dev.iconResId
@@ -854,6 +822,7 @@ fun DeveloperChip(
                 }
             }
         },
+        modifier = modifier,
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
@@ -862,14 +831,15 @@ fun DeveloperChip(
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
+                    .size(40.dp)
+                    .clip(MaterialTheme.shapes.medium)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
@@ -877,26 +847,23 @@ fun DeveloperChip(
                     Icon(
                         painter = painterResource(id = actualIconResId),
                         contentDescription = "${context.getString(dev.nameResId)}",
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = Color.Unspecified
                     )
                 } else {
                     Box(
                         modifier = Modifier
-                            .size(12.dp)
+                            .size(16.dp)
                             .clip(CircleShape)
                             .background(dev.color)
                     )
                 }
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = stringResource(dev.nameResId),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     maxLines = 1,
@@ -904,19 +871,22 @@ fun DeveloperChip(
                 )
 
                 Text(
-                    text = "•",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
-                )
-
-                Text(
                     text = stringResource(dev.roleResId),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Icon(
+                painter = painterResource(id = R.drawable.ic_export_variant),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

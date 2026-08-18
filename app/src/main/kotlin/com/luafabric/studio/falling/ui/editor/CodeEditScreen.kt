@@ -59,7 +59,9 @@ import com.luafabric.studio.falling.ui.settings.SettingsManager
 import muling.views.tool.utils.LogCatcher
 import muling.views.tool.utils.NonBlockingToastState
 import muling.views.tool.utils.TransitionUtil
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -293,10 +295,19 @@ fun CodeEditScreen(
         }
     }
 
+    // ========== 构建项目状态 ==========
+    var buildJob: Job? by remember { mutableStateOf(null) }
+
     // 优先关闭覆盖层
     BackHandler(enabled = true) {
         scope.launch {
             when {
+                isBuilding -> {
+                    buildJob?.cancel()
+                    buildJob = null
+                    isBuilding = false
+                    toast.showToast(context.getString(R.string.code_editor_build_cancelled))
+                }
                 isSearchVisible -> {
                     isSearchVisible = false
                     searchText = ""
@@ -323,11 +334,13 @@ fun CodeEditScreen(
 
     // ========== 构建项目 ==========
     val onBuildProjectAction: () -> Unit = {
-        scope.launch {
+        buildJob = scope.launch {
             viewModel.saveAllFilesSilently()
             isBuilding = true
             val result = try {
                 this.async<String>(Dispatchers.IO) { buildProject(context, projectPath) }.await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 LogCatcher.e("CodeEditScreen", "构建协程异常", e)
                 "error: ${context.getString(R.string.code_editor_build_exception, e.message)}"
