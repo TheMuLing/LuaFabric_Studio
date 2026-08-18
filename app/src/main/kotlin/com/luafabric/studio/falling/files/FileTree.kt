@@ -83,7 +83,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.luafabric.studio.falling.R
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -171,9 +170,16 @@ fun FileTree(
     val horizontalScrollState = rememberScrollState()
 
     var expandedNodes by remember(
-        rootPath,
-        refreshTrigger
+        rootPath
     ) { mutableStateOf(setOf(File(rootPath).path)) }
+
+    // 刷新计数器：文件/文件夹增删改后递增，强制所有节点重新读取目录
+    var refreshNonce by remember { mutableIntStateOf(0) }
+
+    // 外部刷新触发器（如快捷栏新建文件）也递增计数器
+    LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger > 0) refreshNonce++
+    }
 
     val onSmartToggle: (FileNode) -> Unit = smartToggle@{ node ->
         val path = node.file.path
@@ -207,14 +213,7 @@ fun FileTree(
     }
 
     fun refreshDirectory(directory: File) {
-        scope.launch {
-            val path = directory.absolutePath
-            if (expandedNodes.contains(path)) {
-                expandedNodes -= path
-                delay(20)
-                expandedNodes += path
-            }
-        }
+        refreshNonce++
     }
 
     val sheetState = rememberModalBottomSheetState()
@@ -267,6 +266,7 @@ fun FileTree(
                         node = node,
                         depth = 0,
                         expandedNodes = expandedNodes,
+                        refreshNonce = refreshNonce,
                         minWidth = minItemWidth,
                         onToggle = onSmartToggle,
                         onFileClick = onFileClick,
@@ -577,6 +577,7 @@ private fun FileNodeItem(
     node: FileNode,
     depth: Int,
     expandedNodes: Set<String>,
+    refreshNonce: Int,
     minWidth: Dp,
     onToggle: (FileNode) -> Unit,
     onFileClick: (File) -> Unit,
@@ -593,7 +594,7 @@ private fun FileNodeItem(
         animationSpec = animationSpec
     )
 
-    val children by remember(isExpanded, node) {
+    val children by remember(isExpanded, node, refreshNonce) {
         derivedStateOf {
             if (isExpanded && node.isDirectory) {
                 node.file.listFiles()
@@ -722,6 +723,7 @@ private fun FileNodeItem(
                         node = child,
                         depth = depth + 1,
                         expandedNodes = expandedNodes,
+                        refreshNonce = refreshNonce,
                         minWidth = minWidth,
                         onToggle = onToggle,
                         onFileClick = onFileClick,

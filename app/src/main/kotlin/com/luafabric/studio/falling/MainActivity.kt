@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -67,6 +69,9 @@ import com.luafabric.studio.falling.ui.components.FilePickerDialog
 import com.luafabric.studio.falling.ui.components.SelectionMode
 import com.luafabric.studio.falling.ui.components.Toast
 import com.luafabric.studio.falling.ui.editor.CodeEditScreen
+import com.luafabric.studio.falling.ui.editor.InstallApkDialog
+import com.luafabric.studio.falling.ui.editor.buildProject
+import com.luafabric.studio.falling.ui.editor.installApk
 import com.luafabric.studio.falling.ui.project.NewProjectScreen
 import com.luafabric.studio.falling.ui.settings.DarkMode
 import com.luafabric.studio.falling.ui.settings.SettingsManager
@@ -105,7 +110,7 @@ data class ProjectItem(
     val path: String,
     val createdDate: Date = Date(),
     val modifiedDate: Date = Date()
-)
+) : java.io.Serializable
 
 // 主内容类型枚举
 enum class MainContentType {
@@ -122,8 +127,8 @@ enum class ConflictAction {
 fun MainApp() {
     TransparentSystemBars()
 
-    var currentScreen by remember { mutableStateOf(AppScreen.MAIN) }
-    var selectedProject by remember { mutableStateOf<ProjectItem?>(null) }
+    var currentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
+    var selectedProject by rememberSaveable { mutableStateOf<ProjectItem?>(null) }
     var projectItems by remember { mutableStateOf(emptyList<ProjectItem>()) }
     val toast = rememberNonBlockingToastState()
     val scope = rememberCoroutineScope()
@@ -266,7 +271,7 @@ fun MainScreen(
     packageInfo?.versionCode ?: 1
     val copyrightYear = BuildConfig.COPYRIGHT_YEAR
 
-    var currentContentType by remember { mutableStateOf(MainContentType.PROJECTS) }
+    var currentContentType by rememberSaveable { mutableStateOf(MainContentType.PROJECTS) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -313,6 +318,29 @@ fun MainScreen(
     var deleteProjectId by remember { mutableStateOf("") }
     var deleteProjectName by remember { mutableStateOf("") }
     var deleteProjectPath by remember { mutableStateOf("") }
+
+    // ---- 构建项目状态 ----
+    var buildingProject by remember { mutableStateOf<ProjectItem?>(null) }
+    var buildResultApkPath by remember { mutableStateOf<String?>(null) }
+
+    val onProjectBuild: (ProjectItem) -> Unit = { project ->
+        scope.launch {
+            buildingProject = project
+            val result = try {
+                async<String>(Dispatchers.IO) { buildProject(context, project.path) }.await()
+            } catch (e: Exception) {
+                LogCatcher.e("MainScreen", "构建项目协程异常", e)
+                "error: ${context.getString(R.string.code_editor_build_exception, e.message)}"
+            }
+            if (result.startsWith("error:")) {
+                toast.showToast(context.getString(R.string.code_editor_build_failed, result.substringAfter("error: ")))
+            } else {
+                buildResultApkPath = result
+            }
+            buildingProject = null
+        }
+    }
+    // --------------------------
 
     // 用于处理从设置/关于页返回时的异步操作
     var shouldReturnToProjects by remember { mutableStateOf(false) }
@@ -1002,6 +1030,7 @@ fun MainScreen(
                                                 showDeleteDialog = true
                                             },
                                             onShareClick = { shareProject(project) },
+                                            onBuildClick = { onProjectBuild(project) },
                                             onClick = { onNavigateToEditor(project) },
                                             modifier = Modifier.animateItem() // 排序时的移动动画
                                         )
@@ -1076,6 +1105,41 @@ fun MainScreen(
                 TextButton(onClick = { showDeleteDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
+            }
+        )
+    }
+
+    // ---- 构建项目弹窗 ----
+    if (buildingProject != null) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text(stringResource(R.string.code_editor_build)) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(strokeWidth = 3.dp)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = stringResource(R.string.code_editor_building, buildingProject?.name ?: ""),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    if (buildResultApkPath != null) {
+        InstallApkDialog(
+            showInstallDialog = true,
+            apkFilePath = buildResultApkPath,
+            onDismiss = {
+                buildResultApkPath = null
+            },
+            onInstall = {
+                buildResultApkPath?.let { filePath ->
+                    installApk(context, filePath, toast, scope)
+                }
+                buildResultApkPath = null
             }
         )
     }
@@ -1215,6 +1279,7 @@ fun ProjectCard(
     onTogglePinned: () -> Unit,
     onDeleteClick: () -> Unit,
     onShareClick: () -> Unit,
+    onBuildClick: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1425,6 +1490,20 @@ fun ProjectCard(
                                     leadingIcon = {
                                         Icon(
                                             if (isPinned) Icons.Filled.Clear else Icons.Filled.Star,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.project_build)) },
+                                    onClick = {
+                                        showMenu = false
+                                        onBuildClick()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_android_studio),
                                             contentDescription = null
                                         )
                                     }
