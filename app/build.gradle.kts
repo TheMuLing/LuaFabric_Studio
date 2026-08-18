@@ -15,8 +15,8 @@ android {
         applicationId = "com.luafabric.studio.falling"
         minSdk = 24
         targetSdk = 36
-        versionCode = 26081901
-        versionName = "26.08.19-alpha"
+        versionCode = 26081902
+        versionName = "26.08.19"
 
         vectorDrawables {
             useSupportLibrary = true
