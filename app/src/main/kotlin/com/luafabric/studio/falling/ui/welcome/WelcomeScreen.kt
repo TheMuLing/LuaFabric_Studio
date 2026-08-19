@@ -119,6 +119,7 @@ fun WelcomeScreen(
                 }
 
                 item.permission == Manifest.permission.INTERNET -> true
+                item.permission == "APP_LIST_QUERY" -> hasAppListPermission(context)
                 item.permission == "ANDROID_10_STORAGE_PERMISSIONS" -> {
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                         val readGranted = ContextCompat.checkSelfPermission(
@@ -219,9 +220,24 @@ fun WelcomeScreen(
                     }
                 }
             }
-
             permission == Manifest.permission.INTERNET -> {
                 LogCatcher.d("WelcomeScreen", "网络权限是自动授予的，无需请求")
+                // 网络权限自动授予，仅刷新状态
+                updatePermissionsState()
+            }
+
+            permission == "APP_LIST_QUERY" -> {
+                LogCatcher.d("WelcomeScreen", "应用列表权限为安装时权限，跳转应用详情页")
+                try {
+                    settingsLauncher.launch(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                        }
+                    )
+                } catch (e: Exception) {
+                    LogCatcher.e("WelcomeScreen", "无法打开应用详情页", e)
+                    updatePermissionsState()
+                }
             }
 
             else -> {
@@ -828,6 +844,18 @@ fun AnimatedPageIndicator(
     }
 }
 
+// 自研应用列表权限检测：不依赖 checkSelfPermission，行为探测已安装应用数
+private fun hasAppListPermission(context: Context): Boolean {
+    return try {
+        val pm = context.packageManager
+        val installedApps = pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+        installedApps.size != 1
+    } catch (e: Exception) {
+        LogCatcher.e("WelcomeScreen", "应用列表权限检测失败", e)
+        false
+    }
+}
+
 // 修改为非 @Composable 函数，接收 Context 参数
 private fun getRequiredPermissionsForVersion(context: Context): List<PermissionItem> {
     val permissions = mutableListOf<PermissionItem>()
@@ -854,6 +882,17 @@ private fun getRequiredPermissionsForVersion(context: Context): List<PermissionI
             )
         )
     }
+
+    permissions.add(
+        PermissionItem(
+            name = context.getString(R.string.welcome_permission_applist_name),
+            permission = "APP_LIST_QUERY",
+            granted = false,
+            requiredForVersion = "11",
+            description = context.getString(R.string.welcome_permission_applist_desc),
+            isSpecialPermission = true
+        )
+    )
 
     permissions.add(
         PermissionItem(
