@@ -2,6 +2,19 @@
 
 # 更新日志
 
+## 26.08.19
+- 新增赞助页（设置页进入）：展示赞赏二维码，支持保存到相册、拉起微信扫一扫
+- 向导页新增「应用列表权限」条目（行为探测已安装应用数），点击跳转应用详情页
+- 新增 `require "memory"` 动态内存管理模块（自动/手动 GC、泄漏监测、Java 堆清理）
+- 新增 `require "lanes"` 多线程库（linda 消息传递、真线程并行执行）
+  - 适配 fork 版 `luaL_pushresult` 的栈占位差异，lanes 函数按值正确传递
+  - 支持 assets 内 require：`require "xxx"` 自动从 `assets/` 与 `assets/lua/` 加载（memory、lanes 等）
+- 修复 `require` 仅能加载 assets 根目录模块的问题（新增 `assets/lua/` 回退路径）
+- 修复向导页点击「应用列表权限」卡片无反应的问题（改为跳转应用详情页）
+- 修复 `lsmgrlib` 对 `luajava.so` 的外部符号依赖（内嵌 isJavaObject 实现）
+- 修复 lgc/lobject 中 `strchr` 潜在越界读取（改为带长度 `memchr`）
+- 新增 README「lanes 多线程教程」与「memory 内存管理」章节
+
 ## 26.08.18
 - 软件更名：LuaForge Studio → **LuaFabric Studio**
 - 包名迁移：
@@ -865,3 +878,144 @@ print(lib.strlen("hello"))   -- 5
 | `ffi.luatopointer(v)` | 任意 Lua 值 → 指针 |
 
 **环境常量**：`ffi.os`（如 `"Linux"`）、`ffi.arch`（如 `"arm64"`）、`ffi.abi`（ABI 特性表）、`ffi.nullptr`、`ffi.tonumber`、`ffi.L`、`ffi.INFO`。
+
+---
+
+## 7. memory —— 动态内存管理
+
+`require "memory"`，纯 Lua 实现（Apache-2.0，作者 YuYuanJin），提供自动/手动 GC、泄漏监测、Java 堆清理。采用 Handler + 协程调度，不占用真实线程。
+
+```lua
+local memory = require "memory"
+memory.start()              -- 默认参数启动自动模式
+print(memory.get_status())  -- { lua_kb=..., java_mb=..., total_mb=..., running=true, mode="auto", leak_warning=false }
+```
+
+| 函数 | 说明 |
+|------|------|
+| `memory.start(cfg)` | 启动自动模式。`cfg` 可选：`alert`（溢出警告 KB，默认 2000）、`pause`/`stepmul`（GC 阈值/步长，传 `true` 启用动态自适应）、`cooling_time`（冷却秒）、`peak_memory`（Lua 峰值 KB）、`pressure_threshold`（压力阀值 0~1）、`interval`（检查间隔 ms，默认 1000）、`debug`、`java_gc`（默认 true） |
+| `memory.start_manual(cfg)` | 手动模式启动，之后需自行周期调用 `tick()` |
+| `memory.tick()` | 手动模式单次检查（建议 500ms 以上间隔调用） |
+| `memory.stop()` | 停止模块并清理协程/Handler/JNI 引用 |
+| `memory.monitoring()` | 随时可调，返回 `lua_kb, leak_warning, java_mb` |
+| `memory.force_gc()` | 立即执行完整 GC（Lua 全量回收 + `luajava.clear()` + Java GC） |
+| `memory.get_status()` | 返回当前内存状态表 |
+| `memory.on_destroy()` | 页面销毁清理，在 `onDestroy()` 中调用 |
+| `memory.help()` | 打印完整帮助文档 |
+
+---
+
+## 8. lanes —— 多线程库
+
+`require "lanes"`，基于 [LuaLanes](https://github.com/LuaLanes/lanes)（4.0）移植的 Lua 真线程库。每个 lane 是独立的 Lua 状态（独立 GC），通过 **linda**（双向消息通道）跨线程传递数据。
+
+### 8.1 快速开始
+
+```lua
+local lanes = require "lanes"
+
+-- 1. 创建生成器（可复用）：lanes.gen([libs,][opts,] lane_func)
+local gen = lanes.gen("", function(v)          -- "" = 仅 base 库，见 8.3 陷阱
+    return v * 2
+end)
+
+-- 2. 生成并启动一个 lane 线程
+local lane = gen(21)
+
+-- 3. 等待结果：lane:join([timeout]) → (true, 返回值...) 或 (nil, 错误信息, status)
+local ok, res = lane:join(5)
+print(ok, res)   -- true 42
+```
+
+### 8.2 linda 消息传递（完整示例）
+
+```lua
+local lanes = require "lanes"
+local linda = lanes.linda()                    -- 创建消息通道（跨线程共享）
+
+local gen = lanes.gen("", function(v)
+    local k, x = linda:receive(5, "from-main") -- 等待主线程消息
+    linda:send("to-main", x * 2)               -- 回传结果
+    return x + 100
+end)
+
+linda:send("from-main", 42)                    -- 主线程发送
+
+local k1, v1 = linda:receive(4, "to-main")     -- 接收 lane 回传
+print(k1, v1)                                  -- to-main 84
+
+local ok, res = gen(42):join(4)
+print(ok, res)                                 -- true 142
+```
+
+### 8.3 linda API
+
+| 函数 | 说明 |
+|------|------|
+| `linda:send(key, value)` | 发送消息（带 key 的 FIFO），不阻塞 |
+| `linda:receive([timeout,] key...)` | 等待指定 key 的消息。**返回 `(key, value)`**，匹配任意一个 key 即返回；timeout 秒后无消息返回 `(nil, "timeout")`，超时时间到后未取走的消息留在通道中 |
+| `linda:get([timeout,] key...)` | 读取但**不移除**消息（peek），可多次读取同一消息 |
+| `linda:set(key, value)` | 设置单个值，之后 `get/set` 直接存取（不走 FIFO） |
+| `linda:count()` | 返回排队中的消息数 |
+| `linda:broadcast(key, value[, limit])` | 广播给所有等待该 key 的 receive |
+
+**两个容易踩的坑（务必注意）：**
+
+1. **`receive` 返回 `(key, value)`**，不是 `(value)`！第一个返回值是匹配到的 key，第二个才是数据：
+   ```lua
+   local k, v = linda:receive(1, "data")   -- k == "data", v == 数据
+   ```
+2. **超时必须是第一个参数**（紧跟 `receive` 之后）：`receive(5, "key")` 表示 5 秒超时；`receive("key", 5)` 中的 `5` 会被当作**第二个 key**，导致无超时无限等待！
+
+### 8.4 lanes.gen 参数
+
+```lua
+lanes.gen([libs_str|opt_tbl [, ...],] lane_func) ([...]) -> lane
+```
+
+- `libs_str` 指定 lane 内可用的标准库（**默认 nil = 一个库都没有**）：
+  - `nil`：无任何库（默认）——lane 里 `tostring`/`print`/`assert` 全为 nil
+  - `""`：仅 base 库（`assert`、`print`、`tostring`、`pairs` 等）
+  - `"math,os"`：命名库 + base（多个用逗号分隔）
+  - `"*"`：全部标准库
+- `opt_tbl`（可选）：`priority`（线程优先级 -3~+3）、`globals`（按值传入的全局变量表）、`required`（lane 内自动 require 的包表）、`gc_cb`（lane 句柄回收回调）、`name`（调试名）
+- lane 函数中**闭包捕获的 upvalue 按值传递**，跨线程共享状态请使用 linda 或 mmkv
+
+### 8.5 lane 句柄
+
+| 方法 | 说明 |
+|------|------|
+| `lane:join([timeout])` | 等待 lane 结束。成功返回 `(true, 返回值...)`；失败返回 `(nil, 错误信息, status)` |
+| `lane:status()` | 返回状态字符串（`"running"` / `"done"` / `"error"` / `"cancelled"` 等） |
+| `lane:cancel()` | 请求取消线程 |
+| `lane:get_peer()` | 获取线程关联的 linda（不常用） |
+
+### 8.6 完整范例（生产者-消费者）
+
+```lua
+local lanes = require "lanes"
+local linda = lanes.linda()
+
+local producer = lanes.gen("", function(count)
+    for i = 1, count do
+        linda:send("jobs", i)
+    end
+    linda:send("done", true)
+    return "producer done"
+end)
+
+local consumer = lanes.gen("", function()
+    local sum = 0
+    while true do
+        local k, v = linda:receive(1, "jobs", "done")
+        if k == "done" then break end
+        sum = sum + v
+    end
+    return sum
+end)
+
+local p, c = producer(1000), consumer()
+local ok1, r1 = p:join(10)
+local ok2, sum = c:join(10)
+print(ok1, r1, ok2, sum)   -- true producer done true 500500
+```
