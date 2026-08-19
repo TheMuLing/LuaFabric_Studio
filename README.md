@@ -1,5 +1,7 @@
 # LuaFabric Studio
 
+> **关于名称**：本软件名称致敬 Minecraft 模组加载器 **Forge** 与 **Fabric**——由 LuaForge Studio 更名为 LuaFabric Studio，应用图标也同步更换为 Fabric 风格的织布意象，寓意如模组加载器一般，为 Lua 生态加载无限可能。
+
 # 更新日志
 
 ## 26.08.19
@@ -16,7 +18,9 @@
 - 新增 README「lanes 多线程教程」与「memory 内存管理」章节
 
 ## 26.08.18
-- 软件更名：LuaForge Studio → **LuaFabric Studio**
+- 软件更名：LuaForge Studio → **LuaFabric Studio**（名称来源 Minecraft 模组加载器 Forge/Fabric 的梗，图标同步更换）
+- 移除无用旧库，显著减小安装体积：删除 **libbase64**、**libencrypt**、**libmd5**、**libyyjson**
+- **cjson 升级至 2.1.0.11**（修复旧版问题、支持更多配置项与特殊值，接口文档见下文「Lua 库接口文档」）
 - 包名迁移：
   - 应用包名 `com.luaforge.studio` → `com.luafabric.studio.falling`
   - 工具库包名 `com.luaforge.studio.utils.*` → `muling.views.tool.utils.*`
