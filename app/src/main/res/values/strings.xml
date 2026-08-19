@@ -11,6 +11,16 @@
     <string name="save">保存</string>
     <string name="settings">设置</string>
     <string name="about">关于</string>
+    <string name="sponsor">赞助</string>
+    <string name="sponsor_placeholder">赞助功能开发中</string>
+    <string name="sponsor_qr_desc">赞赏码</string>
+    <string name="sponsor_slogan">您的支持就是我们的动力</string>
+    <string name="sponsor_feed_button">投喂我~</string>
+    <string name="sponsor_saved_toast">赞赏码已保存至相册：%1$s</string>
+    <string name="sponsor_save_failed">赞赏码保存失败，请重试</string>
+    <string name="wechat_not_installed">微信未安装，请先安装微信</string>
+    <string name="debug_build_chip">DEBUG</string>
+    <string name="refresh">刷新</string>
     <string name="projects">项目</string>
     <string name="search">搜索</string>
     <string name="close_search">关闭搜索</string>
@@ -33,6 +43,8 @@
     <string name="no_projects">暂无项目</string>
     <string name="create_first_project">点击右下角按钮创建第一个项目</string>
     <string name="modified_time">修改时间: %s</string>
+    <string name="project_size">体积: %s</string>
+    <string name="project_template_chip">%1$s 模板</string>
     <string name="version_label">版本: %s</string>
     <string name="project_name_label">项目名称: %s</string>
     <string name="project_path_label">项目路径: %s</string>
@@ -240,6 +252,8 @@
     <string name="welcome_permission_storage_name_legacy">存储权限</string>
     <string name="welcome_permission_storage_desc_legacy">用于读取和保存项目文件和代码</string>
     <string name="welcome_permission_network_name">网络权限</string>
+    <string name="welcome_permission_applist_name">应用列表权限</string>
+    <string name="welcome_permission_applist_desc">用于检测设备已安装应用（如微信），以提供对应功能</string>
     <string name="welcome_permission_network_desc">用于下载依赖和更新</string>
     <string name="welcome_permission_special_badge">特殊权限</string>
     <string name="welcome_permission_granted_badge">已授权</string>

@@ -7,9 +7,13 @@
 package com.luafabric.studio.falling
 
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
+import android.graphics.BitmapFactory
+import android.provider.MediaStore
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -29,12 +33,16 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
@@ -49,6 +57,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +68,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
@@ -116,7 +128,8 @@ data class ProjectItem(
 enum class MainContentType {
     PROJECTS,
     SETTINGS,
-    ABOUT
+    ABOUT,
+    SPONSOR
 }
 
 enum class ConflictAction {
@@ -402,6 +415,8 @@ fun MainScreen(
     // 新增状态：待删除的项目ID集合（用于退出动画）
     var pendingDeletionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
+    // 项目列表的标题栏折叠由 exitUntilCollapsedScrollBehavior 处理，
+    // 顶部下拉刷新由 TwoStagePullBox 自定义手势接管（先展开标题栏再刷新）
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val lazyListState = rememberLazyListState()
     var showExtendedFab by remember { mutableStateOf(true) }
@@ -416,10 +431,29 @@ fun MainScreen(
     }
 
     val pageOrder =
-        listOf(MainContentType.PROJECTS, MainContentType.SETTINGS, MainContentType.ABOUT)
+        listOf(
+            MainContentType.PROJECTS,
+            MainContentType.SETTINGS,
+            MainContentType.ABOUT,
+            MainContentType.SPONSOR
+        )
 
     fun showToast(message: String) {
         toast.showToast(message)
+    }
+
+    // 下拉刷新：重扫项目目录并强制卡片重新加载元数据
+    var isRefreshing by remember { mutableStateOf(false) }
+    var refreshNonce by remember { mutableIntStateOf(0) }
+
+    fun refreshProjects() {
+        if (isRefreshing) return
+        isRefreshing = true
+        scope.launch {
+            ProjectUtil.loadProjectsFromDirectory(projectsPath, onProjectItemsChanged)
+            refreshNonce++
+            isRefreshing = false
+        }
     }
 
     // 重命名原 deleteProject 为 performDelete，用于实际删除操作（无动画）
@@ -638,6 +672,26 @@ fun MainScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
+                    if (isDebuggableBuild(context)) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.debug_build_chip),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
 
                 HorizontalDivider(
@@ -744,6 +798,37 @@ fun MainScreen(
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
+
+                    NavigationDrawerItem(
+                        label = {
+                            Text(stringResource(R.string.sponsor), fontWeight = FontWeight.Medium)
+                        },
+                        selected = currentContentType == MainContentType.SPONSOR,
+                        onClick = {
+                            currentContentType = MainContentType.SPONSOR
+                            scope.launch { drawerState.close() }
+                        },
+                        icon = {
+                            Icon(
+                                Icons.Filled.MonetizationOn,
+                                contentDescription = stringResource(R.string.sponsor),
+                                tint = if (currentContentType == MainContentType.SPONSOR)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedContainerColor = Color.Transparent,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -827,6 +912,7 @@ fun MainScreen(
                                     MainContentType.PROJECTS -> stringResource(R.string.app_name)
                                     MainContentType.SETTINGS -> stringResource(R.string.settings)
                                     MainContentType.ABOUT -> stringResource(R.string.about)
+                                    MainContentType.SPONSOR -> stringResource(R.string.sponsor)
                                 },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -847,6 +933,14 @@ fun MainScreen(
                     actions = {
                         when (currentContentType) {
                             MainContentType.PROJECTS -> {
+                                // 刷新按钮
+                                IconButton(onClick = { refreshProjects() }) {
+                                    Icon(
+                                        Icons.Filled.Refresh,
+                                        contentDescription = stringResource(R.string.refresh)
+                                    )
+                                }
+
                                 // 搜索按钮
                                 IconButton(onClick = {
                                     isSearchActive = !isSearchActive
@@ -919,7 +1013,7 @@ fun MainScreen(
                                 }
                             }
 
-                            MainContentType.SETTINGS, MainContentType.ABOUT -> {
+                            MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR -> {
                             }
                         }
                     },
@@ -952,7 +1046,7 @@ fun MainScreen(
                         )
                     }
 
-                    MainContentType.SETTINGS, MainContentType.ABOUT -> {
+                    MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR -> {
                     }
                 }
             },
@@ -979,61 +1073,64 @@ fun MainScreen(
                 ) { targetContentType ->
                     when (targetContentType) {
                         MainContentType.PROJECTS -> {
-                            if (displayedProjects.isEmpty()) {
-                                SideEffect {
-                                    showExtendedFab = true
-                                }
-                                Column(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.FolderOpen,
-                                        contentDescription = stringResource(R.string.cd_project_folder),
-                                        tint = MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(64.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = stringResource(R.string.no_projects),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = stringResource(R.string.create_first_project),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.outline
-                                    )
-                                }
-                            } else {
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize(),
-                                    state = lazyListState,
-                                    contentPadding = PaddingValues(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    items(
-                                        items = displayedProjects,
-                                        key = { it.id } // 使用唯一ID作为key，确保动画正确
-                                    ) { project ->
-                                        ProjectCard(
-                                            project = project,
-                                            isPinned = project.id in pinnedSet,
-                                            isPendingDeletion = project.id in pendingDeletionIds, // 传递待删除状态
-                                            onTogglePinned = { togglePinned(project.id) },
-                                            onDeleteClick = {
-                                                deleteProjectId = project.id
-                                                deleteProjectName = project.name
-                                                deleteProjectPath = project.path
-                                                showDeleteDialog = true
-                                            },
-                                            onShareClick = { shareProject(project) },
-                                            onBuildClick = { onProjectBuild(project) },
-                                            onClick = { onNavigateToEditor(project) },
-                                            modifier = Modifier.animateItem() // 排序时的移动动画
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                if (displayedProjects.isEmpty()) {
+                                    SideEffect {
+                                        showExtendedFab = true
+                                    }
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.FolderOpen,
+                                            contentDescription = stringResource(R.string.cd_project_folder),
+                                            tint = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(64.dp)
                                         )
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text(
+                                            text = stringResource(R.string.no_projects),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = stringResource(R.string.create_first_project),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        state = lazyListState,
+                                        contentPadding = PaddingValues(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        items(
+                                            items = displayedProjects,
+                                            key = { it.id } // 使用唯一ID作为key，确保动画正确
+                                        ) { project ->
+                                            ProjectCard(
+                                                project = project,
+                                                isPinned = project.id in pinnedSet,
+                                                isPendingDeletion = project.id in pendingDeletionIds, // 传递待删除状态
+                                                onTogglePinned = { togglePinned(project.id) },
+                                                onDeleteClick = {
+                                                    deleteProjectId = project.id
+                                                    deleteProjectName = project.name
+                                                    deleteProjectPath = project.path
+                                                    showDeleteDialog = true
+                                                },
+                                                onShareClick = { shareProject(project) },
+                                                onBuildClick = { onProjectBuild(project) },
+                                                onClick = { onNavigateToEditor(project) },
+                                                refreshTrigger = refreshNonce,
+                                                modifier = Modifier.animateItem() // 排序时的移动动画
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1058,6 +1155,14 @@ fun MainScreen(
                                 onBack = {
                                     shouldReturnToProjects = true
                                 }
+                            )
+                        }
+
+                        MainContentType.SPONSOR -> {
+                            SponsorScreen(
+                                context = context,
+                                toast = toast,
+                                scope = scope
                             )
                         }
                     }
@@ -1281,6 +1386,7 @@ fun ProjectCard(
     onShareClick: () -> Unit,
     onBuildClick: () -> Unit,
     onClick: () -> Unit,
+    refreshTrigger: Int = 0,
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -1289,6 +1395,8 @@ fun ProjectCard(
     val context = LocalContext.current
 
     var manifestInfo by remember { mutableStateOf<ManifestInfo?>(null) }
+    var template by remember { mutableStateOf<String?>(null) }
+    var projectSizeBytes by remember { mutableStateOf<Long?>(null) }
     val iconFile = remember(project.path) {
         File(project.path, "icon.png")
     }
@@ -1296,10 +1404,17 @@ fun ProjectCard(
         iconFile.exists() && iconFile.isFile
     }
 
-    LaunchedEffect(project.path) {
+    LaunchedEffect(project.path, refreshTrigger) {
         withContext(Dispatchers.IO) {
             val projectDir = File(project.path)
             if (projectDir.exists() && projectDir.isDirectory) {
+                try {
+                    projectSizeBytes = projectDir.walkTopDown()
+                        .filter { it.isFile }
+                        .sumOf { it.length() }
+                } catch (e: Exception) {
+                    LogCatcher.e("ProjectCard", "计算项目体积失败", e)
+                }
                 val settingsFile = File(projectDir, "settings.json")
                 if (settingsFile.exists() && settingsFile.isFile) {
                     try {
@@ -1319,6 +1434,7 @@ fun ProjectCard(
                             versionName = versionName,
                             debugMode = debugMode
                         )
+                        template = jsonMap["template"] as? String
                     } catch (e: Exception) {
                         LogCatcher.e("ProjectCard", "加载项目设置失败", e)
                     }
@@ -1351,7 +1467,7 @@ fun ProjectCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1544,7 +1660,7 @@ fun ProjectCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 HorizontalDivider(
                     modifier = Modifier.fillMaxWidth(),
@@ -1552,32 +1668,73 @@ fun ProjectCard(
                     color = colorScheme.outline.copy(alpha = 0.1f)
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.modified_time, dateFormat.format(project.modifiedDate)),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colorScheme.onSurfaceVariant
-                    )
-
-                    if (manifestInfo?.debugMode == true) {
-                        Box(
-                            modifier = Modifier
-                                .clip(MaterialTheme.shapes.extraSmall)
-                                .background(colorScheme.error.copy(alpha = 0.1f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        projectSizeBytes?.let { bytes ->
+                            val sizeText = if (bytes >= 1048576L) {
+                                String.format(Locale.getDefault(), "%.1f MB", bytes / 1048576.0)
+                            } else {
+                                String.format(Locale.getDefault(), "%.0f KB", bytes / 1024.0)
+                            }
                             Text(
-                                text = stringResource(R.string.debug_mode),
+                                text = stringResource(R.string.project_size, sizeText),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = colorScheme.error,
-                                fontWeight = FontWeight.Bold
+                                color = colorScheme.onSurfaceVariant
                             )
+                        }
+
+                        Text(
+                            text = stringResource(R.string.modified_time, dateFormat.format(project.modifiedDate)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (manifestInfo?.debugMode == true) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(colorScheme.error.copy(alpha = 0.1f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.debug_mode),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colorScheme.error,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        template?.let { templateName ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(colorScheme.primary.copy(alpha = 0.1f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.project_template_chip,
+                                        templateName.removeSuffix(".zip")
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
@@ -1686,5 +1843,164 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         com.luafabric.studio.falling.ui.editor.viewmodel.CompletionDataManager.clear()
         System.gc()
+    }
+}
+
+/**
+ * 通过 ApplicationInfo 运行时 API 判断当前安装包是否为 debuggable（debug 构建），
+ * 不硬编码构建类型
+ */
+private fun isDebuggableBuild(context: Context): Boolean =
+    (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+private const val SPONSOR_QR_ASSET = "sponsor/sponsor_qr.png"
+private const val SPONSOR_QR_FILE_NAME = "sponsor_qr.png"
+private const val SPONSOR_QR_MIME = "image/png"
+private const val SPONSOR_QR_SUB_DIR = "LuaFabric_Studio"
+private const val SPONSOR_QR_RELATIVE_PATH = "Pictures/LuaFabric_Studio/sponsor_qr.png"
+private const val WECHAT_PACKAGE = "com.tencent.mm"
+
+@Composable
+private fun SponsorScreen(
+    context: Context,
+    toast: NonBlockingToastState,
+    scope: CoroutineScope
+) {
+    var qrBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var saving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        qrBitmap = withContext(Dispatchers.IO) {
+            context.assets.open(SPONSOR_QR_ASSET).use { stream ->
+                BitmapFactory.decodeStream(stream)?.asImageBitmap()
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(32.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 280.dp)
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            val bitmap = qrBitmap
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = stringResource(R.string.sponsor_qr_desc),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.sponsor_slogan),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = {
+                if (saving) return@Button
+                saving = true
+                scope.launch {
+                    val saved = withContext(Dispatchers.IO) {
+                        try {
+                            saveSponsorQrToGallery(context)
+                        } catch (e: Exception) {
+                            false
+                        }
+                    }
+                    saving = false
+                    if (saved) {
+                        val launchIntent = context.packageManager.getLaunchIntentForPackage(WECHAT_PACKAGE)
+                        if (launchIntent != null) {
+                            runCatching { context.startActivity(launchIntent) }
+                        } else {
+                            toast.showToast(context.getString(R.string.wechat_not_installed))
+                        }
+                        toast.showToast(
+                            context.getString(R.string.sponsor_saved_toast, SPONSOR_QR_RELATIVE_PATH)
+                        )
+                    } else {
+                        toast.showToast(context.getString(R.string.sponsor_save_failed))
+                    }
+                }
+            },
+            enabled = !saving && qrBitmap != null,
+            modifier = Modifier.height(48.dp)
+        ) {
+            Icon(
+                Icons.Filled.SetMeal,
+                contentDescription = null
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.sponsor_feed_button))
+        }
+        Spacer(modifier = Modifier.height(48.dp))
+    }
+}
+
+private fun saveSponsorQrToGallery(context: Context): Boolean {
+    val input = context.assets.open(SPONSOR_QR_ASSET)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, SPONSOR_QR_FILE_NAME)
+            put(MediaStore.Images.Media.MIME_TYPE, SPONSOR_QR_MIME)
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/$SPONSOR_QR_SUB_DIR")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: run {
+                input.close()
+                return false
+            }
+        try {
+            resolver.openOutputStream(uri)?.use { output ->
+                input.use { it.copyTo(output) }
+            } ?: return false
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            return true
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            return false
+        }
+    } else {
+        val dir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+            SPONSOR_QR_SUB_DIR
+        )
+        if (!dir.exists() && !dir.mkdirs()) {
+            input.close()
+            return false
+        }
+        val target = File(dir, SPONSOR_QR_FILE_NAME)
+        return input.use { source ->
+            target.outputStream().use { output ->
+                source.copyTo(output)
+            }
+            true
+        }
     }
 }
