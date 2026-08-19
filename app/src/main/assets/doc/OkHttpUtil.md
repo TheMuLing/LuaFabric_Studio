@@ -4,7 +4,9 @@
 
 - **功能**：网络请求工具类，基于OkHttp库封装，提供HTTP GET/POST请求、文件上传下载等功能，所有请求异步执行，通过回调返回结果。
 - **适用场景**：Android开发中各类网络操作场景，如API数据请求、用户登录、文件上传下载等。
-- **优势**：支持自定义请求头、Cookie管理、断点续传，异步执行不阻塞主线程，适配Lua环境。
+- **优势**：支持自定义请求头、Cookie管理，请求在后台线程执行不阻塞主线程，回调在主线程（UI线程）执行可直接更新界面控件，适配Lua环境。
+
+> **回调约定**：以下所有函数的 callback 均在主线程回调，参数为 `(code, content, cookie, headers)`；请求失败时 `code` 为 -1，`content` 为错误描述信息。
 
 ## 二、启用方式
 
@@ -62,7 +64,7 @@ end)
 - **功能**：发送异步POST请求，支持表单数据提交。
 - **参数**：
     - `url` (string)：请求URL地址（必填）
-    - `formData` (table)：表单数据表（键值对格式，必填）
+    - `formData` (table, 可选)：表单数据表（键值对格式，省略时可直接传入 callback）
     - `cookie` (string, 可选)：Cookie字符串
     - `charset` (string, 可选)：响应内容字符集
     - `header` (table, 可选)：请求头表
@@ -89,7 +91,7 @@ post("https://api.example.com/update", {status = "online"}, nil, nil, headers, c
 ### 3. download（下载文件）
 
 - **Lua签名**：`download(url, savePath, cookie, header, callback)`
-- **功能**：异步下载文件到指定路径，支持断点续传。
+- **功能**：异步下载文件到指定路径。
 - **参数**：
     - `url` (string)：文件URL地址（必填）
     - `savePath` (string)：本地保存路径（相对路径基于项目目录，必填）
@@ -123,7 +125,7 @@ end)
 ### 4. upload（上传文件）
 
 - **Lua签名**：`upload(url, filePath, cookie, header, callback)`
-- **功能**：异步上传文件到服务器，支持多部分表单上传。
+- **功能**：异步上传文件到服务器，支持多部分表单上传（表单字段名固定为 `"file"`）。
 - **参数**：
     - `url` (string)：上传URL地址（必填）
     - `filePath` (string)：本地文件路径（相对路径基于项目目录，必填）

@@ -31,8 +31,8 @@
 - **参数**：
     - `input` (string)：图片路径（支持本地文件、Lua项目目录相对路径，必填）
     - `color` (number|string, 可选)：颜色值（十六进制数字或"#RRGGBB"字符串）
-    - `size` (number, 可选)：目标尺寸（结合unit参数使用）
-    - `unit` (number, 可选)：尺寸单位（默认为DP）
+    - `size` (number, 可选)：缩放目标宽度（像素），按"目标宽度/原图宽度"的比例等比缩放
+    - `unit` (number, 可选)：尺寸单位（当前版本不生效，仅保留参数位）
 - **返回值**：(userdata) Drawable对象，可直接设置为ImageView的src
 - **示例**：
 
@@ -42,7 +42,7 @@ local drawable = getIconDrawable("icon.png")
 imageView.setImageDrawable(drawable)
 -- 加载红色图标
 local redIcon = getIconDrawable("icon.png", "#FF0000")
--- 加载32dp尺寸图标
+-- 加载宽度为32像素的图标
 local sizedIcon = getIconDrawable("logo.png", nil, 32)
 ```
 

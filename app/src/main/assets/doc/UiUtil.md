@@ -191,6 +191,34 @@ local btnSize = minPercent(50)
 button.layoutParams = {width = btnSize, height = btnSize}
 ```
 
+### 13. applyEdgeToEdgePreference（设置Edge-to-Edge模式）
+
+- **Lua签名**：`applyEdgeToEdgePreference(window, edgeToEdgeEnabled)`
+- **功能**：设置窗口是否启用Edge-to-Edge（内容延伸到状态栏/导航栏之后），需配合Insets处理避免内容被遮挡。
+- **参数**：
+    - `window` (userdata)：Window对象，脚本内传 `activity.window`
+    - `edgeToEdgeEnabled` (boolean)：是否启用（必填）
+- **返回值**：无
+- **示例**：
+
+```lua
+applyEdgeToEdgePreference(activity.window, true)
+setupWindowInsets() -- 配合设置Insets避让系统栏
+```
+
+### 14. actionBarSize（获取ActionBar高度）
+
+- **Lua签名**：`actionBarSize()`
+- **功能**：获取当前主题下ActionBar的高度（像素值），获取失败返回0。
+- **参数**：无
+- **返回值**：(integer) ActionBar高度像素值，失败返回0
+- **示例**：
+
+```lua
+local barHeight = actionBarSize()
+print("ActionBar高度: " .. barHeight .. "px")
+```
+
 ## 四、使用示例
 
 ### 示例1：响应式布局创建

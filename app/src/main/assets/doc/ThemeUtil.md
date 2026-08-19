@@ -89,7 +89,21 @@ setLightBars(true, false)
 ### 示例1：根据系统主题动态切换界面主题
 
 ```lua
+activity.setContentView(loadlayout("layout"))
 
+-- 自动适配系统主题（状态栏/导航栏图标颜色 + Insets避让）
+applySystemThemeSettings()
+
+-- 根据系统主题动态选择界面配色
+if isSystemDarkTheme() then
+  -- 深色模式：使用深色配色
+  mainLayout.backgroundColor = 0xFF121212
+  titleText.textColor = 0xFFFFFFFF
+else
+  -- 浅色模式：使用浅色配色
+  mainLayout.backgroundColor = 0xFFFFFFFF
+  titleText.textColor = 0xFF000000
+end
 ```
 
 ### 示例2：状态栏与导航栏单独控制

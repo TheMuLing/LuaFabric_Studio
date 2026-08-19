@@ -68,6 +68,13 @@ class PermissionItem(
 
 // SDK 版本信息映射（使用资源 ID）
 private val sdkDisplayMap = mapOf(
+    21 to R.string.sdk_21,
+    22 to R.string.sdk_22,
+    23 to R.string.sdk_23,
+    24 to R.string.sdk_24,
+    25 to R.string.sdk_25,
+    26 to R.string.sdk_26,
+    27 to R.string.sdk_27,
     28 to R.string.sdk_28,
     29 to R.string.sdk_29,
     30 to R.string.sdk_30,

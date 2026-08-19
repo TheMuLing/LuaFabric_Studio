@@ -107,6 +107,14 @@ object ProjectUtil {
     }
 
     /**
+     * 模板 zip 文件名 → 显示名 映射
+     */
+    private val templateDisplayNames = mapOf(
+        "Default.zip" to "空项目",
+        "Floating Window.zip" to "悬浮窗"
+    )
+
+    /**
      * 加载模板列表
      */
     suspend fun loadTemplates(
@@ -123,7 +131,7 @@ object ProjectUtil {
 
                 templateFiles.forEach { fileName ->
                     if (fileName.endsWith(".zip")) {
-                        val templateName = fileName
+                        val templateName = templateDisplayNames[fileName] ?: fileName
                             .removeSuffix(".zip")
                             .replace("_", " ")
                             .replace("-", " ")
@@ -351,14 +359,15 @@ object ProjectUtil {
     }
 
     /**
-     * 更新 settings.json 文件（带全局Utils）
+     * 更新 settings.json 文件（带全局Utils与模板信息）
      */
     fun updateSettingsFile(
         settingsFile: File,
         projectName: String,
         packageName: String,
         debugMode: Boolean,
-        globalUtils: List<String>
+        globalUtils: List<String>,
+        template: String? = null
     ) {
         try {
             val jsonString = settingsFile.readText()
@@ -382,6 +391,9 @@ object ProjectUtil {
                 jsonMap["global_utils"] = emptyList<String>()
             }
 
+            // 记录创建时使用的模板（zip文件名）
+            template?.let { jsonMap["template"] = it }
+
             // 写回文件 - 使用格式化输出（缩进4个空格）
             val updatedJson = JSONObject(jsonMap).toString(4)
             settingsFile.writeText(updatedJson)
@@ -403,20 +415,28 @@ object ProjectUtil {
     }
 
     /**
-     * 保存 settings.json 文件（带全局Utils版本）
+     * 保存 settings.json 文件（带全局Utils与模板信息）
      */
     fun saveSettingsFile(
         projectDir: File,
         projectName: String,
         packageName: String,
         debugMode: Boolean,
-        globalUtils: List<String>
+        globalUtils: List<String>,
+        template: String? = null
     ) {
         val settingsFile = File(projectDir, "settings.json")
 
         // 如果已经存在（从模板复制），则更新它
         if (settingsFile.exists()) {
-            updateSettingsFile(settingsFile, projectName, packageName, debugMode, globalUtils)
+            updateSettingsFile(
+                settingsFile,
+                projectName,
+                packageName,
+                debugMode,
+                globalUtils,
+                template
+            )
             return
         }
 
@@ -441,6 +461,9 @@ object ProjectUtil {
             "implementation" to emptyList<String>(),
             "global_utils" to globalUtils  // 使用传入的globalUtils
         )
+
+        // 记录创建时使用的模板（zip文件名）
+        template?.let { settings["template"] = it }
 
         try {
             // 使用格式化输出（缩进4个空格）

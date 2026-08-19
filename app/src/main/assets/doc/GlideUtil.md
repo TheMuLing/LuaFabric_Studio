@@ -30,7 +30,7 @@
 - **功能**：异步加载图片到指定ImageView，支持占位符、尺寸调整、缓存控制等。
 - **参数**：
     - `imgView` (userdata)：目标ImageView对象（必填）
-    - `url` (string)：图片路径（支持本地文件、http/https、资源ID，必填）
+    - `url` (string)：图片路径（支持本地文件、http/https，必填；资源ID仅可用于 placeholder/error 参数）
     - `placeholder` (number|string, 可选)：加载中占位图（资源ID或路径）
     - `error` (number|string, 可选)：加载失败显示图
     - `width` (number, 可选)：目标宽度（像素）

@@ -207,7 +207,8 @@ fun NewProjectScreen(
                         projectName = projectName,
                         packageName = packageName,
                         debugMode = debugMode,
-                        globalUtils = selectedGlobalUtils.toList()
+                        globalUtils = selectedGlobalUtils.toList(),
+                        template = selectedTemplate?.zipFileName
                     )
 
                     ProjectUtil.updateMainLuaFile(projectDir, projectName)
