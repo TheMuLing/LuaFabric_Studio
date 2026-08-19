@@ -28,15 +28,25 @@ public class LuaAssetLoader extends JavaFunction {
         String name = L.toString(-1);
         name = name.replace('.', '/') + ".lua";
         try {
-            byte[] bytes = readAsset(name);
-            int ok = L.LloadBuffer(bytes, name);
-            if (ok != 0)
-                L.pushString("\n\t" + L.toString(-1));
+            loadAsset(name);
             return 1;
         } catch (IOException e) {
-            L.pushString("\n\tno file '/assets/" + name + "'");
-            return 1;
+            // 回退：优先 assets 根目录，其次 assets/lua/ 子目录
+            try {
+                loadAsset("lua/" + name);
+                return 1;
+            } catch (IOException e2) {
+                L.pushString("\n\tno file '/assets/" + name + "'");
+                return 1;
+            }
         }
+    }
+
+    private void loadAsset(String name) throws IOException, LuaException {
+        byte[] bytes = readAsset(name);
+        int ok = L.LloadBuffer(bytes, name);
+        if (ok != 0)
+            L.pushString("\n\t" + L.toString(-1));
     }
 
     public byte[] readAsset(String name) throws IOException {

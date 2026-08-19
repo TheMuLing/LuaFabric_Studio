@@ -1200,6 +1200,16 @@ public class LuaActivity extends AppCompatActivity
     L.setField(-2, "cpath");
     L.pop(1);
 
+    // 注册 assets searcher：require("xxx") 可从 apk 内 assets 或 assets/lua/ 加载（如 memory、lanes）
+    JavaFunction assetLoader = new LuaAssetLoader(this, L);
+    L.getGlobal("package");
+    L.getField(-1, "searchers");
+    int searchersLen = L.rawLen(-1);
+    L.pushInteger(searchersLen + 1);
+    L.pushJavaFunction(assetLoader);
+    L.setTable(-3);
+    L.pop(1);
+
     JavaFunction set =
         new JavaFunction(L) {
           @Override
