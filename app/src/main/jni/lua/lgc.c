@@ -552,11 +552,13 @@ static lu_mem traversetable(global_State *g, Table *h) {
     const char *weakkey, *weakvalue;
     const TValue *mode = gfasttm(g, h->metatable, TM_MODE);
     TString *smode;
+    size_t modlen;
     markobjectN(g, h->metatable);
     if (mode && ttisshrstring(mode) &&  /* is there a weak mode? */
         (cast_void(smode = tsvalue(mode)),
-                cast_void(weakkey = strchr(getshrstr(smode), 'k')),
-                cast_void(weakvalue = strchr(getshrstr(smode), 'v')),
+                cast_void(modlen = tsslen(smode)),
+                cast_void(weakkey = memchr(getshrstr(smode), 'k', modlen)),
+                cast_void(weakvalue = memchr(getshrstr(smode), 'v', modlen)),
                 (weakkey || weakvalue))) {  /* is really weak? */
         if (!weakkey)  /* strong keys? */
             traverseweakvalue(g, h);

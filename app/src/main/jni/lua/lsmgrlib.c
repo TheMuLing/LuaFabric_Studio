@@ -21,9 +21,6 @@
 #include "lauxlib.h"
 #include "lualib.h"
 
-/* 引入luajava头文件 */
-#include "../luajava/luajava.h"
-
 
 #define SHARED_USER_ID "com.difierline.lua.shared"
 #define SHARED_DIR_NAME "shared"
@@ -31,6 +28,27 @@
 /* 全局变量，用于存储应用的files目录路径 */
 static char *app_files_dir = NULL;
 static char *shared_data_dir = NULL;
+
+/* 本地 isJavaObject 实现（语义与 luajava.c 一致）：
+   userdata 且元表带 "__IsJavaObject" 标记字段即视为 Java 对象。
+   内嵌到 lsmgrlib.c 以避免 liblua.a 依赖外部模块符号（luajava.so）。 */
+static int isJavaObject(lua_State *L, int idx) {
+    if (!lua_isuserdata(L, idx))
+        return 0;
+
+    if (lua_getmetatable(L, idx) == 0)
+        return 0;
+
+    lua_pushstring(L, "__IsJavaObject");
+    lua_rawget(L, -2);
+
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 2);
+        return 0;
+    }
+    lua_pop(L, 2);
+    return 1;
+}
 
 /* 初始化应用目录路径 */
 static void init_app_dirs(lua_State *L) {

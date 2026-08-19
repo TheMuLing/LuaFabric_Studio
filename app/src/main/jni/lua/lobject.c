@@ -775,7 +775,7 @@ void luaO_chunkid(char *out, const char *source, size_t srclen) {
             memcpy(out, source + 1 + srclen - bufflen, bufflen * sizeof(char));
         }
     } else {  /* string; format as [string "source"] */
-        const char *nl = strchr(source, '\n');  /* find first new line (if any) */
+        const char *nl = memchr(source, '\n', srclen);  /* find first new line (if any) */
         addstr(out, PRE, LL(PRE));  /* add prefix */
         bufflen -= LL(PRE RETS POS) + 1;  /* save space for prefix+suffix+'\0' */
         if (srclen < bufflen && nl == NULL) {  /* small one-line source? */
