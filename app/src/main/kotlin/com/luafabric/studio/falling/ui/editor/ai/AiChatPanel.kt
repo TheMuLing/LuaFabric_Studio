@@ -412,7 +412,7 @@ private fun AiTitleBar(
                         }
                         Icon(Icons.Filled.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
-                    // Provider dropdown
+                    // Provider dropdown - primary color
                     DropdownMenu(
                         expanded = showProviderMenu,
                         onDismissRequest = { showProviderMenu = false }
@@ -444,38 +444,49 @@ private fun AiTitleBar(
                         }
                     }
                 }
-                // Model sub-menu - rendered outside the Box to avoid clipping
+                // Model sub-menu - positioned outside provider menu with distinct color
                 DropdownMenu(
                     expanded = showModelMenu,
-                    onDismissRequest = { showModelMenu = false }
+                    onDismissRequest = { showModelMenu = false },
+                    offset = DpOffset(280.dp, (-40).dp)
                 ) {
-                    val provider = providers.getOrNull(modelMenuProviderIdx) ?: return@DropdownMenu
-                    val models = provider.customModels
-                    if (models.isNotEmpty()) {
-                        models.forEach { modelEntry ->
-                            DropdownMenuItem(
-                                text = { Text(modelEntry.displayName.ifBlank { modelEntry.modelId }, style = MaterialTheme.typography.bodySmall) },
-                                onClick = {
-                                    onSelectModel(modelMenuProviderIdx, modelEntry.modelId)
-                                    showModelMenu = false
-                                    showProviderMenu = false
+                    Surface(
+                        tonalElevation = 4.dp,
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        Column {
+                            val provider = providers.getOrNull(modelMenuProviderIdx)
+                            if (provider != null) {
+                                val models = provider.customModels
+                                if (models.isNotEmpty()) {
+                                    models.forEach { modelEntry ->
+                                        DropdownMenuItem(
+                                            text = { Text(modelEntry.displayName.ifBlank { modelEntry.modelId }, style = MaterialTheme.typography.bodySmall) },
+                                            onClick = {
+                                                onSelectModel(modelMenuProviderIdx, modelEntry.modelId)
+                                                showModelMenu = false
+                                                showProviderMenu = false
+                                            }
+                                        )
+                                    }
+                                } else if (provider.model.isNotBlank()) {
+                                    DropdownMenuItem(
+                                        text = { Text(provider.model, style = MaterialTheme.typography.bodySmall) },
+                                        onClick = {
+                                            onSelectModel(modelMenuProviderIdx, provider.model)
+                                            showModelMenu = false
+                                            showProviderMenu = false
+                                        }
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text("暂无模型", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                        onClick = { showModelMenu = false }
+                                    )
                                 }
-                            )
-                        }
-                    } else if (provider.model.isNotBlank()) {
-                        DropdownMenuItem(
-                            text = { Text(provider.model, style = MaterialTheme.typography.bodySmall) },
-                            onClick = {
-                                onSelectModel(modelMenuProviderIdx, provider.model)
-                                showModelMenu = false
-                                showProviderMenu = false
                             }
-                        )
-                    } else {
-                        DropdownMenuItem(
-                            text = { Text("暂无模型", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                            onClick = { showModelMenu = false }
-                        )
+                        }
                     }
                 }
             } else {
