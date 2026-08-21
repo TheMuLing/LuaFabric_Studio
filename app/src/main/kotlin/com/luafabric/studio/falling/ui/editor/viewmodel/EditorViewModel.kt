@@ -309,6 +309,13 @@ class EditorViewModel : ViewModel(), CompletionDataManager.OnCompletionDataListe
     // 初始化
     fun initialize(context: Context) {
         if (_isInitialized) {
+            // ViewModel 复用（重入）：检查补全数据是否已加载完成但状态未同步
+            if (isCompletionDataLoading && CompletionDataManager.isInitialized()) {
+                isCompletionDataLoading = false
+                completionDataLoaded = true
+                completionDataProgress = 1f
+                LogCatcher.i("EditorViewModel", "ViewModel 复用：补全数据已加载完成，同步状态")
+            }
             LogCatcher.i("EditorViewModel", "initialize 已初始化，跳过")
             return
         }
@@ -335,6 +342,16 @@ class EditorViewModel : ViewModel(), CompletionDataManager.OnCompletionDataListe
             isCompletionDataLoading = true
             completionDataProgress = 0f
             CompletionDataManager.initialize(context)
+
+            // 安全网超时：120秒后若补全数据仍未加载完成则强制结束，避免进度条卡死
+            // 正常情况 should never reach here，因为 CompletionDataManager 完成后会回调 onCompletionDataLoaded
+            viewModelScope.launch {
+                delay(120_000)
+                if (isCompletionDataLoading) {
+                    isCompletionDataLoading = false
+                    LogCatcher.w("EditorViewModel", "补全数据加载超时（120s），强制结束加载状态")
+                }
+            }
         }
 
         SettingsManager.addListener { newSettings ->
@@ -538,6 +555,11 @@ class EditorViewModel : ViewModel(), CompletionDataManager.OnCompletionDataListe
 
     fun onInitialLoaderShown() {
         hasShownInitialLoader = true
+    }
+
+    fun forceResetCompletionLoading() {
+        isCompletionDataLoading = false
+        LogCatcher.w("EditorViewModel", "强制重置补全数据加载状态")
     }
 
     fun updateEditorTheme(

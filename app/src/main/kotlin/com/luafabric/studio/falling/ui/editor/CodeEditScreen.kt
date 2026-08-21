@@ -23,6 +23,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -38,6 +39,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -224,6 +226,13 @@ fun CodeEditScreen(
     val quickActionScrollState = rememberSaveable(saver = ScrollState.Saver) { ScrollState(0) }
     val symbolBarScrollState = rememberSaveable(saver = ScrollState.Saver) { ScrollState(0) }
 
+    // 进度条状态调试日志
+    LaunchedEffect(showInitialLoader, isBuilding, isAutoSaving, isCompilingFile, isBackingUp) {
+        LogCatcher.d("ProgressBar",
+            "showInitialLoader=$showInitialLoader | isBuilding=$isBuilding | isAutoSaving=$isAutoSaving | " +
+            "isCompilingFile=$isCompilingFile | isBackingUp=$isBackingUp")
+    }
+
     // 当切换到覆盖层页面时自动隐藏键盘
     LaunchedEffect(currentOverlay) {
         if (currentOverlay !is OverlayScreen.NONE) {
@@ -265,22 +274,27 @@ fun CodeEditScreen(
 
     LaunchedEffect(projectPath, project.createdDate.time) {
         if (previousProjectPath != projectPath || previousProjectTimestamp != project.createdDate.time) {
-            showInitialLoader = true
-            tabBarRendered = false
             previousProjectPath = projectPath
             previousProjectTimestamp = project.createdDate.time
 
             if (!viewModel.isInitialized) {
                 viewModel.initialize(context)
+                showInitialLoader = true
+                tabBarRendered = false
             }
 
-            loadProjectFiles(
-                viewModel = viewModel,
-                projectPath = projectPath,
-                projectName = project.name,
-                enableTabHistory = currentSettings.enableTabHistory,
-                lastFileToOpen = lastFileToOpen
-            )
+            if (!viewModel.hasShownInitialLoader || viewModel.openFiles.isEmpty()) {
+                showInitialLoader = true
+                tabBarRendered = false
+
+                loadProjectFiles(
+                    viewModel = viewModel,
+                    projectPath = projectPath,
+                    projectName = project.name,
+                    enableTabHistory = currentSettings.enableTabHistory,
+                    lastFileToOpen = lastFileToOpen
+                )
+            }
 
             showInitialLoader = false
             viewModel.onInitialLoaderShown()
@@ -895,6 +909,8 @@ fun CodeEditScreen(
     )
 }
 
+private enum class DrawerTab { FILE_TREE, AI }
+
 @Composable
 fun ProjectFileTree(
     projectPath: String,
@@ -903,32 +919,115 @@ fun ProjectFileTree(
     refreshTrigger: Int
 ) {
     val scope = rememberCoroutineScope()
+    var selectedTab by remember { mutableStateOf(DrawerTab.FILE_TREE) }
+
     ModalDrawerSheet(modifier = Modifier.width(260.dp)) {
-        Box(
-            Modifier
+        // ── Content area (fills remaining space) ──
+        Column(modifier = Modifier.weight(1f)) {
+            when (selectedTab) {
+                DrawerTab.FILE_TREE -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp, horizontal = 16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            stringResource(R.string.code_editor_file_tree),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    FileTree(
+                        rootPath = projectPath,
+                        refreshTrigger = refreshTrigger,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp),
+                        onFileClick = { file ->
+                            viewModel.openFile(file, projectPath)
+                            scope.launch { drawerState.close() }
+                        },
+                        onFileRenamed = { oldFile, _ -> viewModel.handleFileRenamed(oldFile) },
+                        onFileDeleted = { file -> viewModel.handleFileDeleted(file) }
+                    )
+                }
+                DrawerTab.AI -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            stringResource(R.string.code_editor_coming_soon),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Bottom navigation bar ──
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        )
+        Row(
+            modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp, horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                stringResource(R.string.code_editor_file_tree),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface
+            DrawerTabButton(
+                selected = selectedTab == DrawerTab.FILE_TREE,
+                icon = Icons.Filled.Folder,
+                contentDescription = stringResource(R.string.cd_file_tree_tab),
+                onClick = { selectedTab = DrawerTab.FILE_TREE }
+            )
+            DrawerTabButton(
+                selected = selectedTab == DrawerTab.AI,
+                icon = Icons.Filled.SmartToy,
+                contentDescription = stringResource(R.string.cd_ai_tab),
+                onClick = { selectedTab = DrawerTab.AI }
             )
         }
-        FileTree(
-            rootPath = projectPath,
-            refreshTrigger = refreshTrigger,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 4.dp),
-            onFileClick = { file ->
-                viewModel.openFile(file, projectPath)
-                scope.launch { drawerState.close() }
-            },
-            onFileRenamed = { oldFile, _ -> viewModel.handleFileRenamed(oldFile) },
-            onFileDeleted = { file -> viewModel.handleFileDeleted(file) }
-        )
+    }
+}
+
+@Composable
+private fun RowScope.DrawerTabButton(
+    selected: Boolean,
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    val containerColor = if (selected)
+        MaterialTheme.colorScheme.primaryContainer
+    else
+        Color.Transparent
+    val iconColor = if (selected)
+        MaterialTheme.colorScheme.primary
+    else
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+
+    Surface(
+        modifier = Modifier.weight(1f),
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor,
+        onClick = onClick
+    ) {
+        Box(
+            modifier = Modifier.padding(vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = iconColor,
+                modifier = Modifier.size(24.dp)
+            )
+        }
     }
 }
 
@@ -977,12 +1076,27 @@ fun EditorContent(
     Column(modifier = modifier) {
         val showProgressBar =
             showInitialLoader || isBuilding || isAutoSaving || isCompilingFile || isCompletionLoading || isBackingUp
+        if (showProgressBar) {
+            LogCatcher.d("ProgressBar",
+                "▶ visible: showInitialLoader=$showInitialLoader isBuilding=$isBuilding " +
+                "isAutoSaving=$isAutoSaving isCompilingFile=$isCompilingFile " +
+                "isCompletionLoading=$isCompletionLoading isBackingUp=$isBackingUp")
+        }
         AnimatedVisibility(visible = showProgressBar) {
-            // 始终显示不确定进度条（无限循环）
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(),
-                strokeCap = StrokeCap.Butt
-            )
+            if (isCompletionLoading) {
+                // 有真实进度数据 → 确定进度条
+                LinearProgressIndicator(
+                    progress = { completionProgress },
+                    modifier = Modifier.fillMaxWidth(),
+                    strokeCap = StrokeCap.Butt
+                )
+            } else {
+                // 其他操作（构建/编译/保存/备份等）无进度数据 → 不确定进度条
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    strokeCap = StrokeCap.Butt
+                )
+            }
         }
 
         AnimatedVisibility(

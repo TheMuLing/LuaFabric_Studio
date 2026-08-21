@@ -16,37 +16,29 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,30 +47,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.luafabric.studio.falling.BuildConfig
 import com.luafabric.studio.falling.R
 import muling.views.tool.utils.AppInfoUtil
-import muling.views.tool.utils.JsonUtil
 import muling.views.tool.utils.LogCatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -92,23 +76,10 @@ data class Developer(
     val url: String = ""
 )
 
-data class LibraryLicense(
-    val name: String,
-    val artifactVersion: String? = null,
-    val developers: List<LibraryDeveloper>,
-    val licenses: List<LicenseInfo>,
-    val website: String?
-)
-
-data class LibraryDeveloper(
-    val name: String,
-    val organization: String? = null
-)
-
-data class LicenseInfo(
-    val name: String,
-    val licenseContent: String? = null,
-    val url: String? = null
+data class ChangelogEntry(
+    val date: String,
+    val version: String,
+    val items: List<String>
 )
 
 @Composable
@@ -140,55 +111,53 @@ fun AboutScreen(onBack: () -> Unit) {
         mutableStateOf(prefs.getBoolean("show_author_note", true))
     }
 
-    // 加载licenses.json
-    var libraryLicenses by remember { mutableStateOf<List<LibraryLicense>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var selectedLicense by remember { mutableStateOf<LibraryLicense?>(null) }
-
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            try {
-                val jsonString = context.resources.openRawResource(R.raw.licenses)
-                    .bufferedReader().use { it.readText() }
-
-                val jsonMap = JsonUtil.parseObject(jsonString) as? Map<String, Any> ?: emptyMap()
-                val librariesArray = jsonMap["libraries"] as? List<Map<String, Any>> ?: emptyList()
-
-                val unknown = context.getString(R.string.unknown)
-                val unknownLicense = context.getString(R.string.about_unknown_license)
-                val unknownLibrary = context.getString(R.string.about_unknown_library)
-
-                val loadedLicenses = librariesArray.map { libMap ->
-                    val developers = (libMap["developers"] as? List<Map<String, Any>>)?.map { devMap ->
-                        LibraryDeveloper(
-                            name = devMap["name"] as? String ?: unknown,
-                            organization = devMap["organization"] as? String
-                        )
-                    } ?: emptyList()
-
-                    val licenses = (libMap["licenses"] as? List<Map<String, Any>>)?.map { licenseMap ->
-                        LicenseInfo(
-                            name = licenseMap["name"] as? String ?: unknownLicense,
-                            licenseContent = licenseMap["licenseContent"] as? String,
-                            url = licenseMap["url"] as? String
-                        )
-                    } ?: emptyList()
-
-                    LibraryLicense(
-                        name = libMap["name"] as? String ?: unknownLibrary,
-                        artifactVersion = libMap["artifactVersion"] as? String,
-                        developers = developers,
-                        licenses = licenses,
-                        website = libMap["website"] as? String
-                    )
-                }
-
-                libraryLicenses = loadedLicenses
-                isLoading = false
-            } catch (e: Exception) {
-                LogCatcher.e("AboutScreen", "加载开源协议失败", e)
-                isLoading = false
-            }
+    val changelogEntries = remember {
+        listOf(
+            ChangelogEntry(
+                date = "2026-08-21",
+                version = "26.08.21",
+                items = listOf(
+                    "修复 libsocket.so 无法加载问题",
+                    "修复返回键退出后重进项目进度条卡死",
+                    "侧边栏\"赞助\"与\"关于\"位置互换",
+                    "Licenses 替换为更新日志"
+                )
+            ),
+            ChangelogEntry(
+                date = "2026-08-19",
+                version = "26.08.19-gamma",
+                items = listOf(
+                    "新增 Maven 依赖下载进度显示",
+                    "优化代码补全性能",
+                    "修复若干崩溃问题"
+                )
+            ),
+            ChangelogEntry(
+                date = "2026-08-15",
+                version = "26.08.15",
+                items = listOf(
+                    "重构编辑器内核",
+                    "新增 Lua 语法高亮",
+                    "新增项目模板功能"
+                )
+            ),
+            ChangelogEntry(
+                date = "2026-08-10",
+                version = "26.08.10",
+                items = listOf(
+                    "初始版本发布",
+                    "基础代码编辑功能",
+                    "项目创建与管理",
+                    "APK 编译与安装"
+                )
+            )
+        ).sortedByDescending { entry ->
+            // 按版本号排序：解析 YY.MM.DD[-suffix] 格式
+            val parts = entry.version.split("-")[0].split(".")
+            val major = parts.getOrElse(0) { "0" }.padStart(4, '0')
+            val minor = parts.getOrElse(1) { "0" }.padStart(2, '0')
+            val patch = parts.getOrElse(2) { "0" }.padStart(2, '0')
+            "$major$minor$patch"
         }
     }
 
@@ -328,65 +297,71 @@ fun AboutScreen(onBack: () -> Unit) {
         }
 
         item {
-            SectionTitle(stringResource(R.string.licenses_title))
+            SectionTitle(stringResource(R.string.changelog_title))
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
             ) {
-                if (isLoading) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(strokeWidth = 3.dp)
+                var expandedIndex by remember { mutableStateOf(0) }
+
+                changelogEntries.forEachIndexed { index, entry ->
+                    val isExpanded = index == expandedIndex
+
+                    val shape = when {
+                        changelogEntries.size == 1 -> MaterialTheme.shapes.large
+                        index == 0 -> MaterialTheme.shapes.large.copy(
+                            bottomEnd = CornerSize(0.dp),
+                            bottomStart = CornerSize(0.dp)
+                        )
+                        index == changelogEntries.lastIndex -> MaterialTheme.shapes.large.copy(
+                            topStart = CornerSize(0.dp),
+                            topEnd = CornerSize(0.dp)
+                        )
+                        else -> RectangleShape
                     }
-                } else if (libraryLicenses.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.about_no_license_info),
+
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                } else {
-                    libraryLicenses.forEachIndexed { index, license ->
-                        val shape = when {
-                            libraryLicenses.size == 1 -> MaterialTheme.shapes.large
-                            index == 0 -> MaterialTheme.shapes.large.copy(
-                                bottomEnd = CornerSize(0.dp),
-                                bottomStart = CornerSize(0.dp)
-                            )
-                            index == libraryLicenses.lastIndex -> MaterialTheme.shapes.large.copy(
-                                topStart = CornerSize(0.dp),
-                                topEnd = CornerSize(0.dp)
-                            )
-                            else -> RectangleShape
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 0.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            shape = shape
-                        ) {
-                            Column {
-                                LicenseListItem(
-                                    license = license,
-                                    onClick = { selectedLicense = license }
-                                )
-
-                                if (index < libraryLicenses.lastIndex) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(horizontal = 20.dp),
-                                        thickness = 0.5.dp,
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                                    )
+                            .padding(horizontal = 0.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = shape
+                    ) {
+                        Column {
+                            ChangelogHeader(
+                                entry = entry,
+                                isExpanded = isExpanded,
+                                onClick = {
+                                    expandedIndex = if (expandedIndex == index) -1 else index
                                 }
+                            )
+
+                            AnimatedVisibility(visible = isExpanded) {
+                                Column {
+                                    entry.items.forEach { item ->
+                                        Text(
+                                            text = "•  $item",
+                                            modifier = Modifier.padding(
+                                                start = 20.dp, end = 20.dp,
+                                                top = 2.dp, bottom = 2.dp
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 18.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                }
+                            }
+
+                            if (index < changelogEntries.lastIndex) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 20.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
                             }
                         }
                     }
@@ -404,62 +379,32 @@ fun AboutScreen(onBack: () -> Unit) {
         }
     }
 
-    if (selectedLicense != null) {
-        LicenseDetailDialog(license = selectedLicense!!, onDismiss = { selectedLicense = null })
-    }
 }
 
 @Composable
-fun LicenseListItem(license: LibraryLicense, onClick: () -> Unit) {
-    val context = LocalContext.current
+fun ChangelogHeader(entry: ChangelogEntry, isExpanded: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 14.dp, horizontal = 20.dp),
+            .padding(vertical = 12.dp, horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = license.name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            val author = license.developers.firstOrNull()?.name
-                ?: license.developers.firstOrNull()?.organization
-            val licenseName = license.licenses.firstOrNull()?.name
-
-            val subtitle = buildString {
-                if (!author.isNullOrBlank()) append(author)
-                if (!author.isNullOrBlank() && !licenseName.isNullOrBlank()) append("  •  ")
-                if (!licenseName.isNullOrBlank()) append(licenseName)
-            }
-
-            if (subtitle.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = subtitle,
-                    fontSize = 10.sp,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = entry.version,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!license.artifactVersion.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.width(8.dp))
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     shape = MaterialTheme.shapes.large
                 ) {
                     Text(
-                        text = context.getString(R.string.about_version_prefix) + license.artifactVersion,
+                        text = entry.date,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 10.sp,
@@ -467,214 +412,17 @@ fun LicenseListItem(license: LibraryLicense, onClick: () -> Unit) {
                         fontFamily = FontFamily.Monospace
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun LicenseDetailDialog(license: LibraryLicense, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-
-    @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
-
-    val licenseText = remember(license) {
-        if (license.licenses.isNotEmpty()) {
-            license.licenses.joinToString("\n\n") { licenseInfo ->
-                licenseInfo.licenseContent ?: licenseInfo.url ?: context.getString(R.string.about_see_website)
-            }
-        } else {
-            context.getString(R.string.about_no_license_info)
-        }
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .fillMaxHeight(0.85f)
-                .clip(MaterialTheme.shapes.large),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primaryContainer,
-                                    MaterialTheme.colorScheme.surface
-                                )
-                            )
-                        )
-                ) {
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                    ) {
-                        Text(text = "✕", style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-
-                Column(
-                    modifier = Modifier
-                        .offset(y = (-40).dp)
-                        .padding(horizontal = 24.dp)
-                ) {
-                    Surface(
-                        shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(64.dp),
-                        shadowElevation = 4.dp
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = license.name.take(1).uppercase(),
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = license.name,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    val version = license.artifactVersion
-                    if (version != null) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            shape = MaterialTheme.shapes.large,
-                            modifier = Modifier.padding(top = 8.dp)
-                        ) {
-                            Text(
-                                text = context.getString(R.string.about_version_prefix) + version,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .offset(y = (-20).dp)
-                        .padding(horizontal = 24.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.license_label),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-
-                        IconButton(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(licenseText))
-                                LogCatcher.i("AboutScreen", "复制许可证文本: ${license.name}")
-                            },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.ContentCopy,
-                                contentDescription = stringResource(R.string.copy),
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        shape = MaterialTheme.shapes.large,
-                        border = BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                        )
-                    ) {
-                        val scrollState = rememberScrollState()
-                        Text(
-                            text = licenseText,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .padding(12.dp)
-                                .verticalScroll(scrollState)
-                        )
-                    }
-                }
-
-                if (!license.website.isNullOrBlank()) {
-                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
-                        Button(
-                            onClick = {
-                                try {
-                                    LogCatcher.i(
-                                        "AboutScreen",
-                                        "访问库网站: ${license.name} - ${license.website}"
-                                    )
-                                    val intent =
-                                        Intent(Intent.ACTION_VIEW, license.website.toUri())
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    LogCatcher.e("AboutScreen", "访问网站失败", e)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = stringResource(R.string.visit_website))
-                        }
-                    }
-                } else {
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
             }
         }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Icon(
+            imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = if (isExpanded) "Collapse" else "Expand",
+            tint = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 

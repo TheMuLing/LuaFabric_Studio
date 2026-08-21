@@ -87,11 +87,13 @@
     <string name="cd_project_icon">项目图标</string>
     <string name="cd_pinned">置顶项目</string>
     <string name="cd_more_options">更多操作</string>
+    <string name="cd_file_tree_tab">文件树</string>
+    <string name="cd_ai_tab">AI</string>
 
     <!-- 关于页面 -->
     <string name="tech_stack_title">开发者</string>
     <string name="community_title">官方社区</string>
-    <string name="licenses_title">Licenses</string>
+    <string name="changelog_title">更新日志</string>
     <string name="qq_group_name">官方交流群</string>
     <string name="qq_group_number">1106643491</string>
     <string name="no_license_info">暂无协议信息</string>
@@ -389,6 +391,7 @@
     <string name="code_editor_create">创建</string>
     <string name="code_editor_file_tree">文件树</string>
     <string name="code_editor_no_file_open">未打开任何文件</string>
+    <string name="code_editor_coming_soon">功能开发中</string>
     <string name="code_editor_close_other">关闭其他</string>
     <string name="code_editor_close_all">关闭全部</string>
     <string name="code_editor_bottom_area_content">底部区域内容</string>

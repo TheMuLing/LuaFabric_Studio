@@ -104,3 +104,8 @@ LUASOCKET_API int luaopen_socket_core(lua_State *L) {
     for (i = 0; mod[i].name; i++) mod[i].func(L);
     return 1;
 }
+
+/* Alias for luaopen_socket — Lua require("socket") looks for this symbol */
+LUASOCKET_API int luaopen_socket(lua_State *L) {
+    return luaopen_socket_core(L);
+}

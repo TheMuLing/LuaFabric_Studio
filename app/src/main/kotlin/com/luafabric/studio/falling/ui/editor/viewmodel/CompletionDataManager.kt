@@ -8,6 +8,7 @@ import com.luafabric.studio.falling.langs.lua.tools.PackageUtil
 import muling.views.tool.utils.LogCatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -19,7 +20,7 @@ object CompletionDataManager {
 
     private var isInitialized = false
     private var isInitializing = false
-    private val initializationScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var initializationScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private var _completionClassMap: HashMap<String, List<String>>? = null
     private var _completionBaseMap: HashMap<String, HashMap<String, CompletionName>>? = null
@@ -73,6 +74,12 @@ object CompletionDataManager {
             if (isInitialized || isInitializing) {
                 LogCatcher.i("CompletionDataManager", "初始化已在进行或已完成，跳过")
                 return
+            }
+
+            // 如果 scope 已被取消，重建一个
+            if (initializationScope.coroutineContext[Job]?.isActive != true) {
+                initializationScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+                LogCatcher.i("CompletionDataManager", "scope 已取消，重建新 scope")
             }
 
             LogCatcher.i("CompletionDataManager", "开始初始化补全数据，准备启动协程")

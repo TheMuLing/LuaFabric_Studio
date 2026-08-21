@@ -434,8 +434,8 @@ fun MainScreen(
         listOf(
             MainContentType.PROJECTS,
             MainContentType.SETTINGS,
-            MainContentType.ABOUT,
-            MainContentType.SPONSOR
+            MainContentType.SPONSOR,
+            MainContentType.ABOUT
         )
 
     fun showToast(message: String) {
@@ -770,18 +770,18 @@ fun MainScreen(
 
                     NavigationDrawerItem(
                         label = {
-                            Text(stringResource(R.string.about), fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.sponsor), fontWeight = FontWeight.Medium)
                         },
-                        selected = currentContentType == MainContentType.ABOUT,
+                        selected = currentContentType == MainContentType.SPONSOR,
                         onClick = {
-                            currentContentType = MainContentType.ABOUT
+                            currentContentType = MainContentType.SPONSOR
                             scope.launch { drawerState.close() }
                         },
                         icon = {
                             Icon(
-                                Icons.Filled.Info,
-                                contentDescription = stringResource(R.string.about),
-                                tint = if (currentContentType == MainContentType.ABOUT)
+                                Icons.Filled.MonetizationOn,
+                                contentDescription = stringResource(R.string.sponsor),
+                                tint = if (currentContentType == MainContentType.SPONSOR)
                                     MaterialTheme.colorScheme.primary
                                 else
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -801,18 +801,18 @@ fun MainScreen(
 
                     NavigationDrawerItem(
                         label = {
-                            Text(stringResource(R.string.sponsor), fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.about), fontWeight = FontWeight.Medium)
                         },
-                        selected = currentContentType == MainContentType.SPONSOR,
+                        selected = currentContentType == MainContentType.ABOUT,
                         onClick = {
-                            currentContentType = MainContentType.SPONSOR
+                            currentContentType = MainContentType.ABOUT
                             scope.launch { drawerState.close() }
                         },
                         icon = {
                             Icon(
-                                Icons.Filled.MonetizationOn,
-                                contentDescription = stringResource(R.string.sponsor),
-                                tint = if (currentContentType == MainContentType.SPONSOR)
+                                Icons.Filled.Info,
+                                contentDescription = stringResource(R.string.about),
+                                tint = if (currentContentType == MainContentType.ABOUT)
                                     MaterialTheme.colorScheme.primary
                                 else
                                     MaterialTheme.colorScheme.onSurfaceVariant
