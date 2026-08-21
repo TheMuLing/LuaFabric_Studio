@@ -80,6 +80,20 @@ public class EditorTextActionWindow extends EditorPopupWindow implements TextAct
     private static final int BTN_PASTE = 3;
     private static final int BTN_LONG_SELECT = 4;
     private static final int BTN_CUT = 5;
+    private static final int BTN_AI_REFERENCE = 100;
+
+    public interface OnCustomButtonClickListener {
+        void onCustomButtonClick(int buttonId);
+    }
+
+    private OnCustomButtonClickListener customButtonClickListener;
+
+    /**
+     * Set a custom button click listener for handling custom buttons like AI reference.
+     */
+    public void setCustomButtonClickListener(OnCustomButtonClickListener listener) {
+        this.customButtonClickListener = listener;
+    }
 
     /**
      * Create a panel for the given editor
@@ -99,6 +113,7 @@ public class EditorTextActionWindow extends EditorPopupWindow implements TextAct
         buttons.add(new TextActionButton(BTN_PASTE, R.drawable.round_content_paste_20, android.R.string.paste));
         buttons.add(new TextActionButton(BTN_LONG_SELECT, R.drawable.editor_text_select_start, R.string.sora_editor_long_select));
         buttons.add(new TextActionButton(BTN_CUT, R.drawable.round_content_cut_20, android.R.string.cut));
+        buttons.add(new TextActionButton(BTN_AI_REFERENCE, R.drawable.round_flare_20, R.string.sora_editor_ai_reference));
 
         // Inflate layout
         @SuppressLint("InflateParams")
@@ -373,6 +388,9 @@ public class EditorTextActionWindow extends EditorPopupWindow implements TextAct
             } else if (buttonId == BTN_SELECT_ALL) {
                 button.setVisible(true);
                 button.setEnabled(true);
+            } else if (buttonId == BTN_AI_REFERENCE) {
+                button.setVisible(hasSelection);
+                button.setEnabled(true);
             }
         }
 
@@ -438,6 +456,12 @@ public class EditorTextActionWindow extends EditorPopupWindow implements TextAct
             editor.setSelection(editor.getCursor().getRightLine(), editor.getCursor().getRightColumn());
         } else if (buttonId == BTN_LONG_SELECT) {
             editor.beginLongSelect();
+        } else if (buttonId == BTN_AI_REFERENCE) {
+            if (customButtonClickListener != null) {
+                customButtonClickListener.onCustomButtonClick(buttonId);
+            }
+            // Don't dismiss - let the caller handle it
+            return;
         }
         dismiss();
     }

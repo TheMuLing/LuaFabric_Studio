@@ -51,6 +51,8 @@ import muling.views.tool.utils.LogCatcher
 import muling.views.tool.utils.LuaParserUtil
 import io.github.rosemoe.sora.text.ContentListener
 import io.github.rosemoe.sora.event.SelectionChangeEvent
+import io.github.rosemoe.sora.widget.component.EditorTextActionWindow
+import io.github.rosemoe.sora.widget.getComponent
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,7 +69,9 @@ fun CodeEditorView(
     isActiveFile: Boolean = false,
     expansionRatio: Float = 0f,
     // 滑动手势回调
-    onSwipe: ((SwipeDirection) -> Unit)? = null
+    onSwipe: ((SwipeDirection) -> Unit)? = null,
+    // AI 代码引用回调
+    onAiCodeReference: ((filePath: String, fileName: String, startLine: Int, endLine: Int, content: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var isEditorReady by remember { mutableStateOf(false) }
@@ -146,6 +150,30 @@ fun CodeEditorView(
                     false
                 }
                 else -> false
+            }
+        }
+    }
+
+    // AI 代码引用按钮点击监听
+    LaunchedEffect(editor) {
+        val textActionWindow = editor.getComponent<EditorTextActionWindow>()
+        textActionWindow.setCustomButtonClickListener { buttonId ->
+            if (buttonId == 100) { // BTN_AI_REFERENCE
+                val cursor = editor.cursor
+                if (cursor.isSelected) {
+                    val leftLine = cursor.leftLine
+                    val leftColumn = cursor.leftColumn
+                    val rightLine = cursor.rightLine
+                    val rightColumn = cursor.rightColumn
+                    val leftIdx = cursor.left
+                    val rightIdx = cursor.right
+                    val selectedText = editor.text.substring(leftIdx, rightIdx)
+                    val filePath = currentState.file.absolutePath
+                    val fileName = currentState.file.name
+                    onAiCodeReference?.invoke(filePath, fileName, leftLine + 1, rightLine + 1, selectedText)
+                    // 清除选取（用行/列坐标，避免索引越界）
+                    editor.setSelection(cursor.leftLine, cursor.leftColumn)
+                }
             }
         }
     }

@@ -74,7 +74,9 @@ fun FileTabView(
     onOpenFileTree: () -> Unit = {},
     modifier: Modifier = Modifier,
     // 新增滑动手势回调参数
-    onSwipe: ((SwipeDirection) -> Unit)? = null
+    onSwipe: ((SwipeDirection) -> Unit)? = null,
+    // AI 代码引用回调
+    onAiCodeReference: ((filePath: String, fileName: String, startLine: Int, endLine: Int, content: String) -> Unit)? = null
 ) {
     val openFiles = viewModel.openFiles
     val activeFileIndex = viewModel.activeFileIndex
@@ -463,7 +465,8 @@ fun FileTabView(
                                 viewModel = viewModel,
                                 isActiveFile = isActiveFile,
                                 expansionRatio = panelState.expansionRatio,
-                                onSwipe = onSwipe // 传递滑动手势回调
+                                onSwipe = onSwipe, // 传递滑动手势回调
+                                onAiCodeReference = onAiCodeReference
                             )
                         } else {
                             Box(
