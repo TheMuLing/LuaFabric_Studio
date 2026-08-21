@@ -28,10 +28,7 @@ class MarkdownView @JvmOverloads constructor(
 ) {
     var isOpenUrlInBrowser: Boolean = false
     private var mPreviewText: String? = null
-
-    init {
-        initialize()
-    }
+    private var isInitialized = false
 
     @Suppress("DEPRECATION")
     @SuppressLint("SetJavaScriptEnabled")
@@ -112,7 +109,12 @@ class MarkdownView @JvmOverloads constructor(
     fun loadFromText(str: String) {
         String.format("preview('%s')", escapeForText(imgToBase64(str)))
             .also { this.mPreviewText = it }
-        initialize()
+        if (!isInitialized) {
+            initialize()
+            isInitialized = true
+        } else {
+            evaluateJavascript(this.mPreviewText!!, null)
+        }
     }
 
     private fun escapeForText(str: String): String {

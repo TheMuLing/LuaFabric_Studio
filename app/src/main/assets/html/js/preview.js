@@ -3,6 +3,18 @@ function preview(md_text) {
     md_text = md_text.replace(/\\n/g, "\n");
     const html = marked.parse(md_text);
     document.getElementById('preview').innerHTML = html;
+    // Render LaTeX with KaTeX auto-render
+    if (typeof renderMathInElement === 'function') {
+        renderMathInElement(document.getElementById('preview'), {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+        });
+    }
     document.querySelectorAll('pre code').forEach((block) => {
         hljs.highlightElement(block);
     });
