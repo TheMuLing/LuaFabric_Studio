@@ -116,7 +116,7 @@ object AiChatRepository {
         val protocol = config.resolvedProtocol
         val requestBody = buildRequestBody(config, messages, tools, protocol)
         val httpRequest = buildHttpRequest(config, requestBody, protocol)
-        android.util.Log.d(logTag, "streamChat url=${httpRequest.url} protocol=$protocol model=${config.model}")
+        android.util.Log.d(logTag, "streamChat url=${httpRequest.url} protocol=$protocol model=${config.activeProvider?.model ?: config.model} apiKey=${if (config.resolvedApiKey.isNotBlank()) "***" else "EMPTY"}")
 
         client.newCall(httpRequest).enqueue(object : okhttp3.Callback {
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
@@ -206,13 +206,14 @@ object AiChatRepository {
         } else null
 
         val request = OpenAiChatRequest(
-            model = config.model.ifEmpty { AiConfig.DEFAULT_OPENAI_MODEL },
+            model = (config.activeProvider?.model ?: config.model).ifEmpty { AiConfig.DEFAULT_OPENAI_MODEL },
             messages = apiMessages,
             tools = openAiTools,
             toolChoice = if (tools.isNotEmpty()) "auto" else "none",
             maxTokens = config.maxTokens,
             temperature = config.temperature
         )
+        android.util.Log.d(logTag, "buildOpenAiRequest model=${request.model} provider=${config.activeProvider?.name}")
         return gson.toJson(request)
     }
 
@@ -247,7 +248,7 @@ object AiChatRepository {
         } else null
 
         val request = AnthropicMessageRequest(
-            model = config.model.ifEmpty { AiConfig.DEFAULT_ANTHROPIC_MODEL },
+            model = (config.activeProvider?.model ?: config.model).ifEmpty { AiConfig.DEFAULT_ANTHROPIC_MODEL },
             messages = apiMessages,
             system = systemMessages.joinToString("\n") { it.content }.ifEmpty { null },
             tools = anthropicTools,
@@ -283,17 +284,26 @@ object AiChatRepository {
         onComplete: (String?) -> Unit
     ) {
         val source = response.body?.source() ?: run {
+            android.util.Log.e(logTag, "parseOpenAiStream: no response body")
             onComplete("No response body")
             return
         }
 
         val reader = source.inputStream().bufferedReader()
         val toolCallAccumulators = mutableMapOf<Int, ToolCallAccumulator>()
+        var lineCount = 0
+        var textChunkCount = 0
 
         var line: String?
         while (reader.readLine().also { line = it } != null) {
             val data = line ?: continue
-            if (!data.startsWith("data: ")) continue
+            lineCount++
+            if (!data.startsWith("data: ")) {
+                if (lineCount <= 5) {
+                    android.util.Log.d(logTag, "parseOpenAiStream: non-data line[$lineCount]: ${data.take(100)}")
+                }
+                continue
+            }
             val payload = data.removePrefix("data: ").trim()
             if (payload == "[DONE]") break
 
@@ -302,7 +312,11 @@ object AiChatRepository {
                 val choice = chunk.choices?.firstOrNull() ?: continue
 
                 // Text content
-                choice.delta.content?.let { onChunk(it) }
+                val content = choice.delta.content
+                if (!content.isNullOrEmpty()) {
+                    textChunkCount++
+                    onChunk(content)
+                }
 
                 // Tool calls
                 choice.delta.toolCalls?.forEach { tcDelta ->
@@ -323,7 +337,9 @@ object AiChatRepository {
                     }
                     toolCallAccumulators.clear()
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                android.util.Log.w(logTag, "parseOpenAiStream: parse error line[$lineCount]: ${payload.take(100)}", e)
+            }
         }
 
         // Emit any remaining tool calls
@@ -334,6 +350,9 @@ object AiChatRepository {
         }
         toolCallAccumulators.clear()
 
+        if (textChunkCount == 0) {
+            android.util.Log.w(logTag, "parseOpenAiStream: stream ended with ZERO text chunks! total lines=$lineCount")
+        }
         onComplete(null)
     }
 
@@ -344,59 +363,97 @@ object AiChatRepository {
         onComplete: (String?) -> Unit
     ) {
         val reader = response.body?.source()?.inputStream()?.bufferedReader() ?: run {
+            android.util.Log.e(logTag, "parseAnthropicStream: no response body")
             onComplete("No response body")
             return
         }
 
         var toolCallAccumulator: ToolCallAccumulator? = null
-        var currentBlockIndex = -1
+        var lineCount = 0
+        var textChunkCount = 0
 
         var line: String?
         while (reader.readLine().also { line = it } != null) {
             val data = line ?: continue
-            if (!data.startsWith("data: ")) continue
+            lineCount++
+            if (!data.startsWith("data: ")) {
+                // Log non-data lines (SSE event lines, etc.) for first 10 lines
+                if (lineCount <= 10) {
+                    android.util.Log.d(logTag, "parseAnthropicStream: non-data line[$lineCount]: ${data.take(100)}")
+                }
+                continue
+            }
             val payload = data.removePrefix("data: ").trim()
             if (payload == "[DONE]") break
 
             try {
                 val event = gson.fromJson(payload, AnthropicStreamEvent::class.java)
+                if (lineCount <= 5) {
+                    android.util.Log.d(logTag, "parseAnthropicStream: event type=${event.type} payload=${payload.take(120)}")
+                }
                 when (event.type) {
                     "content_block_start" -> {
-                        val block = event.contentBlockStart?.content_block
+                        val block = event.contentBlock
                         if (block?.type == "tool_use") {
-                            currentBlockIndex = event.contentBlockStart?.index ?: 0
+                            android.util.Log.d(logTag, "parseAnthropicStream: tool_use start id=${block.id} name=${block.name}")
                             toolCallAccumulator = ToolCallAccumulator().apply {
                                 id = block.id ?: ""
                                 name = block.name ?: ""
                             }
+                        } else if (block?.type == "text") {
+                            android.util.Log.d(logTag, "parseAnthropicStream: text block start")
                         }
                     }
                     "content_block_delta" -> {
-                        val delta = event.contentBlockDelta?.delta
+                        val delta = event.delta
                         when (delta?.type) {
-                            "text_delta" -> delta.text?.let { onChunk(it) }
+                            "text_delta" -> {
+                                val text = delta.text ?: ""
+                                if (text.isNotEmpty()) {
+                                    textChunkCount++
+                                    onChunk(text)
+                                }
+                            }
                             "input_json_delta" -> {
                                 toolCallAccumulator?.let { acc ->
                                     delta.partial_json?.let { acc.arguments += it }
                                 }
+                            }
+                            else -> {
+                                android.util.Log.d(logTag, "parseAnthropicStream: unknown delta type=${delta?.type} text=${delta?.text?.take(50)}")
                             }
                         }
                     }
                     "content_block_stop" -> {
                         toolCallAccumulator?.let { acc ->
                             if (acc.id.isNotEmpty() && acc.name.isNotEmpty()) {
+                                android.util.Log.d(logTag, "parseAnthropicStream: tool_use complete name=${acc.name}")
                                 onToolCall(ToolCallInfo(acc.id, acc.name, acc.arguments))
                             }
                         }
                         toolCallAccumulator = null
-                        currentBlockIndex = -1
                     }
-                    "message_delta" -> { /* handle stop_reason if needed */ }
-                    "message_stop" -> { /* done */ }
+                    "message_delta" -> {
+                        android.util.Log.d(logTag, "parseAnthropicStream: message_delta stop_reason=${event.delta?.stopReason}")
+                    }
+                    "message_stop" -> {
+                        android.util.Log.d(logTag, "parseAnthropicStream: message_stop (total lines=$lineCount, textChunks=$textChunkCount)")
+                    }
+                    "error" -> {
+                        android.util.Log.w(logTag, "parseAnthropicStream: API error payload=${payload.take(200)}")
+                    }
+                    else -> {
+                        android.util.Log.d(logTag, "parseAnthropicStream: unhandled event type=${event.type}")
+                    }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                android.util.Log.w(logTag, "parseAnthropicStream: parse error line[$lineCount]: ${payload.take(100)}", e)
+            }
         }
 
+        if (textChunkCount == 0) {
+            android.util.Log.w(logTag, "parseAnthropicStream: stream ended with ZERO text chunks! total lines=$lineCount")
+        }
         onComplete(null)
     }
 
