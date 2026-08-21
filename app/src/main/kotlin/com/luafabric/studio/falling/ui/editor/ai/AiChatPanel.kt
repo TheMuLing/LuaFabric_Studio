@@ -12,7 +12,9 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -35,14 +37,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.luafabric.studio.falling.ui.editor.ai.tools.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
@@ -76,8 +82,7 @@ fun AiChatPanel(
     var shareMode by remember { mutableStateOf(false) }
     var selectedShareMessages by remember { mutableStateOf(setOf<String>()) }
     var sendJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var errorBanner by remember { mutableStateOf<String?>(null) }
-    var errorCount by remember { mutableIntStateOf(0) }
+    var errorBanners by remember { mutableStateOf<List<String>>(emptyList()) }
     var wasInterrupted by remember { mutableStateOf(false) }
     var selectedProviderIndex by remember { mutableStateOf(0) }
 
@@ -192,6 +197,7 @@ fun AiChatPanel(
                         messages = messages,
                         isStreaming = isStreaming,
                         streamingMessageId = streamingMessageId,
+                        scope = scope,
                         listState = listState,
                         inputText = inputText,
                         codeReference = codeReference,
@@ -230,7 +236,7 @@ fun AiChatPanel(
                                     onAskUser = onAskUser,
                                     onConfirmInMain = onConfirmInMain,
                                     onOpenFile = onOpenFile,
-                                    onError = { errorBanner = it; errorCount++ }
+                                    onError = { errorBanners = errorBanners + it; wasInterrupted = true }
                                 )
                             }
                         },
@@ -249,39 +255,6 @@ fun AiChatPanel(
                                 val lastUserMsg = messages[lastUserIdx]
                                 messages = messages.take(lastUserIdx)
                                 inputText = lastUserMsg.content
-                            }
-                        },
-                        onResend = {
-                            val lastUserIdx = messages.lastIndexOf(messages.lastOrNull { it.role == ChatRole.USER })
-                            if (lastUserIdx >= 0) {
-                                val lastUserMsg = messages[lastUserIdx]
-                                // Remove user message and any trailing AI/tool messages
-                                messages = messages.take(lastUserIdx)
-                                inputText = lastUserMsg.content
-                                wasInterrupted = false
-                                // Auto-send
-                                sendJob = scope.launch {
-                                    sendMessage(
-                                        inputText = lastUserMsg.content,
-                                        config = config.value,
-                                        messages = messages,
-                                        toolRegistry = toolRegistry,
-                                        context = context,
-                                        projectPath = projectPath,
-                                        codeReference = lastUserMsg.codeReference,
-                                        onClearReference = onClearReference,
-                                        setMessages = { messages = it },
-                                        setStreaming = { isStreaming = it },
-                                        setStreamingMessageId = { streamingMessageId = it },
-                                        setInputText = { inputText = it },
-                                        currentConversationId = currentConversationId,
-                                        setCurrentConversationId = { currentConversationId = it },
-                                        onAskUser = onAskUser,
-                                        onConfirmInMain = onConfirmInMain,
-                                        onOpenFile = onOpenFile,
-                                        onError = { errorBanner = it; errorCount++ }
-                                    )
-                                }
                             }
                         },
                         onEnterShareMode = {
@@ -310,11 +283,41 @@ fun AiChatPanel(
                             selectedShareMessages = emptySet()
                         },
                         onClearReference = onClearReference,
-                        errorBanner = errorBanner,
-                        onDismissError = { errorBanner = null },
+                        errorBanners = errorBanners,
+                        onDismissError = { errorBanners = emptyList() },
                         canSend = canSend,
                         wasInterrupted = wasInterrupted,
-                        errorCount = errorCount
+                        onResend = {
+                            val lastUserIdx = messages.lastIndexOf(messages.lastOrNull { it.role == ChatRole.USER })
+                            if (lastUserIdx >= 0) {
+                                val lastUserMsg = messages[lastUserIdx]
+                                messages = messages.take(lastUserIdx)
+                                inputText = lastUserMsg.content
+                                wasInterrupted = false
+                                sendJob = scope.launch {
+                                    sendMessage(
+                                        inputText = lastUserMsg.content,
+                                        config = config.value,
+                                        messages = messages,
+                                        toolRegistry = toolRegistry,
+                                        context = context,
+                                        projectPath = projectPath,
+                                        codeReference = lastUserMsg.codeReference,
+                                        onClearReference = onClearReference,
+                                        setMessages = { messages = it },
+                                        setStreaming = { isStreaming = it },
+                                        setStreamingMessageId = { streamingMessageId = it },
+                                        setInputText = { inputText = it },
+                                        currentConversationId = currentConversationId,
+                                        setCurrentConversationId = { currentConversationId = it },
+                                        onAskUser = onAskUser,
+                                        onConfirmInMain = onConfirmInMain,
+                                        onOpenFile = onOpenFile,
+                                        onError = { errorBanners = errorBanners + it; wasInterrupted = true }
+                                    )
+                                }
+                            }
+                        },
                     )
                 }
                 AiPage.SETTINGS -> {
@@ -510,6 +513,7 @@ private fun ChatContent(
     messages: List<ChatMessage>,
     isStreaming: Boolean,
     streamingMessageId: String?,
+    scope: CoroutineScope,
     listState: LazyListState,
     inputText: String,
     codeReference: CodeReference?,
@@ -530,12 +534,11 @@ private fun ChatContent(
     onShareConfirm: () -> Unit,
     onCancelShareMode: () -> Unit,
     onClearReference: () -> Unit,
-    errorBanner: String?,
+    errorBanners: List<String>,
     onDismissError: () -> Unit,
     canSend: Boolean,
     wasInterrupted: Boolean,
-    onResend: () -> Unit,
-    errorCount: Int
+    onResend: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // Messages list
@@ -578,23 +581,14 @@ private fun ChatContent(
             }
         }
 
-        // Thinking animation - show when streaming, even if assistant message exists
-        if (isStreaming) {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-            )
-        }
-
-        // Error banner
-        errorBanner?.let { error ->
-            AiErrorBanner(
-                error = error,
-                errorCount = errorCount,
+        // Error banner collection
+        if (errorBanners.isNotEmpty()) {
+            AiErrorBannerCollection(
+                errors = errorBanners,
                 onDismiss = onDismissError,
                 onClick = {
-                    // Scroll to the last message (which is the error location)
                     if (messages.isNotEmpty()) {
-                        kotlinx.coroutines.MainScope().launch {
+                        scope.launch {
                             listState.animateScrollToItem(messages.size - 1)
                         }
                     }
@@ -718,59 +712,122 @@ private fun CodeReferenceBanner(
     }
 }
 
-// ========== Error Banner ==========
+// ========== Error Banner Collection ==========
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AiErrorBanner(
-    error: String,
-    errorCount: Int,
+private fun AiErrorBannerCollection(
+    errors: List<String>,
     onDismiss: () -> Unit,
     onClick: () -> Unit
 ) {
+    if (errors.isEmpty()) return
+
+    var currentIndex by remember { mutableStateOf(errors.size - 1) }
     var expanded by remember { mutableStateOf(false) }
-    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    // Sync index when errors change (new error added or list shrunk)
+    LaunchedEffect(errors.size) {
+        if (currentIndex >= errors.size) {
+            currentIndex = errors.size - 1
+        }
+    }
+
+    val currentError = errors.getOrNull(currentIndex) ?: return
+    val hasMultiple = errors.size > 1
 
     Surface(
         color = MaterialTheme.colorScheme.errorContainer,
         shape = RoundedCornerShape(0.dp),
-        tonalElevation = 0.dp,
-        modifier = Modifier.clickable(onClick = onClick)
+        tonalElevation = 0.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Filled.Warning,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onErrorContainer
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (errorCount > 1) "AI 通讯失败（${errorCount} 个错误）" else "AI 通讯失败",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f)
-                )
+                // Expand/collapse icon (left side, replaces warning)
                 IconButton(
                     onClick = { expanded = !expanded },
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(28.dp)
                 ) {
                     Icon(
                         if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                         contentDescription = if (expanded) "收起" else "展开",
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
+
+                // Error text: current error (truncated)
+                Text(
+                    text = currentError,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onClick)
+                )
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Left arrow — previous error
                 IconButton(
-                    onClick = { clipboardManager.setText(AnnotatedString(error)) },
-                    modifier = Modifier.size(24.dp)
+                    onClick = {
+                        currentIndex = if (currentIndex > 0) currentIndex - 1 else errors.size - 1
+                    },
+                    modifier = Modifier.size(28.dp),
+                    enabled = hasMultiple
+                ) {
+                    Icon(
+                        Icons.Filled.KeyboardArrowLeft,
+                        contentDescription = "上一个",
+                        modifier = Modifier.size(18.dp),
+                        tint = if (hasMultiple) MaterialTheme.colorScheme.onErrorContainer
+                               else MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.3f)
+                    )
+                }
+
+                // Right arrow — next error
+                IconButton(
+                    onClick = {
+                        currentIndex = if (currentIndex < errors.size - 1) currentIndex + 1 else 0
+                    },
+                    modifier = Modifier.size(28.dp),
+                    enabled = hasMultiple
+                ) {
+                    Icon(
+                        Icons.Filled.KeyboardArrowRight,
+                        contentDescription = "下一个",
+                        modifier = Modifier.size(18.dp),
+                        tint = if (hasMultiple) MaterialTheme.colorScheme.onErrorContainer
+                               else MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.3f)
+                    )
+                }
+
+                // Copy — click copy current, long press copy all
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .combinedClickable(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(currentError))
+                                Toast.makeText(context, "已复制当前错误", Toast.LENGTH_SHORT).show()
+                            },
+                            onLongClick = {
+                                val allText = errors.joinToString("\n---\n")
+                                clipboardManager.setText(AnnotatedString(allText))
+                                Toast.makeText(context, "已复制全部 ${errors.size} 个错误", Toast.LENGTH_SHORT).show()
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Filled.ContentCopy,
@@ -779,22 +836,34 @@ private fun AiErrorBanner(
                         tint = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+
+                // Close — dismiss all errors
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(28.dp)
+                ) {
                     Icon(
                         Icons.Filled.Close,
                         contentDescription = "关闭",
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
             }
+
+            // Expanded: show full current error details
             AnimatedVisibility(visible = expanded) {
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
-                )
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = currentError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
             }
         }
     }
@@ -818,6 +887,29 @@ private fun ChatMessageBubble(
 ) {
     val isUser = message.role == ChatRole.USER
     val isTool = message.role == ChatRole.TOOL
+    var showResendConfirm by remember { mutableStateOf(false) }
+
+    // Resend confirmation dialog
+    if (showResendConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResendConfirm = false },
+            title = { Text("重新发送", style = MaterialTheme.typography.titleSmall) },
+            text = { Text("确认重新发送此消息？", style = MaterialTheme.typography.bodySmall) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showResendConfirm = false
+                    onResend()
+                }) {
+                    Text("确认", style = MaterialTheme.typography.labelMedium)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResendConfirm = false }) {
+                    Text("取消", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        )
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -833,10 +925,10 @@ private fun ChatMessageBubble(
             Spacer(modifier = Modifier.width(4.dp))
         }
 
-        // Resend icon for interrupted user messages
+        // Refresh icon for interrupted user messages - click to resend with confirmation
         if (showResendIcon && isUser) {
             IconButton(
-                onClick = onResend,
+                onClick = { showResendConfirm = true },
                 modifier = Modifier.size(28.dp)
             ) {
                 Icon(
@@ -894,14 +986,38 @@ private fun ChatMessageBubble(
 
                     // Content with SelectionContainer for system long-press copy
                     if (message.content.isNotBlank()) {
-                        SelectionContainer {
-                            Text(
-                                text = message.content + if (isStreaming) " ▌" else "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isUser) MaterialTheme.colorScheme.onPrimary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
+                        if (isUser) {
+                            SelectionContainer {
+                                Text(
+                                    text = message.content + if (isStreaming) " ▌" else "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        } else {
+                            AndroidView(
+                                factory = { ctx ->
+                                    com.luafabric.studio.falling.ui.components.MarkdownView(ctx).apply {
+                                        loadFromText(message.content)
+                                    }
+                                },
+                                update = { view ->
+                                    view.loadFromText(message.content)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 0.dp, max = 400.dp)
                             )
                         }
+                    } else if (isStreaming && !isUser) {
+                        AndroidView(
+                            factory = { ctx ->
+                                com.google.android.material.loadingindicator.LoadingIndicator(ctx).apply {
+                                    show()
+                                }
+                            },
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
             }
