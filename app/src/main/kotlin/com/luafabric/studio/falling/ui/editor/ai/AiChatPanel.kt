@@ -1580,7 +1580,14 @@ private fun AiSettingsPage(
                         textStyle = MaterialTheme.typography.bodySmall,
                         isError = newNameError,
                         supportingText = { if (newNameError) Text("请输入提供商名称") },
-                        shape = RoundedCornerShape(shapeSize)
+                        shape = RoundedCornerShape(shapeSize),
+                        trailingIcon = {
+                            if (newName.isNotEmpty()) {
+                                IconButton(onClick = { newName = ""; newNameError = false }) {
+                                    Icon(Icons.Filled.Clear, contentDescription = "清除", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -1623,7 +1630,14 @@ private fun AiSettingsPage(
                         textStyle = MaterialTheme.typography.bodySmall,
                         isError = newBaseUrlError,
                         supportingText = { if (newBaseUrlError) Text("请输入请求地址") },
-                        shape = RoundedCornerShape(shapeSize)
+                        shape = RoundedCornerShape(shapeSize),
+                        trailingIcon = {
+                            if (newBaseUrl.isNotEmpty()) {
+                                IconButton(onClick = { newBaseUrl = ""; newBaseUrlError = false }) {
+                                    Icon(Icons.Filled.Clear, contentDescription = "清除", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
                     )
                     // Model ID with dropdown + cloud-search
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1696,7 +1710,8 @@ private fun AiSettingsPage(
                             protocol = newProtocol,
                             apiKey = newApiKey.trim(),
                             baseUrl = newBaseUrl.trim(),
-                            model = newModel.trim()
+                            model = newModel.trim(),
+                            useDefaultKey = false
                         )).toMutableList()
                         showAddProvider = false
                         save()
@@ -1742,7 +1757,14 @@ private fun AiSettingsPage(
                         label = { Text("提供商名称", style = MaterialTheme.typography.labelSmall) },
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodySmall,
-                        shape = RoundedCornerShape(shapeSize)
+                        shape = RoundedCornerShape(shapeSize),
+                        trailingIcon = {
+                            if (editName.isNotEmpty()) {
+                                IconButton(onClick = { editName = "" }) {
+                                    Icon(Icons.Filled.Clear, contentDescription = "清除", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -1781,7 +1803,14 @@ private fun AiSettingsPage(
                         label = { Text("API 请求地址", style = MaterialTheme.typography.labelSmall) },
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodySmall,
-                        shape = RoundedCornerShape(shapeSize)
+                        shape = RoundedCornerShape(shapeSize),
+                        trailingIcon = {
+                            if (editBaseUrl.isNotEmpty()) {
+                                IconButton(onClick = { editBaseUrl = "" }) {
+                                    Icon(Icons.Filled.Clear, contentDescription = "清除", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.weight(1f)) {
@@ -1847,7 +1876,8 @@ private fun AiSettingsPage(
                             protocol = editProtocol,
                             apiKey = editApiKey.trim(),
                             baseUrl = editBaseUrl.trim(),
-                            model = editModel.trim()
+                            model = editModel.trim(),
+                            useDefaultKey = false
                         )
                     }
                     showEditProvider = null
