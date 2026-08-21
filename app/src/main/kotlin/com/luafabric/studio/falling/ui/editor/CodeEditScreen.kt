@@ -55,6 +55,8 @@ import com.luafabric.studio.falling.ui.analyse.AnalyseScreen
 import com.luafabric.studio.falling.ui.attribute.AttributeScreen
 import com.luafabric.studio.falling.ui.components.ColorPickerDialog
 import com.luafabric.studio.falling.ui.components.EdgeSwipeDismissibleDrawer
+import com.luafabric.studio.falling.ui.editor.ai.AiChatPanel
+import com.luafabric.studio.falling.ui.editor.ai.CodeReference
 import com.luafabric.studio.falling.ui.editor.viewmodel.EditorViewModel
 import com.luafabric.studio.falling.ui.javaapi.JavaApiScreen
 import com.luafabric.studio.falling.ui.settings.SettingsManager
@@ -148,6 +150,30 @@ fun CodeEditScreen(
     var selectedColor by remember { mutableStateOf(Color.Black) }
     var isBackingUp by remember { mutableStateOf(false) }
     var refreshFileTreeKey by remember { mutableStateOf(0) }
+
+    // AI 侧边栏状态
+    var codeReference by remember { mutableStateOf<CodeReference?>(null) }
+    val drawerSelectedTab = remember { mutableStateOf(DrawerTab.FILE_TREE) }
+
+    val onAiCodeReference: (String, String, Int, Int, String) -> Unit = { filePath, fileName, startLine, endLine, content ->
+        codeReference = CodeReference(
+            filePath = filePath,
+            fileName = fileName,
+            startLine = startLine,
+            endLine = endLine,
+            content = content
+        )
+        drawerSelectedTab.value = DrawerTab.AI
+        scope.launch {
+            if (fileTreeDrawerState.isClosed) {
+                fileTreeDrawerState.open()
+            }
+        }
+    }
+
+    // AI 对话框状态
+    var askUserDialogState by remember { mutableStateOf<AskUserDialogState?>(null) }
+    var confirmDialogState by remember { mutableStateOf<ConfirmDialogState?>(null) }
 
     // 后缀选择菜单状态（独立于输入框）
     var suffixMenuExpanded by remember { mutableStateOf(false) }
@@ -584,7 +610,35 @@ fun CodeEditScreen(
                 projectPath = projectPath,
                 viewModel = viewModel,
                 drawerState = fileTreeDrawerState,
-                refreshTrigger = refreshFileTreeKey
+                refreshTrigger = refreshFileTreeKey,
+                selectedTab = drawerSelectedTab.value,
+                onTabChange = { drawerSelectedTab.value = it },
+                codeReference = codeReference,
+                onClearReference = { codeReference = null },
+                onOpenFile = { filePath, startLine, endLine ->
+                    val file = File(filePath)
+                    if (file.exists()) {
+                        viewModel.openFile(file, projectPath)
+                        val index = viewModel.openFiles.indexOfFirst { it.file.absolutePath == filePath }
+                        if (index != -1) {
+                            viewModel.changeActiveFileIndex(index)
+                        }
+                    }
+                },
+                onAskUser = { title, options, callback ->
+                    askUserDialogState = AskUserDialogState(title, options, callback)
+                },
+                onConfirmInMain = { title, message, callback ->
+                    confirmDialogState = ConfirmDialogState(title, message, callback)
+                },
+                onNavigateToSettings = {
+                    drawerSelectedTab.value = DrawerTab.AI
+                    scope.launch {
+                        if (fileTreeDrawerState.isClosed) {
+                            fileTreeDrawerState.open()
+                        }
+                    }
+                }
             )
         },
         content = {
@@ -713,7 +767,8 @@ fun CodeEditScreen(
                                                     SwipeDirection.UP -> false
                                                     SwipeDirection.DOWN -> true
                                                 }
-                                            }
+                                            },
+                                            onAiCodeReference = onAiCodeReference
                                         )
                                     }
                                 }
@@ -890,6 +945,63 @@ fun CodeEditScreen(
                                 )
                             }
 
+                            // AI 询问用户对话框
+                            askUserDialogState?.let { state ->
+                                AlertDialog(
+                                    onDismissRequest = {
+                                        state.callback(null)
+                                        askUserDialogState = null
+                                    },
+                                    title = { Text(state.title) },
+                                    text = {
+                                        Column {
+                                            state.options.forEachIndexed { index, option ->
+                                                TextButton(
+                                                    onClick = {
+                                                        state.callback(option)
+                                                        askUserDialogState = null
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text(option)
+                                                }
+                                            }
+                                        }
+                                    },
+                                    confirmButton = {},
+                                    dismissButton = {
+                                        TextButton(onClick = {
+                                            state.callback(null)
+                                            askUserDialogState = null
+                                        }) { Text(stringResource(R.string.cancel)) }
+                                    }
+                                )
+                            }
+
+                            // AI 确认对话框
+                            confirmDialogState?.let { state ->
+                                AlertDialog(
+                                    onDismissRequest = {
+                                        state.callback(false)
+                                        confirmDialogState = null
+                                    },
+                                    title = { Text(state.title) },
+                                    text = { Text(state.message) },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            state.callback(true)
+                                            confirmDialogState = null
+                                        }) { Text(stringResource(R.string.ok)) }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = {
+                                            state.callback(false)
+                                            confirmDialogState = null
+                                        }) { Text(stringResource(R.string.cancel)) }
+                                    }
+                                )
+                            }
+
                             if (fileTreeDrawerState.isOpen) {
                                 Box(
                                     modifier = Modifier
@@ -909,19 +1021,38 @@ fun CodeEditScreen(
     )
 }
 
-private enum class DrawerTab { FILE_TREE, AI }
+enum class DrawerTab { FILE_TREE, AI }
+
+data class AskUserDialogState(
+    val title: String,
+    val options: List<String>,
+    val callback: (String?) -> Unit
+)
+
+data class ConfirmDialogState(
+    val title: String,
+    val message: String,
+    val callback: (Boolean) -> Unit
+)
 
 @Composable
 fun ProjectFileTree(
     projectPath: String,
     viewModel: EditorViewModel,
     drawerState: DrawerState,
-    refreshTrigger: Int
+    refreshTrigger: Int,
+    selectedTab: DrawerTab,
+    onTabChange: (DrawerTab) -> Unit,
+    codeReference: CodeReference?,
+    onClearReference: () -> Unit,
+    onOpenFile: (filePath: String, startLine: Int, endLine: Int) -> Unit,
+    onAskUser: (title: String, options: List<String>, callback: (String?) -> Unit) -> Unit,
+    onConfirmInMain: (title: String, message: String, callback: (Boolean) -> Unit) -> Unit,
+    onNavigateToSettings: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var selectedTab by remember { mutableStateOf(DrawerTab.FILE_TREE) }
 
-    ModalDrawerSheet(modifier = Modifier.width(260.dp)) {
+    ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
         // ── Content area (fills remaining space) ──
         Column(modifier = Modifier.weight(1f)) {
             when (selectedTab) {
@@ -953,16 +1084,15 @@ fun ProjectFileTree(
                     )
                 }
                 DrawerTab.AI -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            stringResource(R.string.code_editor_coming_soon),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    AiChatPanel(
+                        projectPath = projectPath,
+                        codeReference = codeReference,
+                        onClearReference = onClearReference,
+                        onOpenFile = onOpenFile,
+                        onAskUser = onAskUser,
+                        onConfirmInMain = onConfirmInMain,
+                        onNavigateToSettings = onNavigateToSettings
+                    )
                 }
             }
         }
@@ -983,13 +1113,13 @@ fun ProjectFileTree(
                 selected = selectedTab == DrawerTab.FILE_TREE,
                 icon = Icons.Filled.Folder,
                 contentDescription = stringResource(R.string.cd_file_tree_tab),
-                onClick = { selectedTab = DrawerTab.FILE_TREE }
+                onClick = { onTabChange(DrawerTab.FILE_TREE) }
             )
             DrawerTabButton(
                 selected = selectedTab == DrawerTab.AI,
                 icon = Icons.Filled.SmartToy,
                 contentDescription = stringResource(R.string.cd_ai_tab),
-                onClick = { selectedTab = DrawerTab.AI }
+                onClick = { onTabChange(DrawerTab.AI) }
             )
         }
     }
@@ -1066,7 +1196,9 @@ fun EditorContent(
     symbolBarScrollState: ScrollState,
     // 新增参数
     quickBarVisible: Boolean,
-    onSwipe: (SwipeDirection) -> Unit
+    onSwipe: (SwipeDirection) -> Unit,
+    // AI 代码引用回调
+    onAiCodeReference: ((filePath: String, fileName: String, startLine: Int, endLine: Int, content: String) -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
     val hasOpenFiles = viewModel.openFiles.isNotEmpty()
@@ -1169,7 +1301,8 @@ fun EditorContent(
                             scope.launch { if (fileTreeDrawerState.isClosed) fileTreeDrawerState.open() }
                         },
                         modifier = Modifier.fillMaxSize(),
-                        onSwipe = onSwipe // 传递滑动手势回调
+                        onSwipe = onSwipe, // 传递滑动手势回调
+                        onAiCodeReference = onAiCodeReference
                     )
                 }
                 DraggableSymbolPanel(
