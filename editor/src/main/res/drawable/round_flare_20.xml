@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20"
+    android:tint="@android:color/tertiary_text_light">
+    <!-- Flare icon: four-pointed star burst -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10,2l1.5,4l4,1.5l-4,1.5l-1.5,4l-1.5,-4l-4,-1.5l4,-1.5z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,10l1.5,-1.5l-1.5,-1.5l-1.5,1.5z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M16,10l1.5,-1.5l-1.5,-1.5l-1.5,1.5z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10,4l-1.5,-1.5l-1.5,1.5l1.5,1.5z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10,16l-1.5,1.5l-1.5,-1.5l1.5,-1.5z" />
+</vector>

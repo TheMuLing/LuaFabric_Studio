@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20"
+    android:tint="@android:color/tertiary_text_light">
+    <!-- Sparkle / AI icon: star + auto-awesome inspired shape -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10,3l1.38,2.79l3.08,0.45l-2.23,2.17l0.53,3.07L10,10.16l-2.76,1.32l0.53,-3.07l-2.23,-2.17l3.08,-0.45L10,3z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M5.5,13.5l1.5,-0.5l-1.5,-0.5l-0.5,-1.5l-0.5,1.5l-1.5,0.5l1.5,0.5l0.5,1.5z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M15.5,13.5l1.5,-0.5l-1.5,-0.5l-0.5,-1.5l-0.5,1.5l-1.5,0.5l1.5,0.5l0.5,1.5z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10,15l0.83,-1.5l1.67,-0.5l-1.67,-0.5L10,11l-0.83,1.5L7.5,13l1.67,0.5z" />
+</vector>
