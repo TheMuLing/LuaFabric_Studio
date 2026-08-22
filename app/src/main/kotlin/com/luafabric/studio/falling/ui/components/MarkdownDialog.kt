@@ -1,6 +1,7 @@
 package com.luafabric.studio.falling.ui.components
 
-import android.annotation.SuppressLint
+import android.text.method.LinkMovementMethod
+import android.widget.TextView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.Card
@@ -33,6 +36,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.luafabric.studio.falling.R
+import com.luafabric.studio.falling.ui.editor.ai.preprocessLatex
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.latex.JLatexMathPlugin
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.image.ImagesPlugin
+import io.noties.markwon.linkify.LinkifyPlugin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -169,44 +180,50 @@ private fun MarkdownViewContent(
     mdFileName: String,
     modifier: Modifier = Modifier
 ) {
-    LocalContext.current
+    val context = LocalContext.current
+    var markdownContent by remember { mutableStateOf<String?>(null) }
 
-    AndroidView(
-        factory = { context ->
-            createMarkdownView(context, mdFileName)
-        },
-        modifier = modifier,
-        update = { markdownView ->
-            // 如果文件名变化，重新加载
-            markdownView.loadFromAssets("doc/$mdFileName")
+    val markwon = remember(context) {
+        Markwon.builder(context)
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(TablePlugin.create(context))
+            .usePlugin(HtmlPlugin.create())
+            .usePlugin(LinkifyPlugin.create())
+            .usePlugin(ImagesPlugin.create())
+            .usePlugin(JLatexMathPlugin.create(
+                context.resources.displayMetrics.scaledDensity * 14f,
+                { builder -> builder.inlinesEnabled(true) }
+            ))
+            .build()
+    }
+
+    LaunchedEffect(mdFileName) {
+        withContext(Dispatchers.IO) {
+            try {
+                context.assets.open("doc/$mdFileName").bufferedReader().use {
+                    markdownContent = it.readText()
+                }
+            } catch (e: Exception) {
+                markdownContent = "**Error:** ${e.message}"
+            }
         }
-    )
-}
+    }
 
-@SuppressLint("SetJavaScriptEnabled")
-private fun createMarkdownView(context: android.content.Context, mdFileName: String): MarkdownView {
-    return MarkdownView(context).apply {
-        // 设置布局参数
-        layoutParams = android.view.ViewGroup.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT
-        )
-
-        // 设置点击链接在外部浏览器中打开
-        isOpenUrlInBrowser = true
-
-        // 设置背景色
-        setBackgroundColor(0x00000000) // 透明背景
-
-        // 启用硬件加速
-        setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-
-        // 加载Markdown文件
-        try {
-            loadFromAssets("doc/$mdFileName")
-        } catch (e: Exception) {
-            println("MarkdownView加载失败: ${e.message}")
-            e.printStackTrace()
+    Box(modifier = modifier.verticalScroll(rememberScrollState())) {
+        markdownContent?.let { content ->
+            AndroidView(
+                factory = { ctx ->
+                    TextView(ctx).apply {
+                        movementMethod = LinkMovementMethod.getInstance()
+                        textSize = 14f
+                        includeFontPadding = false
+                        setPadding(16, 16, 16, 16)
+                    }
+                },
+                update = { textView ->
+                    markwon.setMarkdown(textView, preprocessLatex(content))
+                }
+            )
         }
     }
 }
