@@ -27,7 +27,6 @@ set(LUA_SRCS
         loslib.c
         lparser.c
         lptrlib.c
-        lsmgrlib.c
         lstate.c
         lstring.c
         lstrlib.c

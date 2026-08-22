@@ -9,7 +9,6 @@
 - llibc.c
 - lptrlib.c
 - lsign.c
-- lsmgrlib.c
 - ltranslator.c
 - ltests.c
 - ludatalib.c

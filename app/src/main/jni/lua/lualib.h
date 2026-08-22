@@ -74,10 +74,6 @@ LUAMOD_API int (luaopen_ptr)(lua_State *L);
 
 LUAMOD_API int (luaopen_translator)(lua_State *L);
 
-#define LUA_SMGRNAME    "smgr"
-
-LUAMOD_API int (luaopen_smgr)(lua_State *L);
-
 #define LUA_LOADLIBNAME    "package"
 
 LUAMOD_API int (luaopen_package)(lua_State *L);

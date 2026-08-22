@@ -170,7 +170,6 @@ static const luaL_Reg stdlibs[] = {
         {LUA_VMLIBNAME,    luaopen_vm},
         {LUA_BITLIBNAME,   luaopen_bit},
         {LUA_PTRLIBNAME,   luaopen_ptr},
-        {LUA_SMGRNAME,     luaopen_smgr},
         {"translator",     luaopen_translator},
         {"libc",           luaopen_libc},
         {NULL, NULL}
@@ -214,7 +213,6 @@ static const luaL_Reg loadedlibs[] = {
         {LUA_DBLIBNAME,    luaopen_debug},
         {LUA_BITLIBNAME,   luaopen_bit},
         {LUA_PTRLIBNAME,   luaopen_ptr},
-        {LUA_SMGRNAME,     luaopen_smgr},
         {"translator",     luaopen_translator},
         {"libc",           luaopen_libc},
 
