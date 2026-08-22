@@ -1,12 +1,4 @@
 <resources>
     <attr name="windowBackgroundColor" format="color" />
     
-    <declare-styleable name="MaterialTextField">
-        <attr name="android:hint" />
-        <attr name="android:singleLine" />
-        <attr name="textSize" />
-        <attr name="boxCornerRadii" />
-        <attr name="endIconMode" />
-    </declare-styleable>
-    
 </resources>
