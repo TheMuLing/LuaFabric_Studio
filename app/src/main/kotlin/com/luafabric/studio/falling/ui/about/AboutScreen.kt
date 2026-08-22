@@ -114,6 +114,19 @@ fun AboutScreen(onBack: () -> Unit) {
     val changelogEntries = remember {
         listOf(
             ChangelogEntry(
+                date = "2026-08-22",
+                version = "26.08.22-alpha",
+                items = listOf(
+                    "修复旧配置缺失 providers 字段导致的闪退（反序列化空值兜底）",
+                    "API 添加供应商弹窗：获取模型需同时填写 API 请求地址与 API Key",
+                    "支持解析 /chat/completions 后缀 API 地址，自动处理末尾斜杠",
+                    "第三方 AI 中转站获取模型列表失败时增强日志输出",
+                    "删除 MaterialTextField 组件",
+                    "删除 native 层 smgr 模块（renamefile/getdatadir 等函数）",
+                    "版本号更新：versionCode 26082202 / versionName 26.08.22-alpha"
+                )
+            ),
+            ChangelogEntry(
                 date = "2026-08-21",
                 version = "26.08.21",
                 items = listOf(

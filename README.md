@@ -4,6 +4,15 @@
 
 # 更新日志
 
+## 26.08.22-alpha
+- 版本号更新：`versionCode 26082202` / `versionName 26.08.22-alpha`
+- 修复旧配置缺失 `providers` 字段导致的闪退（反序列化空值兜底）
+- AI 添加供应商弹窗：获取模型需同时填写 API 请求地址与 API Key
+- 支持解析带 `/chat/completions` 后缀的 API 地址，自动处理末尾斜杠
+- 第三方 AI 中转站获取模型列表失败时增强日志输出
+- 删除 `MaterialTextField` 组件
+- 删除 native 层 `smgr` 模块（`renamefile`/`getdatadir` 等函数）
+
 ## 26.08.22
 - 侧边栏"赞助"与"设置"位置互换
 - 侧边栏新增"手册"页（Material MenuBook 图标，页面暂空置，后续填充）
