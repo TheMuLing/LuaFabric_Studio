@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -1051,6 +1052,7 @@ fun ProjectFileTree(
     onNavigateToSettings: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val saveableStateHolder = rememberSaveableStateHolder()
 
     ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
         // ── Content area (fills remaining space) ──
@@ -1084,15 +1086,17 @@ fun ProjectFileTree(
                     )
                 }
                 DrawerTab.AI -> {
-                    AiChatPanel(
-                        projectPath = projectPath,
-                        codeReference = codeReference,
-                        onClearReference = onClearReference,
-                        onOpenFile = onOpenFile,
-                        onAskUser = onAskUser,
-                        onConfirmInMain = onConfirmInMain,
-                        onNavigateToSettings = onNavigateToSettings
-                    )
+                    saveableStateHolder.SaveableStateProvider("ai") {
+                        AiChatPanel(
+                            projectPath = projectPath,
+                            codeReference = codeReference,
+                            onClearReference = onClearReference,
+                            onOpenFile = onOpenFile,
+                            onAskUser = onAskUser,
+                            onConfirmInMain = onConfirmInMain,
+                            onNavigateToSettings = onNavigateToSettings
+                        )
+                    }
                 }
             }
         }

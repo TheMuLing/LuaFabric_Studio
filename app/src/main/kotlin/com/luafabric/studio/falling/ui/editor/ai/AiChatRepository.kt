@@ -147,6 +147,79 @@ object AiChatRepository {
         })
     }
 
+    suspend fun summarizeMessages(
+        config: AiConfig,
+        messages: List<ChatMessage>,
+        existingSummary: String
+    ): String = withContext(Dispatchers.IO) {
+        try {
+            val dump = messages.joinToString("\n\n") { msg ->
+                when (msg.role) {
+                    ChatRole.USER -> "用户：${msg.content}"
+                    ChatRole.ASSISTANT -> "助手：${msg.content}"
+                    ChatRole.TOOL -> "工具结果：${msg.content}"
+                    ChatRole.SYSTEM -> "系统：${msg.content}"
+                }
+            }
+            val summaryPrompt = buildList {
+                add(ChatMessage(
+                    id = "summary_sys",
+                    role = ChatRole.SYSTEM,
+                    content = "你是对话摘要助手。请用简洁的中文总结以下对话内容，保留关键信息：用户的需求和问题、已做出的决定、重要结论、引用的文件路径和行号、待办事项。不要遗漏重要细节，也不要添加对话中不存在的信息。"
+                ))
+                if (existingSummary.isNotBlank()) {
+                    add(ChatMessage(
+                        id = "summary_prev",
+                        role = ChatRole.SYSTEM,
+                        content = "以下是之前已压缩过的对话摘要，请将新内容合并进这份摘要，保持整体简洁：\n$existingSummary"
+                    ))
+                }
+                add(ChatMessage(
+                    id = "summary_user",
+                    role = ChatRole.USER,
+                    content = "以下是需要总结的对话内容：\n$dump"
+                ))
+            }
+            val body = buildRequestBody(config, summaryPrompt, emptyList())
+            val httpRequest = buildHttpRequest(config, body)
+            val response = client.newCall(httpRequest).execute()
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    android.util.Log.w(logTag, "summarizeMessages HTTP ${resp.code}")
+                    return@withContext ""
+                }
+                val respBody = resp.body?.string() ?: return@withContext ""
+                val text = parseCompletionText(respBody, config.resolvedProtocol)
+                android.util.Log.d(logTag, "summarizeMessages result len=${text.length}")
+                text
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(logTag, "summarizeMessages error", e)
+            ""
+        }
+    }
+
+    private fun parseCompletionText(body: String, protocol: ApiProtocol): String {
+        return try {
+            when (protocol) {
+                ApiProtocol.OPENAI -> {
+                    val root = JsonParser.parseString(body).asJsonObject
+                    val choices = root.getAsJsonArray("choices")
+                    if (choices == null || choices.size() == 0) return ""
+                    choices[0].asJsonObject.getAsJsonObject("message")?.get("content")?.asString ?: ""
+                }
+                ApiProtocol.ANTHROPIC -> {
+                    val root = JsonParser.parseString(body).asJsonObject
+                    val content = root.getAsJsonArray("content") ?: return ""
+                    content.mapNotNull { it.asJsonObject.get("text")?.asString }.joinToString("")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w(logTag, "parseCompletionText error", e)
+            ""
+        }
+    }
+
     private fun buildRequestBody(
         config: AiConfig,
         messages: List<ChatMessage>,
@@ -225,16 +298,51 @@ object AiChatRepository {
         val systemMessages = messages.filter { it.role == ChatRole.SYSTEM }
         val chatMessages = messages.filter { it.role != ChatRole.SYSTEM }
 
-        val apiMessages = chatMessages.map { msg ->
-            AnthropicMessage(
-                role = when (msg.role) {
-                    ChatRole.USER -> "user"
-                    ChatRole.ASSISTANT -> "assistant"
-                    ChatRole.TOOL -> "user"
-                    else -> "user"
-                },
-                content = msg.content
-            )
+        val apiMessages = mutableListOf<AnthropicMessage>()
+        var i = 0
+        while (i < chatMessages.size) {
+            val msg = chatMessages[i]
+            when (msg.role) {
+                ChatRole.ASSISTANT -> {
+                    val content = mutableListOf<Map<String, Any>>()
+                    if (msg.content.isNotBlank()) {
+                        content.add(mapOf("type" to "text", "text" to msg.content))
+                    }
+                    msg.toolCalls.forEach { tc ->
+                        content.add(
+                            mapOf(
+                                "type" to "tool_use",
+                                "id" to tc.id,
+                                "name" to tc.name,
+                                "input" to parseToolArguments(tc.arguments)
+                            )
+                        )
+                    }
+                    apiMessages.add(AnthropicMessage(role = "assistant", content = content))
+                    i++
+                }
+                ChatRole.TOOL -> {
+                    // Group consecutive tool results into a single user message
+                    val toolResults = mutableListOf<Map<String, Any>>()
+                    while (i < chatMessages.size && chatMessages[i].role == ChatRole.TOOL) {
+                        val toolMsg = chatMessages[i]
+                        val tc = toolMsg.toolCalls.firstOrNull()
+                        toolResults.add(
+                            mapOf(
+                                "type" to "tool_result",
+                                "tool_use_id" to (tc?.id ?: ""),
+                                "content" to toolMsg.content
+                            )
+                        )
+                        i++
+                    }
+                    apiMessages.add(AnthropicMessage(role = "user", content = toolResults))
+                }
+                else -> {
+                    apiMessages.add(AnthropicMessage(role = "user", content = msg.content))
+                    i++
+                }
+            }
         }
 
         val anthropicTools = if (tools.isNotEmpty()) {
@@ -256,6 +364,15 @@ object AiChatRepository {
             temperature = config.temperature
         )
         return gson.toJson(request)
+    }
+
+    private fun parseToolArguments(arguments: String): Map<String, Any> {
+        return try {
+            val type = object : TypeToken<Map<String, Any>>() {}.type
+            gson.fromJson(arguments, type)
+        } catch (_: Exception) {
+            emptyMap()
+        }
     }
 
     private fun buildHttpRequest(config: AiConfig, body: String, protocol: ApiProtocol = config.resolvedProtocol): Request {

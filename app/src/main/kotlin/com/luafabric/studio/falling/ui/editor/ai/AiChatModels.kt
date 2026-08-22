@@ -100,7 +100,7 @@ data class AnthropicMessageRequest(
 
 data class AnthropicMessage(
     val role: String,
-    val content: String
+    val content: Any? = null
 )
 
 data class AnthropicTool(
@@ -341,7 +341,8 @@ data class ConversationData(
     val title: String,
     val createdAt: Long,
     val updatedAt: Long,
-    val messages: List<ChatMessage>
+    val messages: List<ChatMessage>,
+    val summary: String = ""
 )
 
 data class MemoryItem(

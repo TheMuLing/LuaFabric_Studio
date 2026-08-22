@@ -30,6 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,21 +41,66 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.google.gson.Gson
 import com.luafabric.studio.falling.ui.editor.ai.tools.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
 private enum class AiPage { CHAT, SETTINGS, HISTORY }
+
+private val gson = Gson()
+
+private val ChatMessageListSaver = listSaver<List<ChatMessage>, String>(
+    save = { list -> list.map { gson.toJson(it) } },
+    restore = { saved ->
+        saved.mapNotNull { json ->
+            runCatching { gson.fromJson(json, ChatMessage::class.java) }.getOrNull()
+        }
+    }
+)
+
+// 默认 TextFieldValue.Saver 不保存 composition（输入法组合区），
+// 恢复后会导致输入法组合状态丢失、括号等符号被吞。这里把 composition 一并保存。
+private val TextFieldValueFullSaver = listSaver<TextFieldValue, Any>(
+    save = { value ->
+        listOf(
+            value.text,
+            value.selection.start,
+            value.selection.end,
+            value.composition?.start ?: -1,
+            value.composition?.end ?: -1
+        )
+    },
+    restore = { list ->
+        val selStart = list[1] as Int
+        val selEnd = list[2] as Int
+        val compStart = list[3] as Int
+        val compEnd = list[4] as Int
+        TextFieldValue(
+            text = list[0] as String,
+            selection = TextRange(selStart, selEnd),
+            composition = if (compStart >= 0 && compEnd >= 0) TextRange(compStart, compEnd) else null
+        )
+    }
+)
+
+// 上下文压缩：消息超过阈值时，把最旧的压缩进滚动摘要，只保留最近窗口
+private const val COMPRESS_THRESHOLD = 30
+private const val KEEP_WINDOW = 20
 
 // ========== Main Panel ==========
 
@@ -71,23 +118,28 @@ fun AiChatPanel(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    // Chat state
-    var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
-    var inputText by remember { mutableStateOf("") }
-    var isStreaming by remember { mutableStateOf(false) }
-    var currentConversationId by remember { mutableStateOf(AiChatHistoryStore.createNewId()) }
-    var streamingMessageId by remember { mutableStateOf<String?>(null) }
-    var currentPage by remember { mutableStateOf(AiPage.CHAT) }
-    var showWelcome by remember { mutableStateOf(!AiSettingsManager.isWelcomeDismissed(context)) }
-    var shareMode by remember { mutableStateOf(false) }
-    var selectedShareMessages by remember { mutableStateOf(setOf<String>()) }
-    var sendJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var errorBanners by remember { mutableStateOf<List<String>>(emptyList()) }
-    var wasInterrupted by remember { mutableStateOf(false) }
-    var selectedProviderIndex by remember { mutableStateOf(0) }
-
     // Config
     val config = remember { mutableStateOf(AiSettingsManager.loadConfig(context)) }
+
+    // Chat state (rememberSaveable to survive tab switches via SaveableStateHolder)
+    var messages by rememberSaveable(stateSaver = ChatMessageListSaver) { mutableStateOf<List<ChatMessage>>(emptyList()) }
+    var inputValue by rememberSaveable(stateSaver = TextFieldValueFullSaver) { mutableStateOf(TextFieldValue("")) }
+    var isStreaming by rememberSaveable { mutableStateOf(false) }
+    var currentConversationId by rememberSaveable { mutableStateOf(AiChatHistoryStore.createNewId()) }
+    var streamingMessageId by rememberSaveable { mutableStateOf<String?>(null) }
+    var currentPage by rememberSaveable { mutableStateOf(AiPage.CHAT) }
+    var showWelcome by remember { mutableStateOf(!AiSettingsManager.isWelcomeDismissed(context)) }
+    var shareMode by rememberSaveable { mutableStateOf(false) }
+    var selectedShareMessages by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var sendJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var errorBanners by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    var wasInterrupted by rememberSaveable { mutableStateOf(false) }
+    var selectedProviderIndex by rememberSaveable { mutableStateOf(
+        if (config.value.providers.isNotEmpty() && config.value.selectedProviderIndex in config.value.providers.indices)
+            config.value.selectedProviderIndex
+        else 0
+    ) }
+    var summary by rememberSaveable { mutableStateOf("") }
 
     // Tool registry
     val toolRegistry = remember {
@@ -112,12 +164,19 @@ fun AiChatPanel(
     // Auto-scroll
     LaunchedEffect(messages.size, isStreaming) {
         if (messages.isNotEmpty() && isStreaming) {
-            listState.animateScrollToItem(messages.size - 1)
+            listState.scrollToBottom(animate = false)
+        }
+    }
+
+    // Scroll to bottom when a conversation is opened (from history or new chat)
+    LaunchedEffect(currentConversationId) {
+        if (messages.isNotEmpty()) {
+            listState.scrollToBottom(animate = false)
         }
     }
 
     // Save conversation when messages change
-    LaunchedEffect(messages) {
+    LaunchedEffect(messages, summary) {
         if (messages.isNotEmpty() && !isStreaming) {
             val title = AiChatHistoryStore.generateTitle(messages)
             val data = ConversationData(
@@ -125,7 +184,8 @@ fun AiChatPanel(
                 title = title,
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis(),
-                messages = messages
+                messages = messages,
+                summary = summary
             )
             AiChatHistoryStore.saveConversation(context, data)
         }
@@ -199,7 +259,7 @@ fun AiChatPanel(
                         streamingMessageId = streamingMessageId,
                         scope = scope,
                         listState = listState,
-                        inputText = inputText,
+                        inputValue = inputValue,
                         codeReference = codeReference,
                         config = config.value,
                         toolRegistry = toolRegistry,
@@ -215,11 +275,11 @@ fun AiChatPanel(
                             }
                         },
                         onOpenFile = onOpenFile,
-                        onInputChange = { inputText = it },
+                        onInputChange = { inputValue = it },
                         onSend = {
                             sendJob = scope.launch {
                                 sendMessage(
-                                    inputText = inputText,
+                                    inputText = inputValue.text,
                                     config = config.value,
                                     messages = messages,
                                     toolRegistry = toolRegistry,
@@ -230,9 +290,11 @@ fun AiChatPanel(
                                     setMessages = { messages = it },
                                     setStreaming = { isStreaming = it },
                                     setStreamingMessageId = { streamingMessageId = it },
-                                    setInputText = { inputText = it },
+                                    setInputText = { inputValue = TextFieldValue(it) },
                                     currentConversationId = currentConversationId,
                                     setCurrentConversationId = { currentConversationId = it },
+                                    summary = summary,
+                                    setSummary = { summary = it },
                                     onAskUser = onAskUser,
                                     onConfirmInMain = onConfirmInMain,
                                     onOpenFile = onOpenFile,
@@ -254,7 +316,7 @@ fun AiChatPanel(
                             if (lastUserIdx >= 0) {
                                 val lastUserMsg = messages[lastUserIdx]
                                 messages = messages.take(lastUserIdx)
-                                inputText = lastUserMsg.content
+                                inputValue = TextFieldValue(lastUserMsg.content, selection = TextRange(lastUserMsg.content.length))
                             }
                         },
                         onEnterShareMode = {
@@ -292,7 +354,7 @@ fun AiChatPanel(
                             if (lastUserIdx >= 0) {
                                 val lastUserMsg = messages[lastUserIdx]
                                 messages = messages.take(lastUserIdx)
-                                inputText = lastUserMsg.content
+                                inputValue = TextFieldValue(lastUserMsg.content, selection = TextRange(lastUserMsg.content.length))
                                 wasInterrupted = false
                                 sendJob = scope.launch {
                                     sendMessage(
@@ -307,9 +369,11 @@ fun AiChatPanel(
                                         setMessages = { messages = it },
                                         setStreaming = { isStreaming = it },
                                         setStreamingMessageId = { streamingMessageId = it },
-                                        setInputText = { inputText = it },
+                                        setInputText = { inputValue = TextFieldValue(it) },
                                         currentConversationId = currentConversationId,
                                         setCurrentConversationId = { currentConversationId = it },
+                                        summary = summary,
+                                        setSummary = { summary = it },
                                         onAskUser = onAskUser,
                                         onConfirmInMain = onConfirmInMain,
                                         onOpenFile = onOpenFile,
@@ -335,11 +399,13 @@ fun AiChatPanel(
                         currentId = currentConversationId,
                         onSelectConversation = { data ->
                             messages = data.messages
+                            summary = data.summary
                             currentConversationId = data.id
                             currentPage = AiPage.CHAT
                         },
                         onNewChat = {
                             messages = emptyList()
+                            summary = ""
                             currentConversationId = AiChatHistoryStore.createNewId()
                             currentPage = AiPage.CHAT
                         }
@@ -364,8 +430,7 @@ private fun AiTitleBar(
     onSelectModel: (providerIndex: Int, model: String) -> Unit
 ) {
     var showProviderMenu by remember { mutableStateOf(false) }
-    var showModelMenu by remember { mutableStateOf(false) }
-    var modelMenuProviderIdx by remember { mutableStateOf(0) }
+    var modelMenuProviderIdx by remember { mutableStateOf<Int?>(null) }
 
     val currentProvider = providers.getOrNull(selectedProviderIndex)
     val currentModel = currentProvider?.model ?: ""
@@ -415,48 +480,29 @@ private fun AiTitleBar(
                     // Provider dropdown - primary color
                     DropdownMenu(
                         expanded = showProviderMenu,
-                        onDismissRequest = { showProviderMenu = false }
+                        onDismissRequest = {
+                            showProviderMenu = false
+                            modelMenuProviderIdx = null
+                        }
                     ) {
-                        providers.forEachIndexed { idx, provider ->
+                        val modelProviderIdx = modelMenuProviderIdx
+                        if (modelProviderIdx != null) {
+                            // Model sub-menu (drill-down to avoid nested popup positioning bugs)
+                            val provider = providers.getOrNull(modelProviderIdx)
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(provider.name.ifBlank { "未命名" }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                                        IconButton(onClick = {
-                                            modelMenuProviderIdx = idx
-                                            showModelMenu = true
-                                        }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Filled.ArrowForward, contentDescription = "选择模型", modifier = Modifier.size(14.dp))
-                                        }
+                                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回", modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            "${provider?.name?.ifBlank { "未命名" }} · 选择模型",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 },
-                                onClick = {
-                                    onSelectProvider(idx)
-                                    showProviderMenu = false
-                                }
+                                onClick = { modelMenuProviderIdx = null }
                             )
-                        }
-                        if (providers.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("暂无提供商", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                onClick = { showProviderMenu = false }
-                            )
-                        }
-                    }
-                }
-                // Model sub-menu - positioned outside provider menu with distinct color
-                DropdownMenu(
-                    expanded = showModelMenu,
-                    onDismissRequest = { showModelMenu = false },
-                    offset = DpOffset(280.dp, (-40).dp)
-                ) {
-                    Surface(
-                        tonalElevation = 4.dp,
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ) {
-                        Column {
-                            val provider = providers.getOrNull(modelMenuProviderIdx)
                             if (provider != null) {
                                 val models = provider.customModels
                                 if (models.isNotEmpty()) {
@@ -464,9 +510,9 @@ private fun AiTitleBar(
                                         DropdownMenuItem(
                                             text = { Text(modelEntry.displayName.ifBlank { modelEntry.modelId }, style = MaterialTheme.typography.bodySmall) },
                                             onClick = {
-                                                onSelectModel(modelMenuProviderIdx, modelEntry.modelId)
-                                                showModelMenu = false
+                                                onSelectModel(modelProviderIdx, modelEntry.modelId)
                                                 showProviderMenu = false
+                                                modelMenuProviderIdx = null
                                             }
                                         )
                                     }
@@ -474,17 +520,47 @@ private fun AiTitleBar(
                                     DropdownMenuItem(
                                         text = { Text(provider.model, style = MaterialTheme.typography.bodySmall) },
                                         onClick = {
-                                            onSelectModel(modelMenuProviderIdx, provider.model)
-                                            showModelMenu = false
+                                            onSelectModel(modelProviderIdx, provider.model)
                                             showProviderMenu = false
+                                            modelMenuProviderIdx = null
                                         }
                                     )
                                 } else {
                                     DropdownMenuItem(
                                         text = { Text("暂无模型", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                        onClick = { showModelMenu = false }
+                                        onClick = { modelMenuProviderIdx = null }
                                     )
                                 }
+                            }
+                        } else {
+                            providers.forEachIndexed { idx, provider ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(provider.name.ifBlank { "未命名" }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(28.dp)
+                                                    .clip(CircleShape)
+                                                    .clickable { modelMenuProviderIdx = idx }
+                                                    .padding(4.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Filled.ChevronRight, contentDescription = "选择模型", modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSelectProvider(idx)
+                                        showProviderMenu = false
+                                    }
+                                )
+                            }
+                            if (providers.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("暂无提供商", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                    onClick = { showProviderMenu = false }
+                                )
                             }
                         }
                     }
@@ -526,7 +602,7 @@ private fun ChatContent(
     streamingMessageId: String?,
     scope: CoroutineScope,
     listState: LazyListState,
-    inputText: String,
+    inputValue: TextFieldValue,
     codeReference: CodeReference?,
     config: AiConfig,
     toolRegistry: ToolRegistry,
@@ -536,7 +612,7 @@ private fun ChatContent(
     selectedShareMessages: Set<String>,
     onToggleShareMessage: (String) -> Unit,
     onOpenFile: (String, Int, Int) -> Unit,
-    onInputChange: (String) -> Unit,
+    onInputChange: (TextFieldValue) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
     onCopy: (String) -> Unit,
@@ -573,7 +649,7 @@ private fun ChatContent(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(messages, key = { it.id }) { msg ->
+                items(messages, key = { "${it.id}-${it.timestamp}" }) { msg ->
                     val isLastUser = msg.role == ChatRole.USER && messages.lastOrNull { it.role == ChatRole.USER }?.id == msg.id
                     ChatMessageBubble(
                         message = msg,
@@ -590,6 +666,29 @@ private fun ChatContent(
                     )
                 }
             }
+
+            // Scroll-to-top / scroll-to-bottom buttons (bottom-right)
+            if (messages.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 10.dp, bottom = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalIconButton(
+                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(ArrowCollapseUpIcon, contentDescription = "回到顶部", modifier = Modifier.size(16.dp))
+                    }
+                    FilledTonalIconButton(
+                        onClick = { scope.launch { listState.scrollToBottom(animate = true) } },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(ArrowCollapseDownIcon, contentDescription = "回到底部", modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
         }
 
         // Error banner collection
@@ -600,7 +699,7 @@ private fun ChatContent(
                 onClick = {
                     if (messages.isNotEmpty()) {
                         scope.launch {
-                            listState.animateScrollToItem(messages.size - 1)
+                            listState.scrollToBottom(animate = true)
                         }
                     }
                 }
@@ -644,38 +743,103 @@ private fun ChatContent(
 
         // Input area
         Surface(tonalElevation = 1.dp, shadowElevation = 2.dp) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = onInputChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("问 AI...", style = MaterialTheme.typography.bodySmall) },
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { if (inputText.isNotBlank() && !isStreaming) onSend() }),
-                    textStyle = MaterialTheme.typography.bodySmall,
-                    singleLine = false,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedBorderColor = Color.Transparent,
-                        focusedBorderColor = Color.Transparent
-                    )
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                FilledIconButton(
-                    onClick = { if (isStreaming) onStop() else if (inputText.isNotBlank()) onSend() },
-                    enabled = (canSend && inputText.isNotBlank()) || isStreaming,
-                    modifier = Modifier.size(40.dp),
-                    shape = CircleShape
+            Column {
+                // Slash-command skill suggestions
+                val enabledSkills = config.skills.filter { it.enabled }
+                val slashToken = inputValue.text.substringBefore(' ')
+                val slashQuery = if (slashToken.startsWith("/")) slashToken.removePrefix("/").trim() else ""
+                val showSlashMenu = slashToken.startsWith("/") && enabledSkills.isNotEmpty()
+                val slashSuggestions = if (showSlashMenu) {
+                    enabledSkills.filter { slashQuery.isEmpty() || it.title.contains(slashQuery, ignoreCase = true) }
+                } else emptyList()
+
+                if (showSlashMenu && slashSuggestions.isNotEmpty()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(12.dp),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Column {
+                            slashSuggestions.forEach { skill ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val newText = inputValue.text.replaceFirst(slashToken, "/${skill.title}")
+                                            val finalText = "$newText "
+                                            onInputChange(TextFieldValue(finalText, selection = TextRange(finalText.length)))
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "/${skill.title}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.width(120.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        skill.readme.ifBlank { "使用 ${skill.title} 技能" },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (isStreaming) {
-                        Icon(Icons.Filled.Stop, contentDescription = "停止", modifier = Modifier.size(18.dp))
-                    } else {
-                        Icon(Icons.Filled.Send, contentDescription = "发送", modifier = Modifier.size(18.dp))
+                    // 受控输入框本地状态化：输入时立即更新本地值并同步通知父级，
+                    // 避免经过父级重组往返导致输入法组合状态丢失（括号被吞/光标左移）
+                    var localInput by remember { mutableStateOf(inputValue) }
+                    LaunchedEffect(inputValue) {
+                        if (inputValue.text != localInput.text || inputValue.selection != localInput.selection) {
+                            localInput = inputValue
+                        }
+                    }
+                    OutlinedTextField(
+                        value = localInput,
+                        onValueChange = { newValue ->
+                            localInput = newValue
+                            onInputChange(newValue)
+                        },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("问 AI...", style = MaterialTheme.typography.bodySmall) },
+                        maxLines = 4,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { if (inputValue.text.isNotBlank() && !isStreaming) onSend() }),
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        singleLine = false,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedBorderColor = Color.Transparent
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    FilledIconButton(
+                        onClick = { if (isStreaming) onStop() else if (inputValue.text.isNotBlank()) onSend() },
+                        enabled = (canSend && inputValue.text.isNotBlank()) || isStreaming,
+                        modifier = Modifier.size(40.dp),
+                        shape = CircleShape
+                    ) {
+                        if (isStreaming) {
+                            Icon(Icons.Filled.Stop, contentDescription = "停止", modifier = Modifier.size(18.dp))
+                        } else {
+                            Icon(Icons.Filled.Send, contentDescription = "发送", modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
             }
@@ -1006,18 +1170,9 @@ private fun ChatMessageBubble(
                                 )
                             }
                         } else {
-                            AndroidView(
-                                factory = { ctx ->
-                                    com.luafabric.studio.falling.ui.components.MarkdownView(ctx).apply {
-                                        loadFromText(message.content)
-                                    }
-                                },
-                                update = { view ->
-                                    view.loadFromText(message.content)
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 0.dp, max = 400.dp)
+                            AiMessageContent(
+                                content = message.content,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
                     } else if (isStreaming && !isUser) {
@@ -2099,6 +2254,21 @@ private fun formatTimestamp(timestamp: Long): String {
     }
 }
 
+// 滚动到列表真正的最底部：先滚到最后一个 item，若该 item 高于视口
+// 再按 item 高度计算偏移，让 item 底部与视口底部对齐，避免长消息被截断
+private suspend fun LazyListState.scrollToBottom(animate: Boolean) {
+    val lastIndex = layoutInfo.totalItemsCount - 1
+    if (lastIndex < 0) return
+    if (animate) animateScrollToItem(lastIndex) else scrollToItem(lastIndex)
+    val info = layoutInfo
+    val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex }
+    if (lastVisible != null) {
+        val viewportHeight = info.viewportEndOffset - info.viewportStartOffset
+        val scrollOffset = viewportHeight - lastVisible.size
+        if (animate) animateScrollToItem(lastIndex, scrollOffset) else scrollToItem(lastIndex, scrollOffset)
+    }
+}
+
 private fun getPathFromUri(uri: Uri): String? {
     // Try to get the actual file path from content URI
     val docId = uri.lastPathSegment ?: return null
@@ -2107,6 +2277,67 @@ private fun getPathFromUri(uri: Uri): String? {
 }
 
 // ========== Send Message Logic ==========
+
+private fun readSkillContent(context: Context, skill: SkillConfig): String? {
+    return try {
+        val path = skill.path
+        when {
+            path.startsWith("content://") -> {
+                val uri = Uri.parse(path)
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            }
+            path.startsWith("file://") -> {
+                File(Uri.parse(path).path ?: return null).takeIf { it.exists() }?.readText()
+            }
+            else -> File(path).takeIf { it.exists() }?.readText()
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private suspend fun buildSystemPrompt(
+    context: Context,
+    config: AiConfig
+): String = withContext(Dispatchers.IO) {
+    val sb = StringBuilder()
+    sb.appendLine("你是运行在 LuaFabric Studio 中的 AI 助手。")
+    sb.appendLine()
+    sb.appendLine("## 当前环境")
+    sb.appendLine("- 运行环境：LuaFabric Studio（运行在 Android 上的 Lua/Android 开发工具）")
+    sb.appendLine("- 你可以通过工具函数执行 Shell 命令、读写项目文件、搜索代码、打开文件、调用用户确认、以及使用记忆功能")
+    sb.appendLine("- 用户可能引用代码片段，引用时会附带文件名和行号，请结合引用内容回答")
+    sb.appendLine("- 回答使用与用户相同的语言，保持简洁准确")
+    sb.appendLine()
+
+    val enabledSkills = config.skills.filter { it.enabled }
+    if (enabledSkills.isNotEmpty()) {
+        sb.appendLine("## 可用技能（Skills）")
+        sb.appendLine("以下技能定义了特定场景下的工作方式。当任务与某技能相关时，遵循该技能的指示。")
+        sb.appendLine("当用户消息以 /技能名 开头时，表示用户明确要求使用该技能，必须严格遵循该技能的规则。")
+        sb.appendLine("可用技能：${enabledSkills.joinToString("、") { "/${it.title}" }}")
+        sb.appendLine()
+        enabledSkills.forEach { skill ->
+            sb.appendLine("### ${skill.title}")
+            val content = readSkillContent(context, skill) ?: skill.readme
+            if (content.isNotBlank()) {
+                sb.appendLine(content)
+            }
+            sb.appendLine()
+        }
+    }
+
+    if (config.memories.isNotEmpty()) {
+        sb.appendLine("## 记忆")
+        sb.appendLine("以下是你记住的关于用户的信息，回答时可参考：")
+        config.memories.forEach { mem ->
+            sb.appendLine("- ${mem.content}")
+        }
+        sb.appendLine()
+    }
+
+    sb.toString().trim()
+}
 
 private suspend fun sendMessage(
     inputText: String,
@@ -2123,11 +2354,36 @@ private suspend fun sendMessage(
     setInputText: (String) -> Unit,
     currentConversationId: String,
     setCurrentConversationId: (String) -> Unit,
+    summary: String,
+    setSummary: (String) -> Unit,
     onAskUser: (title: String, options: List<String>, callback: (String?) -> Unit) -> Unit,
     onConfirmInMain: (title: String, message: String, callback: (Boolean) -> Unit) -> Unit,
     onOpenFile: (filePath: String, startLine: Int, endLine: Int) -> Unit,
     onError: ((String) -> Unit)? = null
 ) {
+    // 上下文压缩：消息过多时把最旧的压缩进滚动摘要，只保留最近窗口
+    var effectiveMessages = messages
+    var currentSummary = summary
+    if (messages.size >= COMPRESS_THRESHOLD) {
+        // 窗口边界尽量落在 user 消息上，避免窗口以 tool/assistant 开头导致 Anthropic 拒绝
+        var startIdx = messages.size - KEEP_WINDOW
+        if (startIdx > 0) {
+            while (startIdx < messages.size && messages[startIdx].role != ChatRole.USER) {
+                startIdx++
+            }
+            if (startIdx >= messages.size) startIdx = messages.size - KEEP_WINDOW
+        }
+        val toCompress = messages.take(startIdx)
+        val kept = messages.drop(startIdx)
+        val newSummary = AiChatRepository.summarizeMessages(config, toCompress, currentSummary)
+        if (newSummary.isNotBlank()) {
+            currentSummary = newSummary
+            setSummary(newSummary)
+            effectiveMessages = kept
+            setMessages(kept)
+        }
+    }
+
     val userMsgId = UUID.randomUUID().toString()
     val userMessage = ChatMessage(
         id = userMsgId,
@@ -2136,22 +2392,39 @@ private suspend fun sendMessage(
         codeReference = codeReference
     )
 
-    val updatedMessages = messages + userMessage
+    val updatedMessages = effectiveMessages + userMessage
     setMessages(updatedMessages)
     setInputText("")
     onClearReference()
 
-    // Build API messages with full context for code references
-    val apiMessages = updatedMessages.map { msg ->
-        if (msg.role == ChatRole.USER && msg.codeReference != null) {
-            val ref = msg.codeReference
-            msg.copy(
-                content = "文件：${ref.fileName}（第${ref.startLine}~${ref.endLine}行）\n```\n${ref.content}\n```\n\n${msg.content}"
-            )
-        } else msg
+    // Build API messages: system prompt (skills + memories) + rolling summary + full context for code references
+    val toolDefs = toolRegistry.getDefinitions()
+    val systemPrompt = buildSystemPrompt(context, config)
+    val baseApiMessages = buildList {
+        if (systemPrompt.isNotBlank()) {
+            add(ChatMessage(id = UUID.randomUUID().toString(), role = ChatRole.SYSTEM, content = systemPrompt))
+        }
+        if (currentSummary.isNotBlank()) {
+            add(ChatMessage(
+                id = UUID.randomUUID().toString(),
+                role = ChatRole.SYSTEM,
+                content = "以下是本对话早期内容的摘要（早期消息已被压缩，请以此作为上下文）：\n$currentSummary"
+            ))
+        }
     }
+    // 每轮循环从当前对话消息重建 API 消息列表，确保工具调用与工具结果
+    // 能正确回传给模型（否则模型看不到工具结果，记忆等工具无法生效）
+    fun buildApiMessages(conversation: List<ChatMessage>): List<ChatMessage> =
+        baseApiMessages + conversation.map { msg ->
+            if (msg.role == ChatRole.USER && msg.codeReference != null) {
+                val ref = msg.codeReference
+                msg.copy(
+                    content = "文件：${ref.fileName}（第${ref.startLine}~${ref.endLine}行）\n```\n${ref.content}\n```\n\n${msg.content}"
+                )
+            } else msg
+        }
 
-    val assistantMsgId = UUID.randomUUID().toString()
+    var assistantMsgId = UUID.randomUUID().toString()
     var assistantContent = ""
     var pendingToolCalls = mutableListOf<ToolCallInfo>()
     var currentAssistantMessage = ChatMessage(
@@ -2198,7 +2471,8 @@ private suspend fun sendMessage(
         while (true) {
             assistantContent = ""
             pendingToolCalls.clear()
-            val toolDefs = toolRegistry.getDefinitions()
+
+            val apiMessages = buildApiMessages(conversationMessages)
 
             kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { cont ->
                 AiChatRepository.streamChat(
@@ -2257,6 +2531,9 @@ private suspend fun sendMessage(
             }
 
             pendingToolCalls.clear()
+
+            // Regenerate assistantMsgId for next loop iteration to prevent duplicate LazyColumn keys
+            assistantMsgId = UUID.randomUUID().toString()
         }
         if (lastApiError != null) {
             android.util.Log.w("AiChat", "sendMessage api error: $lastApiError")

@@ -29,7 +29,13 @@ object AiChatHistoryStore {
         try {
             val file = File(getHistoryDir(context), "$id.json")
             if (!file.exists()) return@withContext null
-            gson.fromJson(file.readText(), ConversationData::class.java)
+            val data = gson.fromJson(file.readText(), ConversationData::class.java)
+            // 旧版本保存的 JSON 可能缺少 summary/messages 字段（Gson 会注入 null），
+            // 这里统一归一化，避免下游非空参数 NPE 闪退
+            data.copy(
+                summary = data.summary ?: "",
+                messages = data.messages ?: emptyList()
+            )
         } catch (_: Exception) { null }
     }
 
@@ -44,7 +50,7 @@ object AiChatHistoryStore {
                         title = data.title,
                         createdAt = data.createdAt,
                         updatedAt = data.updatedAt,
-                        messageCount = data.messages.size
+                        messageCount = (data.messages ?: emptyList()).size
                     )
                 } catch (_: Exception) { null }
             }?.sortedByDescending { it.updatedAt } ?: emptyList()
