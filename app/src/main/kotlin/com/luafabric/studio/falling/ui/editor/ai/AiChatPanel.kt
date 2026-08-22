@@ -1829,6 +1829,8 @@ private fun AiSettingsPage(
                             onClick = {
                                 if (newBaseUrl.isBlank()) {
                                     Toast.makeText(addContext, "请先填写 API 请求地址", Toast.LENGTH_SHORT).show()
+                                } else if (newApiKey.isBlank()) {
+                                    Toast.makeText(addContext, "请先填写 API Key", Toast.LENGTH_SHORT).show()
                                 } else {
                                     kotlinx.coroutines.MainScope().launch {
                                         try {
@@ -1999,6 +2001,8 @@ private fun AiSettingsPage(
                             onClick = {
                                 if (editBaseUrl.isBlank()) {
                                     Toast.makeText(editContext, "请先填写 API 请求地址", Toast.LENGTH_SHORT).show()
+                                } else if (editApiKey.isBlank()) {
+                                    Toast.makeText(editContext, "请先填写 API Key", Toast.LENGTH_SHORT).show()
                                 } else {
                                     kotlinx.coroutines.MainScope().launch {
                                         try {
@@ -2536,7 +2540,12 @@ private suspend fun sendMessage(
             assistantMsgId = UUID.randomUUID().toString()
         }
         if (lastApiError != null) {
-            android.util.Log.w("AiChat", "sendMessage api error: $lastApiError")
+            val provider = config.activeProvider
+            android.util.Log.w(
+                "AiChat",
+                "sendMessage api error: $lastApiError | provider=${provider?.name} model=${provider?.model ?: config.model} " +
+                    "protocol=${config.resolvedProtocol} messages=${conversationMessages.size} tools=${toolDefs.size}"
+            )
             setMessages(conversationMessages)
             onError?.invoke("API 错误: $lastApiError")
         }

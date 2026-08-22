@@ -26,11 +26,8 @@ object AiChatRepository {
     suspend fun fetchModels(config: AiConfig): List<String> = withContext(Dispatchers.IO) {
         try {
             val protocol = config.resolvedProtocol
-            val url = when (protocol) {
-                ApiProtocol.OPENAI -> "${config.resolvedBaseUrl}/v1/models"
-                ApiProtocol.ANTHROPIC -> "${config.resolvedBaseUrl}/v1/models"
-            }
-            android.util.Log.d(logTag, "fetchModels url=$url protocol=$protocol")
+            val url = buildModelsUrl(normalizeBaseUrl(config.resolvedBaseUrl))
+            android.util.Log.d(logTag, "fetchModels input=${config.resolvedBaseUrl} url=$url protocol=$protocol apiKey=${if (config.resolvedApiKey.isNotBlank()) "***" else "EMPTY"}")
 
             val request = Request.Builder().url(url).apply {
                 when (protocol) {
@@ -41,27 +38,27 @@ object AiChatRepository {
 
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: return@withContext emptyList()
-            android.util.Log.d(logTag, "fetchModels code=${response.code} body=${body.take(200)}")
+            android.util.Log.d(logTag, "fetchModels code=${response.code} body=${body.take(300)}")
 
             if (!response.isSuccessful) {
-                android.util.Log.w(logTag, "fetchModels failed: HTTP ${response.code} $body")
+                android.util.Log.w(logTag, "fetchModels failed: HTTP ${response.code} body=$body")
                 return@withContext emptyList()
             }
 
-            return@withContext parseModelsResponse(body, protocol)
+            val models = parseModelsResponse(body, protocol)
+            android.util.Log.d(logTag, "fetchModels parsed ${models.size} models")
+            return@withContext models
         } catch (e: Exception) {
-            android.util.Log.e(logTag, "fetchModels error", e)
+            android.util.Log.e(logTag, "fetchModels error input=${config.resolvedBaseUrl}", e)
             emptyList()
         }
     }
 
     suspend fun fetchModels(baseUrl: String, apiKey: String, protocol: ApiProtocol): List<String> = withContext(Dispatchers.IO) {
         try {
-            val url = when (protocol) {
-                ApiProtocol.OPENAI -> "${baseUrl.trimEnd('/')}/v1/models"
-                ApiProtocol.ANTHROPIC -> "${baseUrl.trimEnd('/')}/v1/models"
-            }
-            android.util.Log.d(logTag, "fetchModels2 url=$url protocol=$protocol")
+            val base = normalizeBaseUrl(baseUrl)
+            val url = buildModelsUrl(base)
+            android.util.Log.d(logTag, "fetchModels2 input=$baseUrl normalized=$base url=$url protocol=$protocol apiKey=${if (apiKey.isNotBlank()) "***" else "EMPTY"}")
             val request = Request.Builder().url(url).apply {
                 when (protocol) {
                     ApiProtocol.OPENAI -> addHeader("Authorization", "Bearer $apiKey")
@@ -70,17 +67,34 @@ object AiChatRepository {
             }.build()
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: return@withContext emptyList()
-            android.util.Log.d(logTag, "fetchModels2 code=${response.code} body=${body.take(200)}")
+            android.util.Log.d(logTag, "fetchModels2 code=${response.code} body=${body.take(300)}")
             if (!response.isSuccessful) {
-                android.util.Log.w(logTag, "fetchModels2 failed: HTTP ${response.code} $body")
+                android.util.Log.w(logTag, "fetchModels2 failed: HTTP ${response.code} body=$body")
                 return@withContext emptyList()
             }
-            return@withContext parseModelsResponse(body, protocol)
+            val models = parseModelsResponse(body, protocol)
+            android.util.Log.d(logTag, "fetchModels2 parsed ${models.size} models")
+            return@withContext models
         } catch (e: Exception) {
-            android.util.Log.e(logTag, "fetchModels2 error", e)
+            android.util.Log.e(logTag, "fetchModels2 error input=$baseUrl", e)
             emptyList()
         }
     }
+
+    // 规范化 API 基础地址：去空白/尾斜杠，剥离 /chat/completions 或 /models 端点后缀
+    private fun normalizeBaseUrl(raw: String): String {
+        var base = raw.trim().trimEnd('/')
+        if (base.endsWith("/chat/completions")) {
+            base = base.removeSuffix("/chat/completions").trimEnd('/')
+        } else if (base.endsWith("/models")) {
+            base = base.removeSuffix("/models").trimEnd('/')
+        }
+        return base
+    }
+
+    // 构建 /models 接口地址，避免重复 /v1
+    private fun buildModelsUrl(base: String): String =
+        if (base.endsWith("/v1")) "$base/models" else "$base/v1/models"
 
     private fun parseModelsResponse(body: String, protocol: ApiProtocol): List<String> {
         // Try OpenAI format first (most common, covers many Anthropic-compatible endpoints)
@@ -90,7 +104,10 @@ object AiChatRepository {
                 android.util.Log.d(logTag, "parseModelsResponse: parsed as OpenAI format, ${modelsResp.data.size} models")
                 return modelsResp.data.map { it.id }
             }
-        } catch (_: Exception) { }
+            android.util.Log.w(logTag, "parseModelsResponse: OpenAI format parsed but data empty")
+        } catch (e: Exception) {
+            android.util.Log.w(logTag, "parseModelsResponse: OpenAI parse failed: ${e.message}")
+        }
 
         // Fall back to Anthropic format
         try {
@@ -99,9 +116,12 @@ object AiChatRepository {
                 android.util.Log.d(logTag, "parseModelsResponse: parsed as Anthropic format, ${modelsResp.data.size} models")
                 return modelsResp.data.map { it.id }
             }
-        } catch (_: Exception) { }
+            android.util.Log.w(logTag, "parseModelsResponse: Anthropic format parsed but data empty")
+        } catch (e: Exception) {
+            android.util.Log.w(logTag, "parseModelsResponse: Anthropic parse failed: ${e.message}")
+        }
 
-        android.util.Log.w(logTag, "parseModelsResponse: failed to parse response body")
+        android.util.Log.w(logTag, "parseModelsResponse: failed to parse response body, body=${body.take(500)}")
         return emptyList()
     }
 
@@ -120,14 +140,19 @@ object AiChatRepository {
 
         client.newCall(httpRequest).enqueue(object : okhttp3.Callback {
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                val startMs = System.currentTimeMillis()
                 response.use { resp ->
+                    val elapsedMs = System.currentTimeMillis() - startMs
                     if (!resp.isSuccessful) {
                         val errorBody = resp.body?.string() ?: "Unknown error"
-                        android.util.Log.w(logTag, "streamChat HTTP ${resp.code}: $errorBody")
+                        val headers = resp.headers.toMultimap()
+                            .map { (k, v) -> "$k=${v.joinToString(",")}" }
+                            .joinToString("; ")
+                        android.util.Log.w(logTag, "streamChat HTTP ${resp.code} in ${elapsedMs}ms body=$errorBody headers=$headers")
                         onComplete("HTTP ${resp.code}: $errorBody")
                         return
                     }
-                    android.util.Log.d(logTag, "streamChat connected HTTP ${resp.code}")
+                    android.util.Log.d(logTag, "streamChat connected HTTP ${resp.code} in ${elapsedMs}ms")
                     try {
                         when (protocol) {
                             ApiProtocol.OPENAI -> parseOpenAiStream(resp, onChunk, onToolCall, onComplete)
@@ -185,7 +210,11 @@ object AiChatRepository {
             val response = client.newCall(httpRequest).execute()
             response.use { resp ->
                 if (!resp.isSuccessful) {
-                    android.util.Log.w(logTag, "summarizeMessages HTTP ${resp.code}")
+                    val errorBody = resp.body?.string() ?: "Unknown error"
+                    val headers = resp.headers.toMultimap()
+                        .map { (k, v) -> "$k=${v.joinToString(",")}" }
+                        .joinToString("; ")
+                    android.util.Log.w(logTag, "summarizeMessages HTTP ${resp.code} body=$errorBody headers=$headers")
                     return@withContext ""
                 }
                 val respBody = resp.body?.string() ?: return@withContext ""

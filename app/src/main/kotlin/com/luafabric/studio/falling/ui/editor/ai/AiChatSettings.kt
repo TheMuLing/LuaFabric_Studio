@@ -25,7 +25,7 @@ object AiSettingsManager {
             val prefs = runBlocking { context.aiDataStore.data.first() }
             val json = prefs[stringPreferencesKey(KEY_AI_CONFIG)]
             if (json != null) {
-                _config = gson.fromJson(json, AiConfig::class.java)
+                _config = gson.fromJson(json, AiConfig::class.java).normalized()
             }
         } catch (_: Exception) { }
         return _config

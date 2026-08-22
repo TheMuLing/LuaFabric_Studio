@@ -2,6 +2,8 @@ package com.luafabric.studio.falling.ui.editor.ai
 
 import com.google.gson.annotations.SerializedName
 
+private fun <T> T?.orDefault(default: T): T = this ?: default
+
 // ========== API Protocol Models ==========
 
 data class OpenAiChatRequest(
@@ -298,6 +300,18 @@ data class AiConfig(
             if (model.isNotBlank()) return model
             return if (resolvedProtocol == ApiProtocol.OPENAI) DEFAULT_OPENAI_MODEL else DEFAULT_ANTHROPIC_MODEL
         }
+
+    // Gson 反序列化不会应用 Kotlin 默认值，旧数据/缺失字段可能为 null，统一归一化避免 NPE
+    fun normalized(): AiConfig = copy(
+        protocol = protocol.orDefault(ApiProtocol.OPENAI),
+        apiKey = apiKey.orDefault(""),
+        baseUrl = baseUrl.orDefault(""),
+        model = model.orDefault(""),
+        customModels = customModels.orDefault(emptyList()),
+        providers = providers.orDefault(emptyList()),
+        skills = skills.orDefault(emptyList()),
+        memories = memories.orDefault(emptyList())
+    )
 
     companion object {
         val DEFAULT_KEY = ""
