@@ -4,6 +4,33 @@
 
 # 更新日志
 
+## 26.08.22
+- 侧边栏"赞助"与"设置"位置互换
+- 侧边栏新增"手册"页（Material MenuBook 图标，页面暂空置，后续填充）
+- 版本号更新：`versionCode 26082201` / `versionName 26.08.22`
+- AI 聊天：
+  - 修复点击历史对话闪退（旧数据 `summary`/`messages` 空检查 + LazyColumn 唯一 key）
+  - 修复软键盘输入括号失败、光标左移（输入框本地状态化 + 保留输入法 composition）
+  - 修复右下角置底按钮无法完全置底（滚动对齐末条消息底部）
+  - 修复 AI 无法使用记忆工具函数（agent 循环内每轮重建 API 消息，工具调用/结果正确回传）
+  - 系统提示词写明当前环境为 LuaFabric Studio
+  - 修复 AI 消息 Markdown/LaTeX 渲染闪退（注册 MarkwonInlineParserPlugin）
+  - LaTeX 预处理兼容 `\(...\)` / `\[...\]` 写法
+  - 表格文字溢出修复（`includeFontPadding` + TablePlugin）
+  - 工具/SKILL 注入修复（系统提示词包含工具/技能/记忆）
+  - 工具函数从系统提示词移至 API 请求 `tools` 字段，避免 token 浪费
+  - 上下文压缩：消息 ≥30 条时压缩旧消息为滚动摘要，保留最近 20 条，摘要持久化到历史
+  - 标题栏改为下钻式二级菜单（ChevronRight 图标）
+  - 输入框输入 `/` 弹出技能补全列表
+  - AI 标签页右下角新增回到顶部/底部按钮
+  - 修复文件树/AI 标签切换导致对话状态与模型选中态重置（SaveableStateHolder）
+  - 修复选择技能后光标被挪到开头（TextFieldValue 管理光标）
+  - 历史记录打开对话自动滚动到底部
+  - Markdown 渲染从 WebView 迁移至 Markwon（移除 html 预览资源）
+- 构建：
+  - 修复 Release 构建 R8 报错（Markwon 可选依赖 SVG/GIF 缺失类添加 `-dontwarn` 规则）
+  - 修复 Release lint 报错（默认 locale 补充缺失的 `licenses_title` 字符串）
+
 ## 26.08.21
 - 修复 `require "socket"` 无法加载的问题（新增 `luaopen_socket` 别名符号）
 - 修复返回键退出后重进项目进度条卡死（初始化/加载逻辑判断优化）
