@@ -127,6 +127,7 @@ data class ProjectItem(
 // 主内容类型枚举
 enum class MainContentType {
     PROJECTS,
+    MANUAL,
     SETTINGS,
     ABOUT,
     SPONSOR
@@ -433,8 +434,9 @@ fun MainScreen(
     val pageOrder =
         listOf(
             MainContentType.PROJECTS,
-            MainContentType.SETTINGS,
+            MainContentType.MANUAL,
             MainContentType.SPONSOR,
+            MainContentType.SETTINGS,
             MainContentType.ABOUT
         )
 
@@ -739,18 +741,18 @@ fun MainScreen(
 
                     NavigationDrawerItem(
                         label = {
-                            Text(stringResource(R.string.settings), fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.manual), fontWeight = FontWeight.Medium)
                         },
-                        selected = currentContentType == MainContentType.SETTINGS,
+                        selected = currentContentType == MainContentType.MANUAL,
                         onClick = {
-                            currentContentType = MainContentType.SETTINGS
+                            currentContentType = MainContentType.MANUAL
                             scope.launch { drawerState.close() }
                         },
                         icon = {
                             Icon(
-                                Icons.Filled.Settings,
-                                contentDescription = stringResource(R.string.settings),
-                                tint = if (currentContentType == MainContentType.SETTINGS)
+                                Icons.Filled.MenuBook,
+                                contentDescription = stringResource(R.string.manual),
+                                tint = if (currentContentType == MainContentType.MANUAL)
                                     MaterialTheme.colorScheme.primary
                                 else
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -782,6 +784,37 @@ fun MainScreen(
                                 Icons.Filled.MonetizationOn,
                                 contentDescription = stringResource(R.string.sponsor),
                                 tint = if (currentContentType == MainContentType.SPONSOR)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedContainerColor = Color.Transparent,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        label = {
+                            Text(stringResource(R.string.settings), fontWeight = FontWeight.Medium)
+                        },
+                        selected = currentContentType == MainContentType.SETTINGS,
+                        onClick = {
+                            currentContentType = MainContentType.SETTINGS
+                            scope.launch { drawerState.close() }
+                        },
+                        icon = {
+                            Icon(
+                                Icons.Filled.Settings,
+                                contentDescription = stringResource(R.string.settings),
+                                tint = if (currentContentType == MainContentType.SETTINGS)
                                     MaterialTheme.colorScheme.primary
                                 else
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -910,6 +943,7 @@ fun MainScreen(
                             Text(
                                 text = when (currentContentType) {
                                     MainContentType.PROJECTS -> stringResource(R.string.app_name)
+                                    MainContentType.MANUAL -> stringResource(R.string.manual)
                                     MainContentType.SETTINGS -> stringResource(R.string.settings)
                                     MainContentType.ABOUT -> stringResource(R.string.about)
                                     MainContentType.SPONSOR -> stringResource(R.string.sponsor)
@@ -1013,7 +1047,7 @@ fun MainScreen(
                                 }
                             }
 
-                            MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR -> {
+                            MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR -> {
                             }
                         }
                     },
@@ -1046,7 +1080,7 @@ fun MainScreen(
                         )
                     }
 
-                    MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR -> {
+                    MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR -> {
                     }
                 }
             },
@@ -1134,6 +1168,10 @@ fun MainScreen(
                                     }
                                 }
                             }
+                        }
+
+                        MainContentType.MANUAL -> {
+                            ManualScreen()
                         }
 
                         MainContentType.SETTINGS -> {
@@ -1859,6 +1897,12 @@ private const val SPONSOR_QR_MIME = "image/png"
 private const val SPONSOR_QR_SUB_DIR = "LuaFabric_Studio"
 private const val SPONSOR_QR_RELATIVE_PATH = "Pictures/LuaFabric_Studio/sponsor_qr.png"
 private const val WECHAT_PACKAGE = "com.tencent.mm"
+
+@Composable
+private fun ManualScreen() {
+    // 手册页暂空置，后续填充内容
+    Box(modifier = Modifier.fillMaxSize())
+}
 
 @Composable
 private fun SponsorScreen(
