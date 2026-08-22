@@ -15,8 +15,8 @@ android {
         applicationId = "com.luafabric.studio.falling"
         minSdk = 24
         targetSdk = 36
-        versionCode = 26082101
-        versionName = "26.08.21"
+        versionCode = 26082201
+        versionName = "26.08.22"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -214,6 +214,16 @@ dependencies {
     api(libs.coil.compose)
     api(libs.gson)
     api(libs.ktoast)
+
+    // Markwon (Markdown + LaTeX rendering)
+    api(libs.markwon.core)
+    api(libs.markwon.ext.strikethrough)
+    api(libs.markwon.ext.tables)
+    api(libs.markwon.ext.latex)
+    api(libs.markwon.html)
+    api(libs.markwon.linkify)
+    api(libs.markwon.image)
+    api(libs.markwon.ext.tasklist)
     
     api("org.eclipse.jdt:ecj:3.33.0")
     api("com.android.tools:r8:8.2.42")
