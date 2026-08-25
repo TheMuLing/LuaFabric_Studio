@@ -302,9 +302,16 @@ local function save()
 end
 
 function onCreateOptionsMenu(menu)
+  local R = bindClass "com.luafabric.studio.falling.R"
+  local MaterialColors = bindClass "com.google.android.material.color.MaterialColors"
+  local MaterialR = bindClass "com.google.android.material.R"
+  local DrawableCompat = bindClass "androidx.core.graphics.drawable.DrawableCompat"
+  local iconColor = MaterialColors.getColorOrNull(activity, MaterialR.attr.colorOnSurface) or 0xFF000000
+  local icon = DrawableCompat.wrap(activity.getDrawable(R.drawable.ic_content_save_outline).mutate())
+  DrawableCompat.setTint(icon, iconColor)
   menu.add("保存")
   .setShowAsAction(2)
-  .setIcon(bindClass "com.luafabric.studio.falling.R".drawable.ic_content_save_outline)
+  .setIcon(icon)
   .onMenuItemClick = function()
     save()
   end
