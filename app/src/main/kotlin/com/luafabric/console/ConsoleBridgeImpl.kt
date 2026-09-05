@@ -5,6 +5,7 @@ import android.os.Looper
 import android.view.KeyEvent
 import com.luafabric.console.core.ConsoleSettings
 import com.luafabric.console.core.ConsoleState
+import com.luafabric.console.core.FileStateTracker
 import com.luafabric.console.core.SessionManager
 import com.luafabric.console.core.StateMachine
 import com.luafabric.console.output.OutputEntry
@@ -25,6 +26,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     override fun onSessionStart(info: SessionInfo) {
         ConsolePaths.init(context)
         SessionManager.begin(info)
+        FileStateTracker.updateFromSession(info)
         OutputManager.currentFile = info.luaPath ?: ""
         StateMachine.transition(ConsoleState.BALL)
         overlay.showBall()
@@ -70,7 +72,13 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         methodName: String?,
         args: Array<out Any?>?,
         luaState: Long
-    ): MethodCallResult = MethodCallResult.ALLOW
+    ): MethodCallResult {
+        // F2：观察 setContentView（布局判定）/ F3 newActivity 拦截（后续提交）
+        if (methodName == "setContentView" && receiver is android.app.Activity) {
+            FileStateTracker.onSetContentView()
+        }
+        return MethodCallResult.ALLOW
+    }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // 仅完全关闭（CLOSED）状态消费音量下键恢复浮球，其余状态放行。

@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.tabs.TabLayout
+import com.luafabric.console.ui.tabs.FileTabView
 import com.luafabric.console.ui.tabs.OutputTabView
 import com.luafabric.console.ui.tabs.PlaceholderView
 
@@ -93,10 +94,12 @@ class ConsoleSheet(
             view,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         )
+        (view as? FileTabView)?.refresh()
     }
 
     private fun buildTab(pos: Int): View = when (pos) {
         0 -> OutputTabView(context)
+        1 -> FileTabView(context)
         else -> PlaceholderView(context, tabName(pos))
     }
 
