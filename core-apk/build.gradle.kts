@@ -12,9 +12,9 @@ android {
 
     defaultConfig {
         applicationId = "com.luafabric.studio.falling.core"
-        minSdk = 23
+        minSdk = 29
         targetSdk = 36
-        versionCode = 1
+        versionCode = 1001
         versionName = "1.0.0"
 
         vectorDrawables {
@@ -35,8 +35,8 @@ android {
     }*/
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     /* 新的 Kotlin compilerOptions 配置
@@ -87,7 +87,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("../app/src/main/jni/CMakeLists.txt")
-            version = "3.31.6"
+            version = "4.4.3"
         }
     }
 

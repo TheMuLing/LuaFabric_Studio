@@ -13,10 +13,10 @@ android {
 
     defaultConfig {
         applicationId = "com.luafabric.studio.falling"
-        minSdk = 24
+        minSdk = 29
         targetSdk = 36
-        versionCode = 26082501
-        versionName = "26.08.25"
+        versionCode = 26090501
+        versionName = "26.09.05"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -52,13 +52,13 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     
     kotlin {
        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         }
     }
 
@@ -119,7 +119,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/jni/CMakeLists.txt")
-            version = "3.31.6"
+            version = "4.4.3"
         }
     }
 
@@ -224,6 +224,7 @@ dependencies {
     api(libs.markwon.linkify)
     api(libs.markwon.image)
     api(libs.markwon.ext.tasklist)
+    api(libs.markwon.inline.parser)
     
     api("org.eclipse.jdt:ecj:3.33.0")
     api("com.android.tools:r8:8.2.42")

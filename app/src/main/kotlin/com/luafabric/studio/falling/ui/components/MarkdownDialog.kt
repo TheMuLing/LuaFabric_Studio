@@ -42,6 +42,7 @@ import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 import io.noties.markwon.image.ImagesPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 import kotlinx.coroutines.Dispatchers
@@ -185,6 +186,7 @@ private fun MarkdownViewContent(
 
     val markwon = remember(context) {
         Markwon.builder(context)
+            .usePlugin(MarkwonInlineParserPlugin.create())
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TablePlugin.create(context))
             .usePlugin(HtmlPlugin.create())
@@ -209,12 +211,13 @@ private fun MarkdownViewContent(
         }
     }
 
-    Box(modifier = modifier.verticalScroll(rememberScrollState())) {
+    Box(modifier = modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
         markdownContent?.let { content ->
             AndroidView(
                 factory = { ctx ->
                     TextView(ctx).apply {
                         movementMethod = LinkMovementMethod.getInstance()
+                        setTextIsSelectable(true)
                         textSize = 14f
                         includeFontPadding = false
                         setPadding(16, 16, 16, 16)
