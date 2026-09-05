@@ -8,6 +8,7 @@ import com.luafabric.console.core.ConsoleState
 import com.luafabric.console.core.FileStateTracker
 import com.luafabric.console.core.SessionManager
 import com.luafabric.console.core.StateMachine
+import com.luafabric.console.intercept.NewActivityInterceptor
 import com.luafabric.console.output.OutputEntry
 import com.luafabric.console.output.OutputManager
 import com.luafabric.console.output.TypeResolver
@@ -22,6 +23,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
 
     private val settings = ConsoleSettings(context)
     private val overlay = OverlayController(context)
+    private val newActivityInterceptor = NewActivityInterceptor(context)
 
     override fun onSessionStart(info: SessionInfo) {
         ConsolePaths.init(context)
@@ -73,11 +75,12 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         args: Array<out Any?>?,
         luaState: Long
     ): MethodCallResult {
-        // F2：观察 setContentView（布局判定）/ F3 newActivity 拦截（后续提交）
+        // F2：观察 setContentView（布局判定）
         if (methodName == "setContentView" && receiver is android.app.Activity) {
             FileStateTracker.onSetContentView()
         }
-        return MethodCallResult.ALLOW
+        // F3：newActivity 阻塞确认 / 同参丢弃 / 异参列表单选
+        return newActivityInterceptor.intercept(receiver, methodName, args)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
