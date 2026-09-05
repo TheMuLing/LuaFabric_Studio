@@ -1573,6 +1573,7 @@ public class LuaActivity extends AppCompatActivity
     Map<String, Integer> out = new HashMap<>();
     if (L == null || L.getTop() < 1) return out;
     int base = L.getTop(); // 模块表位于 base（绝对索引）
+    if (L.type(base) != LuaState.LUA_TTABLE) return out; // 模块非 table（string/function 等）直接跳过，防止 lua_next 原生崩溃
     try {
       L.getGlobal("debug"); // base+1
       if (L.type(base + 1) == LuaState.LUA_TTABLE) {
@@ -1598,7 +1599,7 @@ public class LuaActivity extends AppCompatActivity
               }
             }
             L.setTop(base + 4);
-            L.pop(2); // key + value
+            L.pop(1); // 仅弹 value，保留 key 供下一轮 lua_next
           }
         }
       }
