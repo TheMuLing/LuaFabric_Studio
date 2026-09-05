@@ -2,6 +2,8 @@ package com.luafabric.studio.falling.core.console;
 
 import android.view.KeyEvent;
 
+import java.util.Map;
+
 /**
  * 调试控制台桥接口。
  *
@@ -46,8 +48,8 @@ public interface DebugConsoleBridge {
     /** Lua 侧显式调用 activity.runFunc 且事件实际触发。 */
     default void onEvent(String funcName, Object[] args) {}
 
-    /** Lua 侧 require 模块。 */
-    default void onRequire(String moduleName) {}
+    /** Lua 侧 require 模块（模块加载后，附 C/Lua 库函数名 → debug.getinfo 参数个数）。 */
+    default void onRequire(String moduleName, Map<String, Integer> funcParams) {}
 
     /** Lua 侧 bindClass 绑定 Java 类。 */
     default void onBindClass(String className, Class<?> clazz) {}

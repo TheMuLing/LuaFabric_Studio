@@ -1211,20 +1211,22 @@ public class LuaActivity extends AppCompatActivity
           new JavaFunction(L) {
             @Override
             public int execute() throws LuaException {
-              if (L.type(2) == LuaState.LUA_TSTRING) {
-                DebugConsoleBridge bridge = DebugConsoleRegistry.get();
-                if (bridge != null) {
-                  try {
-                    bridge.onRequire(L.toString(2));
-                  } catch (Exception ignored) {
-                  }
-                }
-              }
+              String name = (L.type(2) == LuaState.LUA_TSTRING) ? L.toString(2) : null;
               if (originalRequire != null && !originalRequire.isNil()) {
                 L.pushObjectValue(originalRequire);
                 L.pushValue(2);
                 int ok = L.pcall(1, 1, 0);
-                if (ok == 0) return 1;
+                if (ok == 0) {
+                  // 调试控制台：模块加载后枚举 C/Lua 库函数名与 debug.getinfo 参数个数
+                  DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+                  if (bridge != null && name != null) {
+                    try {
+                      bridge.onRequire(name, probeRequireFunctions(L));
+                    } catch (Exception ignored) {
+                    }
+                  }
+                  return 1;
+                }
                 throw new LuaException("require failed: " + L.toString(-1));
               }
               return 0;
@@ -1528,6 +1530,50 @@ public class LuaActivity extends AppCompatActivity
     message.what = 0;
     handler.sendMessage(message);
     Log.i("lua", msg);
+  }
+
+  /**
+   * 调试控制台：枚举 require 返回模块表的函数名与 debug.getinfo 参数个数。
+   * 纯只读探针，结束时恢复栈顶，异常时返回空表。
+   */
+  private static Map<String, Integer> probeRequireFunctions(LuaState L) {
+    Map<String, Integer> out = new HashMap<>();
+    if (L == null || L.getTop() < 1) return out;
+    int base = L.getTop(); // 模块表位于 base（绝对索引）
+    try {
+      L.getGlobal("debug"); // base+1
+      if (L.type(base + 1) == LuaState.LUA_TTABLE) {
+        L.getField(base + 1, "getinfo"); // base+2
+        if (L.type(base + 2) == LuaState.LUA_TFUNCTION) {
+          L.pushNil(); // base+3 遍历 key
+          while (L.next(base) != 0) { // 模块表 base，key base+3，value base+4
+            if (L.type(base + 3) == LuaState.LUA_TSTRING
+                && L.type(base + 4) == LuaState.LUA_TFUNCTION) {
+              String fname = L.toString(base + 3);
+              L.pushValue(base + 2); // getinfo 函数 base+5
+              L.pushValue(base + 4); // 目标函数 base+6
+              L.pushString("u"); // base+7
+              int ok = L.pcall(2, 1, 0);
+              if (ok == 0 && L.type(base + 5) == LuaState.LUA_TTABLE) {
+                L.getField(base + 5, "nparams"); // base+6
+                int np =
+                    (L.type(base + 6) == LuaState.LUA_TNUMBER)
+                        ? (int) L.toInteger(base + 6)
+                        : -1;
+                out.put(fname, np);
+                L.setTop(base + 5);
+              }
+            }
+            L.setTop(base + 4);
+            L.pop(2); // key + value
+          }
+        }
+      }
+    } catch (Exception ignored) {
+      out.clear();
+    }
+    L.setTop(base);
+    return out;
   }
 
   @Override

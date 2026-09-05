@@ -8,6 +8,8 @@ import com.luafabric.console.core.ConsoleState
 import com.luafabric.console.core.FileStateTracker
 import com.luafabric.console.core.SessionManager
 import com.luafabric.console.core.StateMachine
+import com.luafabric.console.env.LuaEnvironment
+import com.luafabric.console.env.ModuleTracker
 import com.luafabric.console.intercept.NewActivityInterceptor
 import com.luafabric.console.output.OutputEntry
 import com.luafabric.console.output.OutputManager
@@ -29,6 +31,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         ConsolePaths.init(context)
         SessionManager.begin(info)
         FileStateTracker.updateFromSession(info)
+        LuaEnvironment.probe(info.luaState)
         OutputManager.currentFile = info.luaPath ?: ""
         StateMachine.transition(ConsoleState.BALL)
         overlay.showBall()
@@ -38,6 +41,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     override fun onSessionEnd(info: SessionInfo) {
         overlay.closeAll()
         StateMachine.transition(ConsoleState.IDLE)
+        ModuleTracker.clear()
         SessionManager.end()
         // F5 记录终点 / 归档（后续提交）
     }
@@ -97,12 +101,12 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         // F6（后续提交）
     }
 
-    override fun onRequire(moduleName: String?) {
-        // F4（后续提交）
+    override fun onRequire(moduleName: String?, funcParams: Map<String, Int>?) {
+        ModuleTracker.recordRequire(OutputManager.currentFile, moduleName, funcParams)
     }
 
     override fun onBindClass(className: String?, clazz: Class<*>?) {
-        // F4（后续提交）
+        ModuleTracker.recordBindClass(OutputManager.currentFile, className, clazz)
     }
 
     private fun appendEntry(label: String, primary: String, luaTypes: List<String> = emptyList(), typeDetails: List<String> = emptyList()) {
