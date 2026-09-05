@@ -4,10 +4,14 @@ import android.content.Context
 import android.os.Looper
 import android.view.KeyEvent
 import com.luafabric.console.core.ConsoleSettings
+import com.luafabric.console.core.ConsoleState
+import com.luafabric.console.core.SessionManager
+import com.luafabric.console.core.StateMachine
 import com.luafabric.console.output.OutputEntry
 import com.luafabric.console.output.OutputManager
 import com.luafabric.console.output.TypeResolver
 import com.luafabric.console.persist.ConsolePaths
+import com.luafabric.console.ui.OverlayController
 import com.luafabric.studio.falling.core.console.DebugConsoleBridge
 import com.luafabric.studio.falling.core.console.MethodCallResult
 import com.luafabric.studio.falling.core.console.SessionInfo
@@ -16,14 +20,21 @@ import com.luafabric.studio.falling.core.console.SessionInfo
 class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
 
     private val settings = ConsoleSettings(context)
+    private val overlay = OverlayController(context)
 
     override fun onSessionStart(info: SessionInfo) {
         ConsolePaths.init(context)
+        SessionManager.begin(info)
         OutputManager.currentFile = info.luaPath ?: ""
+        StateMachine.transition(ConsoleState.BALL)
+        overlay.showBall()
         // F5 记录起点 / F7 debugParams 注入（后续提交）
     }
 
     override fun onSessionEnd(info: SessionInfo) {
+        overlay.closeAll()
+        StateMachine.transition(ConsoleState.IDLE)
+        SessionManager.end()
         // F5 记录终点 / 归档（后续提交）
     }
 
@@ -61,7 +72,15 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         luaState: Long
     ): MethodCallResult = MethodCallResult.ALLOW
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean = false
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // 仅完全关闭（CLOSED）状态消费音量下键恢复浮球，其余状态放行。
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN && StateMachine.state == ConsoleState.CLOSED) {
+            StateMachine.transition(ConsoleState.BALL)
+            overlay.showBall()
+            return true
+        }
+        return false
+    }
 
     override fun onEvent(funcName: String?, args: Array<out Any?>?) {
         // F6（后续提交）

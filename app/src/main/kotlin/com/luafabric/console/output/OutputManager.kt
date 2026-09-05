@@ -43,6 +43,14 @@ object OutputManager {
         notifyChange()
     }
 
+    /** 仅清空当前文件缓冲（会话内其他文件缓冲保留）。 */
+    fun clearCurrentFile() {
+        if (currentFile.isNotBlank()) {
+            pool.getOrCreate(currentFile).clear()
+            notifyChange()
+        }
+    }
+
     fun addListener(l: Listener) = listeners.addIfAbsent(l)
 
     fun removeListener(l: Listener) = listeners.remove(l)

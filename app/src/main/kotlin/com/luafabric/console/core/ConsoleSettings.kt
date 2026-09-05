@@ -16,4 +16,9 @@ class ConsoleSettings(context: Context) {
     var parseDepth: Int
         get() = sp.getInt("parse_depth", 2)
         set(v) = sp.edit().putInt("parse_depth", v).apply()
+
+    /** 是否已首次完全关闭控制台（用于只提示一次音量键恢复）。 */
+    var firstCloseDone: Boolean
+        get() = sp.getBoolean("first_close_done", false)
+        set(v) = sp.edit().putBoolean("first_close_done", v).apply()
 }
