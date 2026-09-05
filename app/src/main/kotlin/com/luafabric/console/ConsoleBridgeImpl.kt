@@ -6,6 +6,7 @@ import android.os.Looper
 import android.view.KeyEvent
 import com.luafabric.console.core.ConsoleSettings
 import com.luafabric.console.core.ConsoleState
+import com.luafabric.console.core.EventTracker
 import com.luafabric.console.core.FileStateTracker
 import com.luafabric.console.core.SessionManager
 import com.luafabric.console.core.StateMachine
@@ -54,6 +55,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         overlay.closeAll()
         StateMachine.transition(ConsoleState.IDLE)
         LogcatManager.stop()
+        EventTracker.clear()
         ModuleTracker.clear()
         SessionManager.end()
         // 归档（后续提交）
@@ -114,7 +116,13 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     }
 
     override fun onEvent(funcName: String?, args: Array<out Any?>?) {
-        // F6（后续提交）
+        EventTracker.record(
+            file = FileStateTracker.relativePath.ifBlank { OutputManager.currentFile },
+            funcName = funcName ?: "?",
+            args = args,
+            timeMs = System.currentTimeMillis(),
+            isMainThread = Looper.getMainLooper().thread === Thread.currentThread()
+        )
     }
 
     override fun onRequire(moduleName: String?, funcParams: Map<String, Int>?) {
