@@ -1,6 +1,7 @@
 package com.luafabric.console
 
 import android.content.Context
+import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import com.luafabric.console.core.ConsoleSettings
@@ -11,11 +12,14 @@ import com.luafabric.console.core.StateMachine
 import com.luafabric.console.env.LuaEnvironment
 import com.luafabric.console.env.ModuleTracker
 import com.luafabric.console.intercept.NewActivityInterceptor
+import com.luafabric.console.logcat.LogcatManager
 import com.luafabric.console.output.OutputEntry
 import com.luafabric.console.output.OutputManager
 import com.luafabric.console.output.TypeResolver
 import com.luafabric.console.persist.ConsolePaths
+import com.luafabric.console.persist.CrashCapture
 import com.luafabric.console.ui.OverlayController
+import java.io.File
 import com.luafabric.studio.falling.core.console.DebugConsoleBridge
 import com.luafabric.studio.falling.core.console.MethodCallResult
 import com.luafabric.studio.falling.core.console.SessionInfo
@@ -27,24 +31,36 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     private val overlay = OverlayController(context)
     private val newActivityInterceptor = NewActivityInterceptor(context)
 
+    init {
+        CrashCapture.install()
+        CrashCapture.onCrash = {
+            Handler(Looper.getMainLooper()).post { overlay.setBallRed(true) }
+        }
+    }
+
     override fun onSessionStart(info: SessionInfo) {
         ConsolePaths.init(context)
         SessionManager.begin(info)
         FileStateTracker.updateFromSession(info)
         LuaEnvironment.probe(info.luaState)
         OutputManager.currentFile = info.luaPath ?: ""
+        LogcatManager.start(projectName(info))
         StateMachine.transition(ConsoleState.BALL)
         overlay.showBall()
-        // F5 记录起点 / F7 debugParams 注入（后续提交）
+        // F7 debugParams 注入（后续提交）
     }
 
     override fun onSessionEnd(info: SessionInfo) {
         overlay.closeAll()
         StateMachine.transition(ConsoleState.IDLE)
+        LogcatManager.stop()
         ModuleTracker.clear()
         SessionManager.end()
-        // F5 记录终点 / 归档（后续提交）
+        // 归档（后续提交）
     }
+
+    private fun projectName(info: SessionInfo): String =
+        (info.luaDir?.let { File(it).name }?.ifBlank { null }) ?: "project"
 
     override fun onPrint(text: String?, luaTypes: IntArray?, rawArgs: Array<out Any?>?) {
         val depth = settings.parseDepth

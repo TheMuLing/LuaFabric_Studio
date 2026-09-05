@@ -145,5 +145,10 @@ class OverlayController(private val appContext: Context) {
 
     fun isBallShowing(): Boolean = ball != null
 
+    /** 崩溃提示：浮球变红。 */
+    fun setBallRed(red: Boolean) {
+        ball?.setRed(red)
+    }
+
     private fun hostActivity(): Activity? = SessionManager.activity
 }

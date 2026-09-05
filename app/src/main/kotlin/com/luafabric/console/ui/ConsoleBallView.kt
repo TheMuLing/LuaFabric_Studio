@@ -26,6 +26,12 @@ class ConsoleBallView(context: Context, private val onTap: () -> Unit) : View(co
 
     var onMove: ((dx: Float, dy: Float) -> Unit)? = null
 
+    /** 崩溃提示：浮球变红。 */
+    fun setRed(red: Boolean) {
+        paint.color = if (red) 0xFFE53935.toInt() else 0xFF3D5AFE.toInt()
+        invalidate()
+    }
+
     init {
         contentDescription = "控制台"
     }
