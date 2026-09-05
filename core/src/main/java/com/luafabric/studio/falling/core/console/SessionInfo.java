@@ -15,6 +15,9 @@ public class SessionInfo {
     public final long startTimeMs;
     public final boolean debugMode;
 
+    /** F7：跨 Intent 携带的调试参数 JSON（Lua 侧注入为全局 debugParams 表），可为 null。 */
+    public final String debugParamsJson;
+
     public SessionInfo(
             Activity activity,
             LuaState luaState,
@@ -22,7 +25,8 @@ public class SessionInfo {
             String luaDir,
             String luaExtDir,
             long startTimeMs,
-            boolean debugMode) {
+            boolean debugMode,
+            String debugParamsJson) {
         this.activity = activity;
         this.luaState = luaState;
         this.luaPath = luaPath;
@@ -30,5 +34,6 @@ public class SessionInfo {
         this.luaExtDir = luaExtDir;
         this.startTimeMs = startTimeMs;
         this.debugMode = debugMode;
+        this.debugParamsJson = debugParamsJson;
     }
 }

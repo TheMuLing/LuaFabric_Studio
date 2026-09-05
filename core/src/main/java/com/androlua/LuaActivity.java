@@ -109,6 +109,8 @@ public class LuaActivity extends AppCompatActivity
   private LuaObject mOnActivityReenter;
   private String localDir;
 
+  private SessionInfo consoleSession;
+
   private String odexDir;
 
   private String libDir;
@@ -222,6 +224,25 @@ public class LuaActivity extends AppCompatActivity
       luaLpath =
           (luaDir + "/?.lua;" + luaDir + "/lua/?.lua;" + luaDir + "/?/settings.json;") + luaLpath;
       initLua();
+
+      // 调试控制台：会话开始（须在 doFile 前，保证 debugParams 可注入 LuaState）
+      DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+      if (bridge != null) {
+        try {
+          consoleSession =
+              new SessionInfo(
+                  this,
+                  L,
+                  luaPath,
+                  luaDir,
+                  luaExtDir,
+                  System.currentTimeMillis(),
+                  mDebug,
+                  getIntent().getStringExtra("debugParams"));
+          bridge.onSessionStart(consoleSession);
+        } catch (Exception ignored) {
+        }
+      }
 
       mLuaDexLoader = new LuaDexLoader(this);
       mLuaDexLoader.loadLibs();
@@ -613,6 +634,18 @@ public class LuaActivity extends AppCompatActivity
 
   @Override
   protected void onDestroy() {
+    // 调试控制台：会话结束（归档旧会话 / 停止 logcat / 移除浮球）
+    if (consoleSession != null) {
+      DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+      if (bridge != null) {
+        try {
+          bridge.onSessionEnd(consoleSession);
+        } catch (Exception ignored) {
+        }
+      }
+      consoleSession = null;
+    }
+
     if (mReceiver != null) unregisterReceiver(mReceiver);
 
     for (LuaGcable obj : gclist) {

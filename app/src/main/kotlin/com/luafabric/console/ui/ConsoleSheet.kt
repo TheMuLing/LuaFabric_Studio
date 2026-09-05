@@ -8,14 +8,15 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.tabs.TabLayout
+import com.luafabric.console.ui.tabs.DebugTabView
 import com.luafabric.console.ui.tabs.EnvTabView
 import com.luafabric.console.ui.tabs.EventTabView
 import com.luafabric.console.ui.tabs.FileTabView
 import com.luafabric.console.ui.tabs.LogcatTabView
 import com.luafabric.console.ui.tabs.OutputTabView
-import com.luafabric.console.ui.tabs.PlaceholderView
 
 /**
  * 控制台面板：Modal BottomSheet + TabLayout（输出/文件/事件/环境/Logcat/调试）+ 完全关闭。
@@ -58,7 +59,14 @@ class ConsoleSheet(
                 text = "完全关闭"
                 textSize = 13f
                 setPadding(ctx.dp(12), ctx.dp(8), ctx.dp(12), ctx.dp(8))
-                setOnClickListener { onFullyClosed() }
+                // F7：最后界面关闭二次确认
+                setOnClickListener {
+                    AlertDialog.Builder(ctx)
+                        .setMessage("确认完全关闭控制台？关闭后按音量 - 键可恢复浮球。")
+                        .setPositiveButton("关闭") { _, _ -> onFullyClosed() }
+                        .setNegativeButton("取消", null)
+                        .show()
+                }
             }
         )
 
@@ -103,6 +111,7 @@ class ConsoleSheet(
         (view as? FileTabView)?.refresh()
         (view as? EnvTabView)?.refresh()
         (view as? EventTabView)?.refresh()
+        (view as? DebugTabView)?.refresh()
         (view as? LogcatTabView)?.apply {
             refresh()
             startPolling()
@@ -115,14 +124,6 @@ class ConsoleSheet(
         2 -> EventTabView(context)
         3 -> EnvTabView(context)
         4 -> LogcatTabView(context)
-        else -> PlaceholderView(context, tabName(pos))
-    }
-
-    private fun tabName(pos: Int): String = when (pos) {
-        1 -> "文件"
-        2 -> "事件"
-        3 -> "环境"
-        4 -> "Logcat"
-        else -> "调试"
+        else -> DebugTabView(context)
     }
 }
