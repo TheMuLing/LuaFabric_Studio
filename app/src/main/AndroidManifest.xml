@@ -203,6 +203,11 @@
 
         <activity android:name=".ui.crash.CrashLogActivity" />
 
+        <provider
+            android:name="com.luafabric.console.ConsoleInitializer"
+            android:authorities="${applicationId}.consoleinit"
+            android:exported="false" />
+
         <service
             android:name="com.androlua.LuaService"
             android:enabled="true" />

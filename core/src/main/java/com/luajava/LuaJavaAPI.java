@@ -32,9 +32,14 @@ import android.os.Build;
 
 import com.android.cglib.proxy.EnhancerInterface;
 import com.android.cglib.proxy.MethodFilter;
+import com.androlua.LuaActivity;
 import com.androlua.LuaBitmap;
 import com.androlua.LuaEnhancer;
 import com.androlua.LuaGcable;
+import com.luafabric.studio.falling.core.console.ConsoleCallMarker;
+import com.luafabric.studio.falling.core.console.DebugConsoleBridge;
+import com.luafabric.studio.falling.core.console.DebugConsoleRegistry;
+import com.luafabric.studio.falling.core.console.MethodCallResult;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
@@ -119,10 +124,64 @@ public final class LuaJavaAPI {
         }
     }
 
+    /**
+     * 调试控制台方法调用拦截。桥未注册或目标不命中时直接放行；参数转换只读、不弹栈。
+     * 阻塞类确认（如 newActivity）由桥实现自行处理，此处不持有 Lua 栈锁。
+     */
+    private static MethodCallResult interceptMethodCall(long luaState, Object obj, String cacheName)
+            throws LuaException {
+        DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+        if (bridge == null) return MethodCallResult.ALLOW;
+        boolean interesting =
+                (obj instanceof LuaActivity)
+                        || (obj instanceof Class
+                                && ("makeText".equals(cacheName) || "make".equals(cacheName)));
+        if (!interesting) return MethodCallResult.ALLOW;
+
+        if (obj instanceof LuaActivity && "runFunc".equals(cacheName)) {
+            ConsoleCallMarker.set();
+        }
+
+        LuaState L = LuaStateFactory.getExistingState(luaState);
+        Object[] args;
+        synchronized (L) {
+            int top = L.getTop();
+            args = new Object[top];
+            for (int i = 0; i < top; i++) {
+                try {
+                    args[i] = L.toJavaObject(i + 1);
+                } catch (Exception e) {
+                    args[i] = null;
+                }
+            }
+        }
+        try {
+            return bridge.onMethodCall(obj, cacheName, args, luaState);
+        } catch (Exception e) {
+            return MethodCallResult.ALLOW;
+        }
+    }
+
     public static int callMethod(long luaState, int idx, String cacheName)
             throws LuaException {
         LuaState L = LuaStateFactory.getExistingState(luaState);
         Object obj = L.getJavaObject(idx);
+
+        // 调试控制台：方法调用拦截（newActivity / setContentView / runFunc / Toast.makeText / Snackbar.make）
+        MethodCallResult intercept = interceptMethodCall(luaState, obj, cacheName);
+        if (intercept.status == MethodCallResult.Status.VETO) {
+            synchronized (L) {
+                L.pushNil();
+            }
+            return 1;
+        }
+        if (intercept.status == MethodCallResult.Status.REPLACE) {
+            synchronized (L) {
+                L.pushObjectValue(intercept.replaceValue);
+            }
+            return 1;
+        }
+
         synchronized (L) {
             StringBuilder msgBuilder = new StringBuilder();
             Method method = null;
@@ -626,7 +685,15 @@ public final class LuaJavaAPI {
 
     public static int javaBindClass(long luaState, String className) throws LuaException {
         LuaState L = LuaStateFactory.getExistingState(luaState);
-        L.pushJavaObject(bindClass(className));
+        Class<?> clazz = bindClass(className);
+        DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+        if (bridge != null) {
+            try {
+                bridge.onBindClass(className, clazz);
+            } catch (Exception ignored) {
+            }
+        }
+        L.pushJavaObject(clazz);
         return 1;
     }
 

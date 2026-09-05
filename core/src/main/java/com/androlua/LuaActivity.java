@@ -58,6 +58,10 @@ import com.luajava.LuaState;
 import com.luajava.LuaStateFactory;
 
 import com.luafabric.studio.falling.core.R;
+import com.luafabric.studio.falling.core.console.ConsoleCallMarker;
+import com.luafabric.studio.falling.core.console.DebugConsoleBridge;
+import com.luafabric.studio.falling.core.console.DebugConsoleRegistry;
+import com.luafabric.studio.falling.core.console.SessionInfo;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -690,6 +694,13 @@ public class LuaActivity extends AppCompatActivity
 
   @Override
   public boolean onKeyDown(int keyCode, KeyEvent event) {
+    DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+    if (bridge != null) {
+      try {
+        if (bridge.onKeyDown(keyCode, event)) return true;
+      } catch (Exception ignored) {
+      }
+    }
     if (mOnKeyDown != null) {
       try {
         Object ret = mOnKeyDown.call(keyCode, event);
@@ -1193,6 +1204,35 @@ public class LuaActivity extends AppCompatActivity
     JavaFunction print = new LuaPrint(this, L);
     print.register("print");
 
+    // 调试控制台：按文件跟踪 require（仅控制台桥已注册时挂载）
+    if (DebugConsoleRegistry.get() != null) {
+      final LuaObject originalRequire = L.getLuaObject("require");
+      JavaFunction tracedRequire =
+          new JavaFunction(L) {
+            @Override
+            public int execute() throws LuaException {
+              if (L.type(2) == LuaState.LUA_TSTRING) {
+                DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+                if (bridge != null) {
+                  try {
+                    bridge.onRequire(L.toString(2));
+                  } catch (Exception ignored) {
+                  }
+                }
+              }
+              if (originalRequire != null && !originalRequire.isNil()) {
+                L.pushObjectValue(originalRequire);
+                L.pushValue(2);
+                int ok = L.pcall(1, 1, 0);
+                if (ok == 0) return 1;
+                throw new LuaException("require failed: " + L.toString(-1));
+              }
+              return 0;
+            }
+          };
+      tracedRequire.register("require");
+    }
+
     L.getGlobal("package");
     L.pushString(luaLpath);
     L.setField(-2, "path");
@@ -1386,6 +1426,13 @@ public class LuaActivity extends AppCompatActivity
           L.pushString(funcName);
           L.rawGet(-2);
           if (L.isFunction(-1)) {
+            DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+            if (bridge != null && ConsoleCallMarker.consume()) {
+              try {
+                bridge.onEvent(funcName, args);
+              } catch (Exception ignored) {
+              }
+            }
             L.getGlobal("debug");
             L.getField(-1, "traceback");
             L.remove(-2);

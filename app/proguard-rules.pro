@@ -2,6 +2,9 @@
 -keep class **.R { *; }
 -keep class **.R$* { *; }
 
+# 保留调试控制台（ContentProvider 靠清单引用，桥实现被 core 经接口调用）
+-keep class com.luafabric.console.** { *; }
+
 # 保留指定包下的所有类（含子包）
 -keep class android.widget.** { *; }
 -keep class com.android.** { *; }
