@@ -26,7 +26,9 @@ class OverlayController(private val appContext: Context) {
     private var params: WindowManager.LayoutParams? = null
     private var ball: ConsoleBallView? = null
     private var sheet: ConsoleSheet? = null
+    private var sheetHost: Activity? = null
     private var fallbackAttached = false
+    private var fallbackHost: Activity? = null
 
     fun canOverlay(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(appContext)
@@ -65,6 +67,7 @@ class OverlayController(private val appContext: Context) {
         lp.setMargins(appContext.dp(12), appContext.dp(160), 0, 0)
         (activity.window.decorView as ViewGroup).addView(view, lp)
         fallbackAttached = true
+        fallbackHost = activity
     }
 
     @SuppressLint("NewApi")
@@ -102,12 +105,15 @@ class OverlayController(private val appContext: Context) {
     fun openSheet() {
         if (sheet != null) return
         val activity = hostActivity() ?: return
+        // 宿主已死/正在结束：等待下次 join 重建，防 BadTokenException
+        if (activity.isDestroyed || activity.isFinishing) return
         val s = ConsoleSheet(
             activity = activity,
             onFullyClosed = { fullyClosed() },
             onDismissed = { onSheetDismissedToBall() }
         )
         sheet = s
+        sheetHost = activity
         StateMachine.transition(ConsoleState.PANEL)
         s.show()
     }
@@ -115,6 +121,7 @@ class OverlayController(private val appContext: Context) {
     /** 面板收起但未完全关闭 → 回到浮球。 */
     private fun onSheetDismissedToBall() {
         sheet = null
+        sheetHost = null
         if (ball != null) StateMachine.transition(ConsoleState.BALL)
     }
 
@@ -128,8 +135,42 @@ class OverlayController(private val appContext: Context) {
     }
 
     fun closeAll() {
-        sheet?.dismiss()
-        sheet = null
+        dismissSheetSafe()
+        removeBallView()
+    }
+
+    /**
+     * 后台：收起面板（回调回浮球态）+ 摘除浮球视图；会话/状态保留，回前台按状态恢复。
+     */
+    fun hideForBackground() {
+        dismissSheetSafe()
+        removeBallView()
+    }
+
+    /**
+     * 宿主 Activity 销毁：面板窗口随宿主消失（onDismissed 不触发），须显式 dismiss 防窗口泄漏，
+     * 并清理引用回浮球态，否则 openSheet 被 `sheet != null` 短路、后台 dismiss 死窗口抛 IllegalArg。
+     * fallback 浮球挂宿主 decorView，宿主销毁后视图消失但引用残留 → 一并摘除，等上层重建。
+     */
+    fun onHostDestroyed(activity: Activity) {
+        if (sheetHost === activity) dismissSheetSafe()
+        if (fallbackHost === activity) removeBallView()
+    }
+
+    /** 异常安全：后台/宿主销毁时窗口可能已摘，dismiss 会抛 IllegalArgException。 */
+    private fun dismissSheetSafe() {
+        sheet?.let { s ->
+            try {
+                s.dismiss()
+            } catch (_: Exception) {
+            }
+            sheet = null
+            sheetHost = null
+            StateMachine.transition(ConsoleState.BALL)
+        }
+    }
+
+    private fun removeBallView() {
         ball?.let { b ->
             try {
                 wm?.removeView(b)
@@ -141,9 +182,12 @@ class OverlayController(private val appContext: Context) {
         wm = null
         params = null
         fallbackAttached = false
+        fallbackHost = null
     }
 
     fun isBallShowing(): Boolean = ball != null
+
+    fun isSheetShowing(): Boolean = sheet != null
 
     /** 崩溃提示：浮球变红。 */
     fun setBallRed(red: Boolean) {

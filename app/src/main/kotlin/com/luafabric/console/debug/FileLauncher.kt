@@ -15,10 +15,11 @@ import java.io.File
  */
 object FileLauncher {
 
-    /** 文件树调起：参数注入 → 启动该文件。 */
+    /** 文件树调起：参数注入 → 启动该文件（新会话）。 */
     fun launchFile(file: File, params: Map<String, Any?>?) {
         val activity = SessionManager.activity ?: return
         val json = params?.takeIf { it.isNotEmpty() }?.let { runCatching { JsonUtil.toFormattedString(it) }.getOrNull() }
+        SessionManager.prepareNewSession()
         val intent = Intent(activity.intent).apply {
             data = Uri.fromFile(file)
             putExtra("luapath", file.absolutePath)
@@ -31,13 +32,15 @@ object FileLauncher {
     /** 重启项目：同文件新会话。 */
     fun restartProject() {
         val activity = SessionManager.activity ?: return
+        SessionManager.prepareNewSession()
         val intent = Intent(activity.intent)
         activity.finish()
         activity.startActivity(intent)
     }
 
-    /** 重建当前文件：recreate 重跑 onCreate（归档由 onSessionEnd 处理）。 */
+    /** 重建当前文件：recreate 重跑 onCreate（新代次，旧会话归档）。 */
     fun rebuildCurrentFile() {
+        SessionManager.prepareNewSession()
         SessionManager.activity?.recreate()
     }
 }

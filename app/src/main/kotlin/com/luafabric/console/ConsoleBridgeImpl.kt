@@ -1,6 +1,9 @@
 package com.luafabric.console
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
@@ -45,23 +48,87 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         CrashCapture.onCrash = {
             Handler(Looper.getMainLooper()).post { overlay.setBallRed(true) }
         }
+        registerForegroundCallbacks()
+    }
+
+    /** 前后台感知：后台藏球+面板强收，前台按 BALL 态恢复；会话/logcat 不中断。 */
+    private fun registerForegroundCallbacks() {
+        val app = context.applicationContext as? Application ?: return
+        // started/stopped 计数：页内跳转 A.stop 晚于 B.start，计数不归零 → 不误判后台
+        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            private var started = 0
+            override fun onActivityStarted(activity: Activity) {
+                if (++started == 1) onForeground()
+            }
+            override fun onActivityStopped(activity: Activity) {
+                if (--started <= 0) {
+                    started = 0
+                    onBackground()
+                }
+            }
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityDestroyed(activity: Activity) {
+                // 宿主销毁（newActivity+finish 等）：清 stale 引用，防死 sheet 短路 openSheet / 浮球随 decorView 丢失。
+                // 时序：晚于 LuaActivity.onDestroy → onSessionEnd，末页场景已 end() 全清，此处无操作；非末页场景补清理。
+                SessionManager.onHostDestroyed(activity)
+                overlay.onHostDestroyed(activity)
+                // 兜底重建：fallback 浮球宿主销毁后 ball 引用被摘 → BALL 态缺失时立即重建挂新宿主
+                if (active && StateMachine.state == ConsoleState.BALL && !overlay.isBallShowing()) {
+                    overlay.showBall()
+                }
+            }
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+        })
+    }
+
+    private fun onForeground() {
+        if (!active) return
+        // 状态自愈：PANEL 但无 sheet（宿主销毁/泄漏竞态）→ 回 BALL 重建
+        if (StateMachine.state == ConsoleState.PANEL && !overlay.isSheetShowing()) {
+            StateMachine.transition(ConsoleState.BALL)
+        }
+        if (StateMachine.state == ConsoleState.BALL) overlay.showBall()
+    }
+
+    private fun onBackground() {
+        if (!active) return
+        overlay.hideForBackground()
     }
 
     override fun onSessionStart(info: SessionInfo) {
-        active = info.debugMode
-        ConsolePaths.init(context)
-        SessionManager.begin(info)
+        val prev = SessionManager.current
+        val fresh = SessionManager.begin(info)
+        if (fresh) {
+            // 重启/重建/文件调起：旧会话先归档 + 停旧 logcat，再开新会话
+            if (prev != null && active) {
+                SessionArchiver.archive(projectName(prev))
+                LogcatManager.stop()
+            }
+            active = info.debugMode
+            ConsolePaths.init(context)
+            if (active) LogcatManager.start(projectName(info))
+            injectDebugParams(info)
+        }
+        // 每页上下文刷新（页面相关，跨页会话持续）
         FileStateTracker.updateFromSession(info)
         LuaEnvironment.probe(info.luaState)
         OutputManager.currentFile = info.luaPath ?: ""
-        injectDebugParams(info)
         if (!active) return
-        LogcatManager.start(projectName(info))
-        StateMachine.transition(ConsoleState.BALL)
-        overlay.showBall()
+        if (fresh) {
+            StateMachine.transition(ConsoleState.BALL)
+            overlay.showBall()
+        } else if (StateMachine.state == ConsoleState.BALL && !overlay.isBallShowing()) {
+            // 宿主销毁后 join：浮球缺失则重建（兜底挂旧页 decorView 一并覆盖）
+            overlay.showBall()
+        }
     }
 
     override fun onSessionEnd(info: SessionInfo) {
+        // 非当前代次（重启后旧页迟到销毁）→ 忽略；非末页 → 仅摘成员
+        val last = SessionManager.detach(info)
+        if (!last) return
         if (active) {
             SessionArchiver.archive(projectName(info))
             overlay.closeAll()
@@ -175,8 +242,10 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (!active) return false
-        // 仅完全关闭（CLOSED）状态消费音量下键恢复浮球，其余状态放行。
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN && StateMachine.state == ConsoleState.CLOSED) {
+        // IDLE（会话意外隐藏）/ CLOSED（显式关闭）状态下按音量下键恢复浮球，其余状态放行系统音量。
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN &&
+            (StateMachine.state == ConsoleState.IDLE || StateMachine.state == ConsoleState.CLOSED)
+        ) {
             StateMachine.transition(ConsoleState.BALL)
             overlay.showBall()
             return true
