@@ -38,7 +38,8 @@ class ConsoleSheet(
         val ctx = context
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(ctx.dp(4), ctx.dp(12), ctx.dp(4), ctx.dp(20))
+            // 顶部/左右零 padding：header 与 tabs 的 surfaceContainer 背景贴边全覆盖
+            setPadding(0, 0, 0, ctx.dp(20))
             setBackgroundColor(ConsoleTheme.surface)
         }
 
@@ -46,7 +47,7 @@ class ConsoleSheet(
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(ctx.dp(8), 0, ctx.dp(8), 0)
+            setPadding(ctx.dp(8), ctx.dp(12), ctx.dp(8), ctx.dp(8))
             setBackgroundColor(ConsoleTheme.surfaceContainer)
         }
         header.addView(
@@ -81,6 +82,12 @@ class ConsoleSheet(
             setSelectedTabIndicatorColor(ConsoleTheme.primary)
             setTabTextColors(ConsoleTheme.onSurfaceVariant, ConsoleTheme.primary)
             setBackgroundColor(ConsoleTheme.surfaceContainer)
+            // 子项点击波纹跟随主题：主色 13% 透明度
+            setTabRippleColor(
+                android.content.res.ColorStateList.valueOf(
+                    ConsoleTheme.primary and 0x00FFFFFF or 0x21000000
+                )
+            )
         }
         container.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -138,7 +145,7 @@ class ConsoleSheet(
             setColorFilter(ConsoleTheme.onSurface)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(ConsoleTheme.accentContainer)
-                cornerRadius = context.dp(8).toFloat()
+                cornerRadius = context.dp(12).toFloat()
             }
             val p = context.dp(8).toInt()
             setPadding(p, p, p, p)
