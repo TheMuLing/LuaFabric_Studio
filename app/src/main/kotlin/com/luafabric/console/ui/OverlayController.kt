@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
@@ -29,6 +31,8 @@ class OverlayController(private val appContext: Context) {
     private var sheetHost: Activity? = null
     private var fallbackAttached = false
     private var fallbackHost: Activity? = null
+    /** 完全关闭进行中：dismiss 必触发 onDismissed，须拦截防浮球复活。 */
+    private var fullyClosing = false
 
     fun canOverlay(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(appContext)
@@ -116,18 +120,28 @@ class OverlayController(private val appContext: Context) {
         sheetHost = activity
         StateMachine.transition(ConsoleState.PANEL)
         s.show()
+        // 浮窗与浮球互斥：面板打开 → 摘浮球，收起时重建
+        removeBallView()
     }
 
-    /** 面板收起但未完全关闭 → 回到浮球。 */
+    /** 面板收起但未完全关闭 → 回到浮球。无条件回 BALL + 重建浮球：面板打开时浮球已摘。 */
     private fun onSheetDismissedToBall() {
         sheet = null
         sheetHost = null
-        if (ball != null) StateMachine.transition(ConsoleState.BALL)
+        if (fullyClosing) {
+            fullyClosing = false
+            return
+        }
+        StateMachine.transition(ConsoleState.BALL)
+        showBall()
     }
 
     private fun fullyClosed() {
+        fullyClosing = true
         closeAll()
         StateMachine.transition(ConsoleState.CLOSED)
+        // 兜底复位：dismiss 正常必触发 onDismissed 消费标志，残留则超时清除防误伤下次收起
+        Handler(Looper.getMainLooper()).postDelayed({ fullyClosing = false }, 2000)
         if (!settings.firstCloseDone) {
             Toast.makeText(appContext, "按下音量 - 键显示控制台浮球", Toast.LENGTH_SHORT).show()
             settings.firstCloseDone = true
