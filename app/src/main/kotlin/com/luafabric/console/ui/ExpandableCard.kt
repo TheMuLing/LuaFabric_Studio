@@ -32,7 +32,7 @@ class ExpandableCard(context: Context, title: String) : LinearLayout(context) {
             setPadding(context.dp(12), context.dp(10), context.dp(12), context.dp(10))
             background = GradientDrawable().apply {
                 setColor(ConsoleTheme.surfaceContainer)
-                cornerRadius = context.dp(10).toFloat()
+                cornerRadius = context.dp(12).toFloat()
             }
             setOnClickListener { toggle() }
         }
@@ -55,8 +55,8 @@ class ExpandableCard(context: Context, title: String) : LinearLayout(context) {
             setColor(ConsoleTheme.surfaceContainer and 0x00FFFFFF or 0x12000000)
             cornerRadii = floatArrayOf(
                 0f, 0f, 0f, 0f,
-                context.dp(10).toFloat(), context.dp(10).toFloat(),
-                context.dp(10).toFloat(), context.dp(10).toFloat()
+                context.dp(12).toFloat(), context.dp(12).toFloat(),
+                context.dp(12).toFloat(), context.dp(12).toFloat()
             )
         }
         addView(body)

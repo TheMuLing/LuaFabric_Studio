@@ -37,5 +37,5 @@ object LuaEnvironment {
     }
 
     fun versionLabel(): String =
-        "Lua ${version.ifBlank { "?" }}${if (jit) " (JIT)" else ""}"
+        "${version.ifBlank { "?" }}${if (jit) " (JIT)" else ""}"
 }

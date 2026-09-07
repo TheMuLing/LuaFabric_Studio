@@ -54,7 +54,7 @@ class EnvTabView(context: Context) : ScrollView(context) {
             for ((fn, np) in m.funcs.entries) {
                 card.addBody(sigLine("$fn(${if (np < 0) "?" else np})"))
             }
-            content.addView(card)
+            addCategoryCard(card)
         }
 
         // 3. 原生库（全部函数来自 [C] 的 require 模块）
@@ -65,7 +65,7 @@ class EnvTabView(context: Context) : ScrollView(context) {
             for ((fn, np) in m.funcs.entries) {
                 card.addBody(sigLine("$fn(${if (np < 0) "?" else np})"))
             }
-            content.addView(card)
+            addCategoryCard(card)
         }
 
         // 4. Java 类库（仅项目 libs/ 下 .dex 文件）
@@ -79,8 +79,19 @@ class EnvTabView(context: Context) : ScrollView(context) {
                     card.addBody(sigLine("  $sig"))
                 }
             }
-            content.addView(card)
+            addCategoryCard(card)
         }
+    }
+
+    /** 类别下折叠卡统一加 4dp 上间距（环境信息卡不加，保持顶部贴合）。 */
+    private fun addCategoryCard(card: ExpandableCard) {
+        content.addView(
+            card,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = context.dp(4) }
+        )
     }
 
     /** 键值对样式：一行一条，左键右值，宽度最大。 */

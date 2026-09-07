@@ -16,7 +16,7 @@ object ModuleTracker {
     private val LUA_BUILTIN = setOf(
         "table", "string", "os", "io", "math", "debug", "package", "coroutine",
         "utf8", "bit32", "loadlayout", "loadbitmap", "loaddimen", "loadcolor",
-        "loadstring", "import", "gc", "collectgarbage"
+        "loadstring", "import", "gc", "collectgarbage", "loadmenu"
     )
 
     /** 系统 / 内置 Java 类前缀：bindClass 时跳过，只显示引入的 dex 类。 */

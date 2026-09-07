@@ -1255,7 +1255,7 @@ public class LuaActivity extends AppCompatActivity
                   DebugConsoleBridge bridge = DebugConsoleRegistry.get();
                   if (bridge != null && name != null) {
                     try {
-                      bridge.onRequire(name, probeRequireFunctions(L), probeIsNative(L));
+                      bridge.onRequire(name, probeRequireFunctions(L), probeIsNative(name, L));
                     } catch (Exception ignored) {
                     }
                   }
@@ -1612,31 +1612,37 @@ public class LuaActivity extends AppCompatActivity
   }
 
   /**
-   * 模块来源探测：遍历模块表（最多 8 个函数），任一函数 source 非 "[C]" 视为自定义 lua 模块
-   * （否则为原生库）。纯只读，异常/空表保守视为原生。结束时恢复栈顶。
+   * 模块来源探测：遍历模块表，按 debug.getinfo 的 what 字段统计 C/Lua 函数。
+   * 全部函数为 C（what=="C"）视为原生库；含任一 Lua 函数、无函数（纯数据表）或非表返回视为 lua 模块。
+   * 纯只读，异常保守视为 lua 模块（内置库另行由 LUA_BUILTIN 过滤）。结束时恢复栈顶。
    */
-  private static boolean probeIsNative(LuaState L) {
-    if (L == null || L.getTop() < 1) return true;
+  private static boolean probeIsNative(String moduleName, LuaState L) {
+    if (L == null || L.getTop() < 1) return false;
     int base = L.getTop();
-    if (L.type(base) != LuaState.LUA_TTABLE) return true;
+    if (L.type(base) != LuaState.LUA_TTABLE) return false;
+    int cFuncs = 0;
+    int luaFuncs = 0;
     try {
       L.getGlobal("debug"); // base+1
-      if (L.type(base + 1) != LuaState.LUA_TTABLE) return true;
+      if (L.type(base + 1) != LuaState.LUA_TTABLE) return false;
       L.getField(base + 1, "getinfo"); // base+2
-      if (L.type(base + 2) != LuaState.LUA_TFUNCTION) return true;
+      if (L.type(base + 2) != LuaState.LUA_TFUNCTION) return false;
       L.pushNil(); // base+3 遍历 key
       int checked = 0;
-      while (L.next(base) != 0 && checked < 8) { // key base+3, value base+4
+      while (L.next(base) != 0 && checked < 64) { // key base+3, value base+4
         if (L.type(base + 3) == LuaState.LUA_TSTRING && L.type(base + 4) == LuaState.LUA_TFUNCTION) {
           L.pushValue(base + 2); // getinfo base+5
           L.pushValue(base + 4); // 目标函数 base+6
           L.pushString("S"); // base+7
           int ok = L.pcall(2, 1, 0);
           if (ok == 0 && L.type(base + 5) == LuaState.LUA_TTABLE) {
-            L.getField(base + 5, "source"); // base+6
+            L.getField(base + 5, "what"); // base+6
             if (L.type(base + 6) == LuaState.LUA_TSTRING) {
-              String src = L.toString(base + 6);
-              if (src != null && !src.startsWith("[C]")) return false;
+              String what = L.toString(base + 6);
+              if (what != null) {
+                if (what.equals("C")) cFuncs++;
+                else if (what.equals("Lua") || what.equals("main") || what.equals("tail")) luaFuncs++;
+              }
             }
             L.setTop(base + 5);
           }
@@ -1645,9 +1651,12 @@ public class LuaActivity extends AppCompatActivity
         L.setTop(base + 4);
         L.pop(1); // 仅弹 value，保留 key 供下一轮 lua_next
       }
-      return true;
+      if (cFuncs > 0 || luaFuncs > 0) {
+        Log.i("lua", "probeIsNative(" + moduleName + "): c=" + cFuncs + " lua=" + luaFuncs);
+      }
+      return cFuncs > 0 && luaFuncs == 0;
     } catch (Exception ignored) {
-      return true;
+      return false;
     } finally {
       L.setTop(base);
     }
