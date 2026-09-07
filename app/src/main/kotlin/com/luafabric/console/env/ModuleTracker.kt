@@ -5,7 +5,8 @@ object ModuleTracker {
 
     data class JavaLib(val className: String, val methods: List<String>)
 
-    data class LuaLib(val module: String, val funcs: Map<String, Int>)
+    /** native=false 为自定义 lua 模块（函数 source 非 [C]）。 */
+    data class LuaLib(val module: String, val funcs: Map<String, Int>, val native: Boolean)
 
     private val lock = Any()
     private val javaLibs = LinkedHashMap<String, LinkedHashMap<String, JavaLib>>()
@@ -21,7 +22,8 @@ object ModuleTracker {
     /** 系统 / 内置 Java 类前缀：bindClass 时跳过，只显示引入的 dex 类。 */
     private val JAVA_SYSTEM_PREFIXES = listOf(
         "android.", "androidx.", "java.", "javax.", "kotlin.", "kotlinx.",
-        "org.w3c.", "org.xml.", "com.luafabric.studio.falling."
+        "org.w3c.", "org.xml.", "com.androlua.", "com.google.",
+        "com.luafabric.studio.falling."
     )
 
     fun recordBindClass(file: String, className: String?, clazz: Class<*>?) {
@@ -39,13 +41,13 @@ object ModuleTracker {
         }
     }
 
-    fun recordRequire(file: String, module: String?, funcs: Map<String, Int>?) {
+    fun recordRequire(file: String, module: String?, funcs: Map<String, Int>?, native: Boolean) {
         if (file.isBlank() || module.isNullOrBlank()) return
         if (LUA_BUILTIN.contains(module)) return
         synchronized(lock) {
             val m = luaLibs.getOrPut(file) { LinkedHashMap() }
             if (m.size >= 60) return
-            m[module] = LuaLib(module, funcs ?: emptyMap())
+            m[module] = LuaLib(module, funcs ?: emptyMap(), native)
         }
     }
 

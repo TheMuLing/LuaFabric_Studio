@@ -23,15 +23,15 @@ class SettingsTabView(context: Context) : LinearLayout(context) {
 
         addView(sectionTitle("控制台设置"))
 
-        addView(actionRow(
+        actionRow(
             label = "元数据展示",
             desc = "开 / 关二级元数据（完整时间 · 线程 · 类型解析）"
         ) {
             settings.showMeta = !settings.showMeta
             refresh()
-        }.also { metaValue = it.second }.first)
+        }.also { metaValue = it.second }
 
-        addView(actionRow(
+        actionRow(
             label = "解析深度",
             desc = "1=浅（类名/短预览），2=中（默认），3=深（递归表）"
         ) {
@@ -41,7 +41,7 @@ class SettingsTabView(context: Context) : LinearLayout(context) {
                 else -> 1
             }
             refresh()
-        }.also { depthValue = it.second }.first)
+        }.also { depthValue = it.second }
 
         addView(TextView(context).apply {
             text = "注：音量 - 键可随时隐藏/显示控制台浮球。"

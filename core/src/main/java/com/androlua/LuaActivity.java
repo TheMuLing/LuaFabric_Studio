@@ -1255,7 +1255,7 @@ public class LuaActivity extends AppCompatActivity
                   DebugConsoleBridge bridge = DebugConsoleRegistry.get();
                   if (bridge != null && name != null) {
                     try {
-                      bridge.onRequire(name, probeRequireFunctions(L));
+                      bridge.onRequire(name, probeRequireFunctions(L), probeIsNative(L));
                     } catch (Exception ignored) {
                     }
                   }
@@ -1609,6 +1609,48 @@ public class LuaActivity extends AppCompatActivity
     }
     L.setTop(base);
     return out;
+  }
+
+  /**
+   * 模块来源探测：遍历模块表（最多 8 个函数），任一函数 source 非 "[C]" 视为自定义 lua 模块
+   * （否则为原生库）。纯只读，异常/空表保守视为原生。结束时恢复栈顶。
+   */
+  private static boolean probeIsNative(LuaState L) {
+    if (L == null || L.getTop() < 1) return true;
+    int base = L.getTop();
+    if (L.type(base) != LuaState.LUA_TTABLE) return true;
+    try {
+      L.getGlobal("debug"); // base+1
+      if (L.type(base + 1) != LuaState.LUA_TTABLE) return true;
+      L.getField(base + 1, "getinfo"); // base+2
+      if (L.type(base + 2) != LuaState.LUA_TFUNCTION) return true;
+      L.pushNil(); // base+3 遍历 key
+      int checked = 0;
+      while (L.next(base) != 0 && checked < 8) { // key base+3, value base+4
+        if (L.type(base + 3) == LuaState.LUA_TSTRING && L.type(base + 4) == LuaState.LUA_TFUNCTION) {
+          L.pushValue(base + 2); // getinfo base+5
+          L.pushValue(base + 4); // 目标函数 base+6
+          L.pushString("S"); // base+7
+          int ok = L.pcall(2, 1, 0);
+          if (ok == 0 && L.type(base + 5) == LuaState.LUA_TTABLE) {
+            L.getField(base + 5, "source"); // base+6
+            if (L.type(base + 6) == LuaState.LUA_TSTRING) {
+              String src = L.toString(base + 6);
+              if (src != null && !src.startsWith("[C]")) return false;
+            }
+            L.setTop(base + 5);
+          }
+          checked++;
+        }
+        L.setTop(base + 4);
+        L.pop(1); // 仅弹 value，保留 key 供下一轮 lua_next
+      }
+      return true;
+    } catch (Exception ignored) {
+      return true;
+    } finally {
+      L.setTop(base);
+    }
   }
 
   @Override

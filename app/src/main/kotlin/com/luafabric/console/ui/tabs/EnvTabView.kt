@@ -1,17 +1,24 @@
 package com.luafabric.console.ui.tabs
 
 import android.content.Context
+import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.luafabric.console.core.FileStateTracker
+import com.luafabric.console.core.SessionManager
+import com.luafabric.console.env.DexLibraries
 import com.luafabric.console.env.LuaEnvironment
 import com.luafabric.console.env.ModuleTracker
 import com.luafabric.console.output.OutputManager
 import com.luafabric.console.ui.ConsoleTheme
+import com.luafabric.console.ui.ExpandableCard
 import com.luafabric.console.ui.dp
 
-/** 环境页：Lua 版本/JIT + 当前文件的 Java 库（反射签名）与 C/Lua 库（函数名+参数个数）。 */
+/**
+ * 环境页：四类别折叠卡——环境信息 / Lua 模块 / 原生库 / Java 类库。
+ * 环境信息键值对一行一条；模块/库每项一个折叠卡，卡内为方法签名。
+ */
 class EnvTabView(context: Context) : ScrollView(context) {
 
     private val content = LinearLayout(context).apply {
@@ -19,73 +26,118 @@ class EnvTabView(context: Context) : ScrollView(context) {
         setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
     }
 
-    private val envValue = TextView(context)
-    private val fileValue = TextView(context)
-    private val libsContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-
     init {
         setBackgroundColor(ConsoleTheme.surface)
-        content.addView(header("Lua 环境"))
-        content.addView(envValue.apply { textSize = 14f; setTextColor(ConsoleTheme.onSurface) })
-        content.addView(header("当前文件"))
-        content.addView(fileValue.apply { textSize = 14f; setTextColor(ConsoleTheme.onSurface) })
-        content.addView(header("native 库"))
-        content.addView(libsContainer)
         addView(content)
     }
 
-    /** 页签展示时刷新（require/bindClass 随运行变化）。 */
+    /** 页签展示时刷新。 */
     fun refresh() {
-        envValue.text = LuaEnvironment.versionLabel()
-        fileValue.text = FileStateTracker.relativePath.ifBlank { "(无)" }
-        libsContainer.removeAllViews()
+        content.removeAllViews()
         val file = OutputManager.currentFile
-        val javaLibs = ModuleTracker.javaLibs(file)
-        val luaLibs = ModuleTracker.luaLibs(file)
-        if (javaLibs.isEmpty() && luaLibs.isEmpty()) {
-            libsContainer.addView(
-                TextView(context).apply {
-                    text = "(无)"
-                    textSize = 13f
-                    setTextColor(ConsoleTheme.onSurfaceVariant)
+        val luaMods = ModuleTracker.luaLibs(file).filter { !it.native }
+        val natives = ModuleTracker.luaLibs(file).filter { it.native }
+        val dexLibs = DexLibraries.scan(SessionManager.current?.luaDir)
+
+        // 1. 环境信息（键值对折叠卡，默认展开）
+        val envCard = ExpandableCard(context, "环境信息").apply { setExpanded(true) }
+        envCard.addBody(kvRow("Lua 版本", LuaEnvironment.versionLabel()))
+        envCard.addBody(kvRow("JIT", if (LuaEnvironment.jit) "启用" else "未启用"))
+        envCard.addBody(kvRow("当前文件", FileStateTracker.relativePath.ifBlank { "(无)" }))
+        content.addView(envCard)
+
+        // 2. Lua 模块（自定义 lua 文件模块）
+        content.addView(categoryTitle("Lua 模块"))
+        if (luaMods.isEmpty()) content.addView(emptyHint("(无)"))
+        for (m in luaMods) {
+            val card = ExpandableCard(context, m.module)
+            for ((fn, np) in m.funcs.entries) {
+                card.addBody(sigLine("$fn(${if (np < 0) "?" else np})"))
+            }
+            content.addView(card)
+        }
+
+        // 3. 原生库（全部函数来自 [C] 的 require 模块）
+        content.addView(categoryTitle("原生库"))
+        if (natives.isEmpty()) content.addView(emptyHint("(无)"))
+        for (m in natives) {
+            val card = ExpandableCard(context, m.module)
+            for ((fn, np) in m.funcs.entries) {
+                card.addBody(sigLine("$fn(${if (np < 0) "?" else np})"))
+            }
+            content.addView(card)
+        }
+
+        // 4. Java 类库（仅项目 libs/ 下 .dex 文件）
+        content.addView(categoryTitle("Java 类库"))
+        if (dexLibs.isEmpty()) content.addView(emptyHint("(无)"))
+        for (d in dexLibs) {
+            val card = ExpandableCard(context, d.dexFile)
+            for (cl in d.classes) {
+                card.addBody(classNameLine(cl.className))
+                for (sig in cl.methods) {
+                    card.addBody(sigLine("  $sig"))
                 }
-            )
-            return
-        }
-        for (lib in luaLibs) {
-            libsContainer.addView(libHeader("Lua/C · ${lib.module}"))
-            for ((fn, np) in lib.funcs.entries) {
-                libsContainer.addView(libLine("  $fn(${if (np < 0) "?" else np})"))
             }
-        }
-        for (lib in javaLibs) {
-            libsContainer.addView(libHeader("Java · ${lib.className}"))
-            for (sig in lib.methods) {
-                libsContainer.addView(libLine("  $sig"))
-            }
+            content.addView(card)
         }
     }
 
-    private fun header(text: String): TextView =
+    /** 键值对样式：一行一条，左键右值，宽度最大。 */
+    private fun kvRow(key: String, value: String): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(context.dp(2), context.dp(3), context.dp(2), context.dp(3))
+            addView(
+                TextView(context).apply {
+                    text = key
+                    textSize = 13f
+                    setTextColor(ConsoleTheme.onSurfaceVariant)
+                },
+                LinearLayout.LayoutParams(context.dp(88), LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+            addView(
+                TextView(context).apply {
+                    text = value
+                    textSize = 13f
+                    setTextColor(ConsoleTheme.onSurface)
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+        }
+
+    private fun categoryTitle(text: String): TextView =
+        TextView(context).apply {
+            this.text = text
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(ConsoleTheme.onSurfaceVariant)
+            setPadding(0, context.dp(10), 0, context.dp(3))
+        }
+
+    private fun emptyHint(text: String): TextView =
         TextView(context).apply {
             this.text = text
             textSize = 12f
             setTextColor(ConsoleTheme.onSurfaceVariant)
-            setPadding(0, context.dp(6), 0, context.dp(2))
+            setPadding(context.dp(12), context.dp(2), context.dp(12), context.dp(2))
         }
 
-    private fun libHeader(text: String): TextView =
+    private fun classNameLine(text: String): TextView =
         TextView(context).apply {
             this.text = text
             textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(ConsoleTheme.primary)
-            setPadding(0, context.dp(6), 0, context.dp(2))
+            setPadding(0, context.dp(4), 0, context.dp(1))
         }
 
-    private fun libLine(text: String): TextView =
+    private fun sigLine(text: String): TextView =
         TextView(context).apply {
             this.text = text
             textSize = 12f
             setTextColor(ConsoleTheme.onSurface)
+            setPadding(0, context.dp(1), 0, context.dp(1))
         }
 }

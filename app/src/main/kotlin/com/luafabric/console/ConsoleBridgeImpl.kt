@@ -264,9 +264,9 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         )
     }
 
-    override fun onRequire(moduleName: String?, funcParams: Map<String, Int>?) {
+    override fun onRequire(moduleName: String?, funcParams: Map<String, Int>?, nativeModule: Boolean) {
         if (!active) return
-        ModuleTracker.recordRequire(OutputManager.currentFile, moduleName, funcParams)
+        ModuleTracker.recordRequire(OutputManager.currentFile, moduleName, funcParams, nativeModule)
     }
 
     override fun onBindClass(className: String?, clazz: Class<*>?) {
