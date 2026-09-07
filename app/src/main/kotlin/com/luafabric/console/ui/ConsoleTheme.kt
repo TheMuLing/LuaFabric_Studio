@@ -33,6 +33,12 @@ import com.luafabric.studio.falling.ui.theme.primaryDarkPink
 import com.luafabric.studio.falling.ui.theme.primaryLightBlue
 import com.luafabric.studio.falling.ui.theme.primaryLightGreen
 import com.luafabric.studio.falling.ui.theme.primaryLightPink
+import com.luafabric.studio.falling.ui.theme.surfaceContainerDarkBlue
+import com.luafabric.studio.falling.ui.theme.surfaceContainerDarkGreen
+import com.luafabric.studio.falling.ui.theme.surfaceContainerDarkPink
+import com.luafabric.studio.falling.ui.theme.surfaceContainerLightBlue
+import com.luafabric.studio.falling.ui.theme.surfaceContainerLightGreen
+import com.luafabric.studio.falling.ui.theme.surfaceContainerLightPink
 import com.luafabric.studio.falling.ui.theme.surfaceDarkBlue
 import com.luafabric.studio.falling.ui.theme.surfaceDarkGreen
 import com.luafabric.studio.falling.ui.theme.surfaceDarkPink
@@ -61,6 +67,9 @@ object ConsoleTheme {
     /** 强调浅底：选中行 / 操作按钮背景。 */
     var accentContainer: Int = 0xFFE3EDFF.toInt()
         private set
+    /** 头部/页签区域背景（与内容区 surface 区分）。 */
+    var surfaceContainer: Int = 0xFFF2F3FA.toInt()
+        private set
     var isDark: Boolean = false
         private set
 
@@ -83,6 +92,7 @@ object ConsoleTheme {
                 onSurface = scheme.onSurface.toArgb()
                 onSurfaceVariant = scheme.onSurfaceVariant.toArgb()
                 accentContainer = scheme.primaryContainer.toArgb()
+                surfaceContainer = scheme.surfaceContainer.toArgb()
                 return
             } catch (_: Exception) {
                 // 动态取色失败 → 回退静态色板
@@ -94,28 +104,34 @@ object ConsoleTheme {
                 primary = primaryDarkGreen.toArgb(); surface = surfaceDarkGreen.toArgb()
                 onSurface = onSurfaceDarkGreen.toArgb(); onSurfaceVariant = onSurfaceVariantDarkGreen.toArgb()
                 accentContainer = primaryContainerDarkGreen.toArgb()
+                surfaceContainer = surfaceContainerDarkGreen.toArgb()
             } else {
                 primary = primaryLightGreen.toArgb(); surface = surfaceLightGreen.toArgb()
                 onSurface = onSurfaceLightGreen.toArgb(); onSurfaceVariant = onSurfaceVariantLightGreen.toArgb()
                 accentContainer = primaryContainerLightGreen.toArgb()
+                surfaceContainer = surfaceContainerLightGreen.toArgb()
             }
             ThemeType.PINK -> if (dark) {
                 primary = primaryDarkPink.toArgb(); surface = surfaceDarkPink.toArgb()
                 onSurface = onSurfaceDarkPink.toArgb(); onSurfaceVariant = onSurfaceVariantDarkPink.toArgb()
                 accentContainer = primaryContainerDarkPink.toArgb()
+                surfaceContainer = surfaceContainerDarkPink.toArgb()
             } else {
                 primary = primaryLightPink.toArgb(); surface = surfaceLightPink.toArgb()
                 onSurface = onSurfaceLightPink.toArgb(); onSurfaceVariant = onSurfaceVariantLightPink.toArgb()
                 accentContainer = primaryContainerLightPink.toArgb()
+                surfaceContainer = surfaceContainerLightPink.toArgb()
             }
             ThemeType.BLUE -> if (dark) {
                 primary = primaryDarkBlue.toArgb(); surface = surfaceDarkBlue.toArgb()
                 onSurface = onSurfaceDarkBlue.toArgb(); onSurfaceVariant = onSurfaceVariantDarkBlue.toArgb()
                 accentContainer = primaryContainerDarkBlue.toArgb()
+                surfaceContainer = surfaceContainerDarkBlue.toArgb()
             } else {
                 primary = primaryLightBlue.toArgb(); surface = surfaceLightBlue.toArgb()
                 onSurface = onSurfaceLightBlue.toArgb(); onSurfaceVariant = onSurfaceVariantLightBlue.toArgb()
                 accentContainer = primaryContainerLightBlue.toArgb()
+                surfaceContainer = surfaceContainerLightBlue.toArgb()
             }
         }
     }

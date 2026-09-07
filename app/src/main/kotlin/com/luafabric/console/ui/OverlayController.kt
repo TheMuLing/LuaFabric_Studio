@@ -145,7 +145,7 @@ class OverlayController(private val appContext: Context) {
         // 兜底复位：dismiss 正常必触发 onDismissed 消费标志，残留则超时清除防误伤下次收起
         Handler(Looper.getMainLooper()).postDelayed({ fullyClosing = false }, 2000)
         if (!settings.firstCloseDone) {
-            Toast.makeText(appContext, "按下音量 - 键显示控制台浮球", Toast.LENGTH_SHORT).show()
+            Toast.makeText(appContext, "使用音量 - 键重新显示控制台浮球", Toast.LENGTH_SHORT).show()
             settings.firstCloseDone = true
         }
     }

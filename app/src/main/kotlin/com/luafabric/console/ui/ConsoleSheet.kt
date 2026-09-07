@@ -9,7 +9,6 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.tabs.TabLayout
 import com.luafabric.console.ui.tabs.DebugTabView
@@ -18,6 +17,7 @@ import com.luafabric.console.ui.tabs.EventTabView
 import com.luafabric.console.ui.tabs.FileTabView
 import com.luafabric.console.ui.tabs.LogcatTabView
 import com.luafabric.console.ui.tabs.OutputTabView
+import com.luafabric.studio.falling.R
 
 /**
  * 控制台面板：Modal BottomSheet + TabLayout（输出/文件/事件/环境/Logcat/调试）+ 完全关闭。
@@ -42,11 +42,12 @@ class ConsoleSheet(
             setBackgroundColor(ConsoleTheme.surface)
         }
 
-        // 头部：标题 + 最小化 + 完全关闭
+        // 头部：标题 + 最小化 + 完全关闭（头部区用 surfaceContainer 与内容区分色）
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(ctx.dp(8), 0, ctx.dp(8), 0)
+            setBackgroundColor(ConsoleTheme.surfaceContainer)
         }
         header.addView(
             TextView(ctx).apply {
@@ -59,15 +60,15 @@ class ConsoleSheet(
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
         // 最小化：收起面板回浮球
-        header.addView(iconButton("─") { dismiss() })
-        // 完全关闭（叉号）：二次确认
-        header.addView(iconButton("✕") {
-            AlertDialog.Builder(ctx)
-                .setMessage("确认完全关闭控制台？关闭后按音量 - 键可恢复浮球。")
-                .setPositiveButton("关闭") { _, _ -> onFullyClosed() }
-                .setNegativeButton("取消", null)
-                .show()
-        })
+        header.addView(iconButton(R.drawable.ic_console_minimize) { dismiss() })
+        // 完全关闭（叉号）：直接关闭，无二次确认
+        header.addView(
+            iconButton(R.drawable.ic_console_close) { onFullyClosed() },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = ctx.dp(8) }
+        )
 
         val tabs = TabLayout(ctx).apply {
             addTab(newTab().setText("输出"))
@@ -79,7 +80,7 @@ class ConsoleSheet(
             // 主题色：指示器/选中 = 主色，未选中 = 次级文本色
             setSelectedTabIndicatorColor(ConsoleTheme.primary)
             setTabTextColors(ConsoleTheme.onSurfaceVariant, ConsoleTheme.primary)
-            setBackgroundColor(ConsoleTheme.surface)
+            setBackgroundColor(ConsoleTheme.surfaceContainer)
         }
         container.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -130,18 +131,17 @@ class ConsoleSheet(
         else -> DebugTabView(context)
     }
 
-    /** 头部图标按钮：圆角矩形容器色底。 */
-    private fun iconButton(icon: String, onClick: () -> Unit): TextView =
-        TextView(context).apply {
-            text = icon
-            textSize = 15f
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ConsoleTheme.onSurface)
+    /** 头部图标按钮：圆角矩形容器色底 + Icons 风格 vector 图标。 */
+    private fun iconButton(iconRes: Int, onClick: () -> Unit): android.widget.ImageView =
+        android.widget.ImageView(context).apply {
+            setImageResource(iconRes)
+            setColorFilter(ConsoleTheme.onSurface)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(ConsoleTheme.accentContainer)
                 cornerRadius = context.dp(8).toFloat()
             }
+            val p = context.dp(8).toInt()
+            setPadding(p, p, p, p)
             setOnClickListener { onClick() }
         }
 }
