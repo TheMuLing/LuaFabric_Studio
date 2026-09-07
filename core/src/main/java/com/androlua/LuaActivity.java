@@ -226,8 +226,9 @@ public class LuaActivity extends AppCompatActivity
       initLua();
 
       // 调试控制台：会话开始（须在 doFile 前，保证 debugParams 可注入 LuaState）
+      // 工具型启动（布局助手等）经 console_disable 抑制，不进调试会话
       DebugConsoleBridge bridge = DebugConsoleRegistry.get();
-      if (bridge != null) {
+      if (bridge != null && !getIntent().getBooleanExtra("console_disable", false)) {
         try {
           consoleSession =
               new SessionInfo(

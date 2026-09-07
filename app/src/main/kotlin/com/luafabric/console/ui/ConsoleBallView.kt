@@ -42,7 +42,7 @@ class ConsoleBallView(context: Context, private val onTap: () -> Unit) : View(co
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         bounds.set(0f, 0f, width.toFloat(), height.toFloat())
-        canvas.drawRoundRect(bounds, 32f, 32f, paint)
+        canvas.drawRoundRect(bounds, 64f, 64f, paint)
         val y = height / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
         canvas.drawText("控制台", width / 2f, y, textPaint)
     }

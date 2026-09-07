@@ -514,6 +514,8 @@ fun CodeEditScreen(
             data = Uri.fromFile(layoutHelperFile)
             putExtra("layout_content", content)
             putExtra("luapath", currentFile.absolutePath)
+            // 布局助手为工具型 LuaActivity，不进调试控制台会话
+            putExtra("console_disable", true)
         }
 
         layoutHelperLauncher.launch(intent)
