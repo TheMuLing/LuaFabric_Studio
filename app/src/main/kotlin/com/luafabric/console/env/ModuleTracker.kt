@@ -11,8 +11,22 @@ object ModuleTracker {
     private val javaLibs = LinkedHashMap<String, LinkedHashMap<String, JavaLib>>()
     private val luaLibs = LinkedHashMap<String, LinkedHashMap<String, LuaLib>>()
 
+    /** Lua 标准库 / AndLua 内置模块：require 时跳过，只显示第三方 native 模块（yyjson/cjson 等）。 */
+    private val LUA_BUILTIN = setOf(
+        "table", "string", "os", "io", "math", "debug", "package", "coroutine",
+        "utf8", "bit32", "loadlayout", "loadbitmap", "loaddimen", "loadcolor",
+        "loadstring", "import", "gc", "collectgarbage"
+    )
+
+    /** 系统 / 内置 Java 类前缀：bindClass 时跳过，只显示引入的 dex 类。 */
+    private val JAVA_SYSTEM_PREFIXES = listOf(
+        "android.", "androidx.", "java.", "javax.", "kotlin.", "kotlinx.",
+        "org.w3c.", "org.xml.", "com.luafabric.studio.falling."
+    )
+
     fun recordBindClass(file: String, className: String?, clazz: Class<*>?) {
         if (file.isBlank() || className.isNullOrBlank() || clazz == null) return
+        if (JAVA_SYSTEM_PREFIXES.any { className.startsWith(it) }) return
         val methods = clazz.declaredMethods
             .filter { it.declaringClass == clazz }
             .sortedBy { it.name }
@@ -27,6 +41,7 @@ object ModuleTracker {
 
     fun recordRequire(file: String, module: String?, funcs: Map<String, Int>?) {
         if (file.isBlank() || module.isNullOrBlank()) return
+        if (LUA_BUILTIN.contains(module)) return
         synchronized(lock) {
             val m = luaLibs.getOrPut(file) { LinkedHashMap() }
             if (m.size >= 60) return

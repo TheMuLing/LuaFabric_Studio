@@ -13,10 +13,10 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.tabs.TabLayout
 import com.luafabric.console.ui.tabs.DebugTabView
 import com.luafabric.console.ui.tabs.EnvTabView
-import com.luafabric.console.ui.tabs.EventTabView
 import com.luafabric.console.ui.tabs.FileTabView
 import com.luafabric.console.ui.tabs.LogcatTabView
 import com.luafabric.console.ui.tabs.OutputTabView
+import com.luafabric.console.ui.tabs.SettingsTabView
 import com.luafabric.studio.falling.R
 
 /**
@@ -47,7 +47,7 @@ class ConsoleSheet(
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(ctx.dp(8), ctx.dp(12), ctx.dp(8), ctx.dp(8))
+            setPadding(ctx.dp(16), ctx.dp(12), ctx.dp(8), ctx.dp(8))
             setBackgroundColor(ConsoleTheme.surfaceContainer)
         }
         header.addView(
@@ -74,10 +74,10 @@ class ConsoleSheet(
         val tabs = TabLayout(ctx).apply {
             addTab(newTab().setText("输出"))
             addTab(newTab().setText("文件"))
-            addTab(newTab().setText("事件"))
             addTab(newTab().setText("环境"))
             addTab(newTab().setText("Logcat"))
             addTab(newTab().setText("调试"))
+            addTab(newTab().setText("设置"))
             // 主题色：指示器/选中 = 主色，未选中 = 次级文本色
             setSelectedTabIndicatorColor(ConsoleTheme.primary)
             setTabTextColors(ConsoleTheme.onSurfaceVariant, ConsoleTheme.primary)
@@ -121,8 +121,8 @@ class ConsoleSheet(
         )
         (view as? FileTabView)?.refresh()
         (view as? EnvTabView)?.refresh()
-        (view as? EventTabView)?.refresh()
         (view as? DebugTabView)?.refresh()
+        (view as? SettingsTabView)?.refresh()
         (view as? LogcatTabView)?.apply {
             refresh()
             startPolling()
@@ -132,10 +132,10 @@ class ConsoleSheet(
     private fun buildTab(pos: Int): View = when (pos) {
         0 -> OutputTabView(context)
         1 -> FileTabView(context)
-        2 -> EventTabView(context)
-        3 -> EnvTabView(context)
-        4 -> LogcatTabView(context)
-        else -> DebugTabView(context)
+        2 -> EnvTabView(context)
+        3 -> LogcatTabView(context)
+        4 -> DebugTabView(context)
+        else -> SettingsTabView(context)
     }
 
     /** 头部图标按钮：圆角矩形容器色底 + Icons 风格 vector 图标。 */

@@ -11,7 +11,9 @@ import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.luafabric.console.core.ConsoleSettings
+import com.luafabric.console.core.EventTracker
 import com.luafabric.console.output.ClipboardHelper
+import com.luafabric.console.output.OutputEntry
 import com.luafabric.console.output.OutputExporter
 import com.luafabric.console.output.OutputManager
 import com.luafabric.console.persist.ConsolePaths
@@ -26,6 +28,8 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
 
     private val settings = ConsoleSettings(context)
     private val adapter = OutputAdapter(settings) { refreshSelectionBar() }
+    /** 仅事件模式：列表只显示 runFunc 事件流（原「事件」页合并入输出页）。 */
+    private var onlyEvents = false
 
     private val titleView = TextView(context)
     private val selBar = LinearLayout(context)
@@ -54,7 +58,17 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
             (toolBar.getChildAt(0) as TextView).text = "元数据：${if (settings.showMeta) "开" else "关"}"
             adapter.setShowMeta(settings.showMeta)
         })
-        toolBar.addView(actionText("清空") { confirmClear() })
+        toolBar.addView(actionText("仅事件：关") {
+            onlyEvents = !onlyEvents
+            (toolBar.getChildAt(1) as TextView).text = "仅事件：${if (onlyEvents) "开" else "关"}"
+            refresh()
+        })
+        toolBar.addView(actionText("清空") {
+            if (onlyEvents) {
+                EventTracker.clear()
+                refresh()
+            } else confirmClear()
+        })
         addView(toolBar)
 
         // 选择操作栏（默认隐藏）
@@ -103,7 +117,25 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
     @SuppressLint("NotifyDataSetChanged")
     private fun refresh() {
         titleView.text = "当前文件：${OutputManager.currentFile.ifBlank { "(无)" }}"
-        adapter.submit(OutputManager.bufferFor(OutputManager.currentFile).all())
+        adapter.submit(
+            if (onlyEvents) {
+                // 事件流：runFunc 触发记录转输出条目（label=event）
+                EventTracker.snapshot().mapIndexed { i, e ->
+                    OutputEntry(
+                        id = e.timeMs * 10000 + i,
+                        file = e.fileLabel,
+                        label = "event",
+                        primary = "[${e.timeLabel()}] ${e.funcName}(${e.argsSummary})",
+                        luaTypes = emptyList(),
+                        typeDetails = listOf("${e.fileLabel} · ${if (e.isMainThread) "主线程" else "子线程"}"),
+                        isMainThread = e.isMainThread,
+                        timestampMs = e.timeMs
+                    )
+                }
+            } else {
+                OutputManager.bufferFor(OutputManager.currentFile).all()
+            }
+        )
     }
 
     private fun refreshSelectionBar() {
