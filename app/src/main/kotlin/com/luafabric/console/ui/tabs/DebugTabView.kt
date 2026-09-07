@@ -12,6 +12,7 @@ import com.luafabric.console.core.SessionManager
 import com.luafabric.console.debug.FileLauncher
 import com.luafabric.console.debug.ParamFormDialog
 import com.luafabric.console.debug.ProjectTreeBuilder
+import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.dp
 import java.io.File
 
@@ -40,6 +41,7 @@ class DebugTabView(context: Context) : ScrollView(context) {
             content.addView(TextView(context).apply {
                 text = "（项目无可见文件）"
                 textSize = 13f
+                setTextColor(ConsoleTheme.onSurfaceVariant)
                 setPadding(context.dp(8), context.dp(8), 0, 0)
             })
             return
@@ -53,6 +55,7 @@ class DebugTabView(context: Context) : ScrollView(context) {
                         text = "${"  ".repeat(depth)}${if (n.isDir) "▸ " else "· "}${n.name}"
                         textSize = 13f
                         typeface = if (n.isDir) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                        setTextColor(ConsoleTheme.onSurface)
                         setPadding(context.dp(8), context.dp(4), 0, context.dp(4))
                         if (!n.isDir) {
                             setOnClickListener {
@@ -86,7 +89,8 @@ class DebugTabView(context: Context) : ScrollView(context) {
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding(context.dp(8), context.dp(6), context.dp(8), context.dp(6))
-            setBackgroundColor(0x22000000.toInt())
+            setTextColor(ConsoleTheme.onSurface)
+            setBackgroundColor(ConsoleTheme.accentContainer)
             setOnClickListener { onClick() }
         }
 }

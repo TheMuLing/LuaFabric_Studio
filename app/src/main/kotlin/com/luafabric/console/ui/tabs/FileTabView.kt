@@ -1,13 +1,13 @@
 package com.luafabric.console.ui.tabs
 
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.luafabric.console.core.FileStateTracker
 import com.luafabric.console.output.ClipboardHelper
+import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.dp
 
 /** 文件页：当前文件相对路径（复制）+ 布局三态（aly 相对路径 | 内联布局 | 无布局）。 */
@@ -19,7 +19,7 @@ class FileTabView(context: Context) : LinearLayout(context) {
     init {
         orientation = VERTICAL
         setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
-        setBackgroundColor(Color.WHITE)
+        setBackgroundColor(ConsoleTheme.surface)
 
         addView(header("当前文件"))
         addView(valueRow(fileValue) { FileStateTracker.relativePath })
@@ -29,7 +29,7 @@ class FileTabView(context: Context) : LinearLayout(context) {
         val hint = TextView(context).apply {
             text = "点击条目复制"
             textSize = 11f
-            setTextColor(0xFFBBBBBB.toInt())
+            setTextColor(ConsoleTheme.onSurfaceVariant)
         }
         addView(hint, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -57,7 +57,7 @@ class FileTabView(context: Context) : LinearLayout(context) {
         TextView(context).apply {
             this.text = text
             textSize = 12f
-            setTextColor(0xFF888888.toInt())
+            setTextColor(ConsoleTheme.onSurfaceVariant)
             setPadding(0, context.dp(6), 0, context.dp(2))
         }
 
@@ -67,7 +67,7 @@ class FileTabView(context: Context) : LinearLayout(context) {
             gravity = Gravity.CENTER_VERTICAL
             view.apply {
                 textSize = 14f
-                setTextColor(0xFF222222.toInt())
+                setTextColor(ConsoleTheme.onSurface)
             }
             addView(view, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             setOnClickListener {

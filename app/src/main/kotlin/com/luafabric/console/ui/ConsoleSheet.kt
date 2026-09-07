@@ -38,6 +38,7 @@ class ConsoleSheet(
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(ctx.dp(4), ctx.dp(12), ctx.dp(4), ctx.dp(20))
+            setBackgroundColor(ConsoleTheme.surface)
         }
 
         // 头部：标题 + 完全关闭
@@ -50,6 +51,7 @@ class ConsoleSheet(
             TextView(ctx).apply {
                 text = "调试控制台"
                 textSize = 16f
+                setTextColor(ConsoleTheme.onSurface)
                 setPadding(0, 0, ctx.dp(8), 0)
             },
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -58,6 +60,7 @@ class ConsoleSheet(
             TextView(ctx).apply {
                 text = "完全关闭"
                 textSize = 13f
+                setTextColor(ConsoleTheme.onSurfaceVariant)
                 setPadding(ctx.dp(12), ctx.dp(8), ctx.dp(12), ctx.dp(8))
                 // F7：最后界面关闭二次确认
                 setOnClickListener {
@@ -77,6 +80,9 @@ class ConsoleSheet(
             addTab(newTab().setText("环境"))
             addTab(newTab().setText("Logcat"))
             addTab(newTab().setText("调试"))
+            // 主题色：指示器/选中 = 主色，未选中 = 次级文本色
+            setSelectedTabIndicatorColor(ConsoleTheme.primary)
+            setTabTextColors(ConsoleTheme.onSurfaceVariant, ConsoleTheme.primary)
         }
         container.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,

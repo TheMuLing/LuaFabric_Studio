@@ -3,7 +3,6 @@ package com.luafabric.console.ui.tabs
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
@@ -16,6 +15,7 @@ import com.luafabric.console.output.ClipboardHelper
 import com.luafabric.console.output.OutputExporter
 import com.luafabric.console.output.OutputManager
 import com.luafabric.console.persist.ConsolePaths
+import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.adapters.OutputAdapter
 import com.luafabric.console.ui.dp
 import java.io.File
@@ -33,11 +33,11 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
 
     init {
         orientation = VERTICAL
-        setBackgroundColor(Color.WHITE)
+        setBackgroundColor(ConsoleTheme.surface)
 
         titleView.apply {
             textSize = 13f
-            setTextColor(0xFF444444.toInt())
+            setTextColor(ConsoleTheme.onSurfaceVariant)
             setPadding(context.dp(12), context.dp(6), context.dp(12), context.dp(6))
             maxLines = 1
         }
@@ -80,7 +80,7 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         TextView(context).apply {
             text = label
             textSize = 13f
-            setTextColor(0xFF2962FF.toInt())
+            setTextColor(ConsoleTheme.primary)
             setPadding(context.dp(8), context.dp(6), context.dp(8), context.dp(6))
             setOnClickListener { onClick() }
         }

@@ -1,7 +1,6 @@
 package com.luafabric.console.ui.tabs
 
 import android.content.Context
-import android.graphics.Color
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -9,6 +8,7 @@ import com.luafabric.console.core.FileStateTracker
 import com.luafabric.console.env.LuaEnvironment
 import com.luafabric.console.env.ModuleTracker
 import com.luafabric.console.output.OutputManager
+import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.dp
 
 /** 环境页：Lua 版本/JIT + 当前文件的 Java 库（反射签名）与 C/Lua 库（函数名+参数个数）。 */
@@ -24,11 +24,11 @@ class EnvTabView(context: Context) : ScrollView(context) {
     private val libsContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
 
     init {
-        setBackgroundColor(Color.WHITE)
+        setBackgroundColor(ConsoleTheme.surface)
         content.addView(header("Lua 环境"))
-        content.addView(envValue.apply { textSize = 14f; setTextColor(0xFF222222.toInt()) })
+        content.addView(envValue.apply { textSize = 14f; setTextColor(ConsoleTheme.onSurface) })
         content.addView(header("当前文件"))
-        content.addView(fileValue.apply { textSize = 14f; setTextColor(0xFF222222.toInt()) })
+        content.addView(fileValue.apply { textSize = 14f; setTextColor(ConsoleTheme.onSurface) })
         content.addView(header("native 库"))
         content.addView(libsContainer)
         addView(content)
@@ -47,7 +47,7 @@ class EnvTabView(context: Context) : ScrollView(context) {
                 TextView(context).apply {
                     text = "(无)"
                     textSize = 13f
-                    setTextColor(0xFF999999.toInt())
+                    setTextColor(ConsoleTheme.onSurfaceVariant)
                 }
             )
             return
@@ -70,7 +70,7 @@ class EnvTabView(context: Context) : ScrollView(context) {
         TextView(context).apply {
             this.text = text
             textSize = 12f
-            setTextColor(0xFF888888.toInt())
+            setTextColor(ConsoleTheme.onSurfaceVariant)
             setPadding(0, context.dp(6), 0, context.dp(2))
         }
 
@@ -78,7 +78,7 @@ class EnvTabView(context: Context) : ScrollView(context) {
         TextView(context).apply {
             this.text = text
             textSize = 13f
-            setTextColor(0xFF3F51B5.toInt())
+            setTextColor(ConsoleTheme.primary)
             setPadding(0, context.dp(6), 0, context.dp(2))
         }
 
@@ -86,6 +86,6 @@ class EnvTabView(context: Context) : ScrollView(context) {
         TextView(context).apply {
             this.text = text
             textSize = 12f
-            setTextColor(0xFF333333.toInt())
+            setTextColor(ConsoleTheme.onSurface)
         }
 }

@@ -1,11 +1,11 @@
 package com.luafabric.console.ui.tabs
 
 import android.content.Context
-import android.graphics.Color
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.luafabric.console.core.EventTracker
+import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.dp
 
 /** 事件页：runFunc 显式调用且实际触发的条目列表（相对路径 + 毫秒时间 + 参数摘要）。 */
@@ -17,7 +17,7 @@ class EventTabView(context: Context) : ScrollView(context) {
     }
 
     init {
-        setBackgroundColor(Color.WHITE)
+        setBackgroundColor(ConsoleTheme.surface)
         addView(content)
     }
 
@@ -30,7 +30,7 @@ class EventTabView(context: Context) : ScrollView(context) {
                 TextView(context).apply {
                     text = "(无事件)"
                     textSize = 13f
-                    setTextColor(0xFF999999.toInt())
+                    setTextColor(ConsoleTheme.onSurfaceVariant)
                 }
             )
             return
@@ -40,7 +40,7 @@ class EventTabView(context: Context) : ScrollView(context) {
                 TextView(context).apply {
                     text = "[${e.timeLabel()}] ${e.funcName}"
                     textSize = 13f
-                    setTextColor(0xFF222222.toInt())
+                    setTextColor(ConsoleTheme.onSurface)
                     setPadding(0, context.dp(8), 0, context.dp(2))
                 }
             )
@@ -48,14 +48,14 @@ class EventTabView(context: Context) : ScrollView(context) {
                 TextView(context).apply {
                     text = e.argsSummary
                     textSize = 12f
-                    setTextColor(0xFF666666.toInt())
+                    setTextColor(ConsoleTheme.onSurfaceVariant)
                 }
             )
             content.addView(
                 TextView(context).apply {
                     text = "${e.fileLabel} · ${if (e.isMainThread) "主线程" else "子线程"}"
                     textSize = 11f
-                    setTextColor(0xFF999999.toInt())
+                    setTextColor(ConsoleTheme.onSurfaceVariant)
                 }
             )
         }

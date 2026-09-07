@@ -39,6 +39,7 @@ class OverlayController(private val appContext: Context) {
 
     @SuppressLint("ClickableViewAccessibility")
     fun showBall() {
+        ConsoleTheme.refresh(appContext)
         if (ball != null) return
         val activity = hostActivity() ?: return
         val view = ConsoleBallView(appContext) { openSheet() }
@@ -107,6 +108,7 @@ class OverlayController(private val appContext: Context) {
     }
 
     fun openSheet() {
+        ConsoleTheme.refresh(appContext)
         if (sheet != null) return
         val activity = hostActivity() ?: return
         // 宿主已死/正在结束：等待下次 join 重建，防 BadTokenException

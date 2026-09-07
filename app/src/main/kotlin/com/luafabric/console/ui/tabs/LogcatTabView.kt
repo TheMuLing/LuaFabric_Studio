@@ -1,7 +1,6 @@
 package com.luafabric.console.ui.tabs
 
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +12,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.luafabric.console.logcat.LogcatManager
+import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.dp
 
 /**
@@ -43,7 +43,7 @@ class LogcatTabView(context: Context) : LinearLayout(context) {
             RowHolder(TextView(parent.context).apply {
                 textSize = 11f
                 typeface = Typeface.MONOSPACE
-                setTextColor(0xFF444444.toInt())
+                setTextColor(ConsoleTheme.onSurfaceVariant)
                 setLineSpacing(0f, 1.05f)
             })
 
@@ -64,7 +64,7 @@ class LogcatTabView(context: Context) : LinearLayout(context) {
     init {
         orientation = VERTICAL
         setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
-        setBackgroundColor(Color.WHITE)
+        setBackgroundColor(ConsoleTheme.surface)
 
         val toolBar = LinearLayout(context).apply {
             orientation = HORIZONTAL
@@ -74,7 +74,7 @@ class LogcatTabView(context: Context) : LinearLayout(context) {
             TextView(context).apply {
                 text = "Logcat"
                 textSize = 13f
-                setTextColor(0xFF222222.toInt())
+                setTextColor(ConsoleTheme.onSurface)
             },
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
@@ -82,10 +82,10 @@ class LogcatTabView(context: Context) : LinearLayout(context) {
             text = "仅看错误"
             textSize = 12f
             setPadding(context.dp(8), context.dp(4), context.dp(8), context.dp(4))
-            setTextColor(0xFF3F51B5.toInt())
+            setTextColor(ConsoleTheme.primary)
             setOnClickListener {
                 onlyErrors = !onlyErrors
-                toggle.setTextColor(if (onlyErrors) 0xFFE53935.toInt() else 0xFF3F51B5.toInt())
+                toggle.setTextColor(if (onlyErrors) 0xFFE53935.toInt() else ConsoleTheme.primary)
                 rebuildVisible()
             }
         }
@@ -94,7 +94,7 @@ class LogcatTabView(context: Context) : LinearLayout(context) {
 
         status.apply {
             textSize = 11f
-            setTextColor(0xFF999999.toInt())
+            setTextColor(ConsoleTheme.onSurfaceVariant)
             setPadding(0, context.dp(2), 0, context.dp(6))
         }
         addView(status)
@@ -102,7 +102,7 @@ class LogcatTabView(context: Context) : LinearLayout(context) {
         emptyHint.apply {
             text = "(无记录)"
             textSize = 13f
-            setTextColor(0xFF999999.toInt())
+            setTextColor(ConsoleTheme.onSurfaceVariant)
             gravity = Gravity.CENTER
         }
         addView(

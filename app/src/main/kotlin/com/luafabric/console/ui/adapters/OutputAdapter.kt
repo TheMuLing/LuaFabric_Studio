@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.luafabric.console.core.ConsoleSettings
 import com.luafabric.console.output.OutputEntry
+import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.dp
 
 /**
@@ -71,12 +72,12 @@ class OutputAdapter(
         }
         val meta = TextView(ctx).apply {
             textSize = 11f
-            setTextColor(0xFF777777.toInt())
+            setTextColor(ConsoleTheme.onSurfaceVariant)
             visibility = View.GONE
         }
         val content = TextView(ctx).apply {
             textSize = 14f
-            setTextColor(0xFF222222.toInt())
+            setTextColor(ConsoleTheme.onSurface)
         }
         val head = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -112,7 +113,7 @@ class OutputAdapter(
         holder.check.isChecked = isSel
         holder.check.visibility = if (selectionMode) View.VISIBLE else View.GONE
         holder.itemView.setBackgroundColor(
-            if (isSel) 0xFFE3EDFF.toInt() else Color.TRANSPARENT
+            if (isSel) ConsoleTheme.accentContainer else Color.TRANSPARENT
         )
         holder.meta.visibility = if (e.id in expanded || settings.showMeta) View.VISIBLE else View.GONE
 

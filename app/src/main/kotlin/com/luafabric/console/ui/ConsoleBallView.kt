@@ -5,19 +5,22 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
 
-/** 悬浮球：圆角矩形「控制台」，支持拖动与点击。 */
+/** 悬浮球：圆角矩形「控制台」，支持拖动与点击。颜色遵循 luafabric 主题（ConsoleTheme.primary）。 */
 @SuppressLint("ViewConstructor")
 class ConsoleBallView(context: Context, private val onTap: () -> Unit) : View(context) {
 
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF3D5AFE.toInt() }
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ConsoleTheme.primary }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFFFFFF.toInt()
+        color = ConsoleTheme.onPrimary
         textSize = context.resources.displayMetrics.scaledDensity * 12f
         textAlign = Paint.Align.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+        isFakeBoldText = true
     }
     private val bounds = RectF()
     private var downX = 0f
@@ -28,7 +31,7 @@ class ConsoleBallView(context: Context, private val onTap: () -> Unit) : View(co
 
     /** 崩溃提示：浮球变红。 */
     fun setRed(red: Boolean) {
-        paint.color = if (red) 0xFFE53935.toInt() else 0xFF3D5AFE.toInt()
+        paint.color = if (red) 0xFFE53935.toInt() else ConsoleTheme.primary
         invalidate()
     }
 
@@ -39,7 +42,7 @@ class ConsoleBallView(context: Context, private val onTap: () -> Unit) : View(co
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         bounds.set(0f, 0f, width.toFloat(), height.toFloat())
-        canvas.drawRoundRect(bounds, 24f, 24f, paint)
+        canvas.drawRoundRect(bounds, 32f, 32f, paint)
         val y = height / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
         canvas.drawText("控制台", width / 2f, y, textPaint)
     }
