@@ -4,6 +4,50 @@
 
 # 更新日志
 
+## 26.09.08
+
+- 版本号更新：`versionCode 26090801` / `versionName 26.09.08`
+
+- 新增调试控制台（仅调试模式项目启用，由 `manifest.json` 的 `application.debugmode` 控制，默认零资源初始化；代码仅存在于 app 模块，不随用户软件打包，未注册桥实现时全部钩子空操作）：
+
+  - 浮球入口：可拖动、点击展开面板，音量 - 键随时隐藏/显示；配色跟随应用外观设置（主题 / 深色模式 / 动态取色）；运行崩溃时浮球变红提示
+
+  - 面板：底部弹出式面板，页签含 输出 / 文件 / 环境 / Logcat / 调试 / 设置；头部加粗标题 + 最小化 / 完全关闭图标按钮；禁用拖拽收起，避免与页签内滚动冲突；打开面板时浮球自动隐藏，收起后恢复
+
+  - 输出页（F1）：每个 lua 文件独立会话缓冲，print / toast / snackbar / 错误统一汇入；两级类型解析（Lua 类型 + Java 具体类型 / 预览）；条目可展开完整元数据（时间 / 线程 / 相对文件）；支持多选复制、导出（每条空行分隔、恒含完整时间戳）、清空当前文件缓冲；「元数据」开关与「仅事件」过滤
+
+  - 文件页（F2）：当前文件相对路径 + 布局三态识别（aly 项目路径 / 内联布局 / 无布局），单击 / 长按复制
+
+  - newActivity 拦截（F3）：`activity.newActivity` 弹窗阻塞确认（可取消阻断）；并发同文件同参数请求丢弃、不同参数列表单选跳转；长参数弹窗录入
+
+  - 环境页（F4）：会话启动探测 Lua 版本 + JIT；按文件跟踪 require / bindClass；分为 环境信息 / Lua 模块 / 原生库 / Java 类库 四类折叠卡片（圆角 12dp、卡片间距 4dp）；Java 库反射展示全方法签名，C / Lua 库列出函数名与参数个数
+
+  - Logcat 页（F5）：调试运行起至停止期间后台常驻记录至 `logcat_<项目>_<毫秒时间戳>.log`；RecyclerView 懒加载渲染 + 「仅看错误」过滤；崩溃独立记录至 crash/ 目录
+
+  - 事件（F6）：仅 Lua 侧显式调用 `activity.runFunc` 且事件实际触发时记录，含相对路径 / 毫秒时间戳 / 参数摘要（并入输出页「仅事件」开关）
+
+  - 调试页（F7）：项目文件树，点选文件调起「注入参数」结构化键值表单（string / number / boolean / table 类型下拉，table 树状折叠编辑），以 JSON 全局注入后启动；「重启项目」（新会话 + 旧会话归档）与「重建当前文件」双功能；会话归档至 `sessions/<项目>_<时间戳>/outputs.txt`
+
+  - 设置页：元数据展示开关（完整时间 · 线程 · 类型解析）与解析深度（1 浅 / 2 中 / 3 深），实时生效
+
+- 修复：
+
+  - Lua 模块误分类（yyjson / aes 等原生模块混入）：原生模块判定改用 `debug.getinfo` 的 `what` 字段，而非 `source`
+
+  - 原生库误分类（loadmenu 标准库与项目内 lua 模块 app.config 等混入）：loadmenu 归入内置库，过滤 `com.androlua.` / `com.google.` 前缀，Java 类库仅扫描项目 `libs/*.dex`
+
+  - Lua 版本显示 "Lua Lua 5.5"：去除冗余前缀
+
+  - require 探测原生模块闪退（require 返回非 table 时按 Table 解引用致 SIGSEGV）：加类型守卫 + 栈平衡修复
+
+  - 设置页闪退（重复 addView）
+
+  - newActivity 后旧浮窗 / 面板残留：接线 `onActivityDestroyed` 清理死引用并重建，会话跨 Activity 保留
+
+  - 布局助手等工具场景启动不再误开控制台会话（console_disable 门控）
+
+  - 折叠卡片箭头由文字符号改为矢量图标（chevron-left / chevron-down）
+
 ## 26.09.05
 
 - 版本号更新：`versionCode 26090501` / `versionName 26.09.05`

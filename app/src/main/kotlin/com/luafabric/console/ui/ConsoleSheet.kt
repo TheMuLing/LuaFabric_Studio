@@ -99,6 +99,10 @@ class ConsoleSheet(
         root.addView(container)
         setContentView(root)
 
+        // 禁用 sheet 拖拽手势：页签内滚动（如环境页 ScrollView）与 BottomSheet 下拉关闭冲突，
+        // 误触下划会错误收起浮窗；关闭仅通过头部最小化/完全关闭按钮。
+        getBehavior().setDraggable(false)
+
         tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) = showTab(tab.position)
             override fun onTabUnselected(tab: TabLayout.Tab) {}

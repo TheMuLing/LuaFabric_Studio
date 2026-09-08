@@ -1,11 +1,15 @@
 package com.luafabric.console.ui
 
 import android.content.Context
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.luafabric.studio.falling.R
 
 /**
  * 环境页折叠卡：圆角矩形标题行（左名称 + 右箭头），点击展开/收起内容。
@@ -17,10 +21,11 @@ class ExpandableCard(context: Context, title: String) : LinearLayout(context) {
         orientation = LinearLayout.VERTICAL
         visibility = View.GONE
     }
-    private val arrow = TextView(context).apply {
-        text = "▶"
-        textSize = 12f
-        setTextColor(ConsoleTheme.onSurfaceVariant)
+    private val arrow = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        setImageResource(R.drawable.ic_chevron_left)
+        colorFilter = PorterDuffColorFilter(ConsoleTheme.onSurfaceVariant, PorterDuff.Mode.SRC_IN)
+        layoutParams = LinearLayout.LayoutParams(context.dp(20), context.dp(20))
     }
     private var expanded = false
 
@@ -72,7 +77,7 @@ class ExpandableCard(context: Context, title: String) : LinearLayout(context) {
     fun setExpanded(on: Boolean) {
         expanded = on
         body.visibility = if (on) View.VISIBLE else View.GONE
-        arrow.text = if (on) "▼" else "▶"
+        arrow.setImageResource(if (on) R.drawable.ic_chevron_down else R.drawable.ic_chevron_left)
     }
 
     private fun toggle() = setExpanded(!expanded)
