@@ -1,5 +1,6 @@
 package com.luafabric.console.intercept
 
+import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.os.Handler
@@ -42,9 +43,11 @@ class NewActivityInterceptor(private val context: Context) {
 
     private class Entry(val req: Request, val waiter: Waiter)
 
-    fun intercept(receiver: Any?, methodName: String?, args: Array<out Any?>?): MethodCallResult {
+    fun intercept(activity: Activity?, methodName: String?, args: Array<out Any?>?): MethodCallResult {
         if (methodName != "newActivity") return MethodCallResult.ALLOW
         val req = parse(args) ?: return MethodCallResult.ALLOW
+        // 弹窗须用调用方 Activity（action context），app context 无窗口 token，show() 抛 BadTokenException
+        val ctx = activity ?: context
         if (!lock.compareAndSet(false, true)) {
             // 已有确认会话进行中
             val entry = synchronized(busy) {
@@ -60,22 +63,22 @@ class NewActivityInterceptor(private val context: Context) {
             return blockOn(entry.waiter) // 不同参数 → 阻塞等列表决策
         }
         return try {
-            confirmSession(req)
+            confirmSession(ctx, req)
         } finally {
             lock.set(false)
         }
     }
 
     /** 首个请求：阻塞确认，随后循环处理待选列表，直到无新请求。 */
-    private fun confirmSession(first: Request): MethodCallResult {
+    private fun confirmSession(ctx: Context, first: Request): MethodCallResult {
         inFlightReq = first
-        val firstW = blockDialog { showConfirmDialog(it, first) }
+        val firstW = blockDialog(ctx) { showConfirmDialog(it, first, ctx) }
         inFlightReq = null
         while (true) {
             val snapshot = synchronized(busy) {
                 if (pending.isEmpty()) null else pending.toList().also { pending.clear() }
             } ?: break
-            blockDialog { showListDialog(it, snapshot) }
+            blockDialog(ctx) { showListDialog(it, snapshot, ctx) }
         }
         return if (firstW.allow) MethodCallResult.ALLOW else MethodCallResult.veto()
     }
@@ -89,7 +92,7 @@ class NewActivityInterceptor(private val context: Context) {
     }
 
     /** 阻塞当前线程直到弹窗决策：主线程 re-entrant 泵，其余线程 latch。 */
-    private fun blockDialog(build: (Waiter) -> Unit): Waiter {
+    private fun blockDialog(ctx: Context, build: (Waiter) -> Unit): Waiter {
         val w = Waiter()
         try {
             if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -146,9 +149,9 @@ class NewActivityInterceptor(private val context: Context) {
         }
     }
 
-    private fun showConfirmDialog(w: Waiter, req: Request) {
+    private fun showConfirmDialog(w: Waiter, req: Request, ctx: Context) {
         val paramsText = summary(req.dump).ifBlank { "(无)" }
-        val builder = AlertDialog.Builder(context)
+        val builder = AlertDialog.Builder(ctx)
             .setTitle("跳转确认")
             .setMessage("文件：${req.path}\n\n参数：$paramsText")
             .setCancelable(false)
@@ -161,17 +164,17 @@ class NewActivityInterceptor(private val context: Context) {
                 w.latch.countDown()
             }
         if (req.dump.length > SUMMARY_LEN) {
-            builder.setNeutralButton("完整参数") { _, _ -> showParamsPop(req) }
+            builder.setNeutralButton("完整参数") { _, _ -> showParamsPop(req, ctx) }
         }
         builder.show()
     }
 
-    private fun showListDialog(w: Waiter, snapshot: List<Entry>) {
-        val listView = ListView(context)
+    private fun showListDialog(w: Waiter, snapshot: List<Entry>, ctx: Context) {
+        val listView = ListView(ctx)
         val labels = snapshot.mapIndexed { i, e ->
             "${i + 1}. ${e.req.path}  [${summary(e.req.dump)}]"
         }
-        listView.adapter = ArrayAdapter(context, android.R.layout.simple_list_item_1, labels)
+        listView.adapter = ArrayAdapter(ctx, android.R.layout.simple_list_item_1, labels)
         listView.setOnItemClickListener { _, _, pos, _ ->
             snapshot.forEachIndexed { i, e ->
                 e.waiter.allow = (i == pos)
@@ -180,10 +183,10 @@ class NewActivityInterceptor(private val context: Context) {
             w.latch.countDown()
         }
         listView.setOnItemLongClickListener { _, _, pos, _ ->
-            showParamsPop(snapshot[pos].req)
+            showParamsPop(snapshot[pos].req, ctx)
             true
         }
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(ctx)
             .setTitle("多个跳转请求（选择执行）")
             .setView(listView)
             .setCancelable(false)
@@ -198,20 +201,20 @@ class NewActivityInterceptor(private val context: Context) {
     }
 
     /** 长参数 pop 弹窗：可滚动可复制全文，非阻塞。 */
-    private fun showParamsPop(req: Request) {
-        val scroll = ScrollView(context)
-        val tv = TextView(context).apply {
+    private fun showParamsPop(req: Request, ctx: Context) {
+        val scroll = ScrollView(ctx)
+        val tv = TextView(ctx).apply {
             text = "文件：${req.path}\n\n${req.dump}"
             textSize = 13f
             setTextIsSelectable(true)
-            setPadding(context.dp(18), context.dp(12), context.dp(18), context.dp(12))
+            setPadding(ctx.dp(18), ctx.dp(12), ctx.dp(18), ctx.dp(12))
         }
         scroll.addView(tv)
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(ctx)
             .setTitle("完整参数")
             .setView(scroll)
             .setPositiveButton("复制") { _, _ ->
-                ClipboardHelper.copy(context, "文件：${req.path}\n${req.dump}")
+                ClipboardHelper.copy(ctx, "文件：${req.path}\n${req.dump}")
             }
             .setNegativeButton("关闭", null)
             .show()

@@ -130,15 +130,20 @@ public final class LuaJavaAPI {
      */
     private static MethodCallResult interceptMethodCall(long luaState, Object obj, String cacheName)
             throws LuaException {
+        // cacheName 形如 "com.androlua.LuaActivity@newActivity"（实例）或 "android.widget.Toast.makeText"（静态/枚举），
+        // 取最后 @ / . 后的裸方法名下传；此前整串比较致 newActivity/setContentView/runFunc/makeText 等全部失配放行
+        int at = cacheName.lastIndexOf('@');
+        int dot = cacheName.lastIndexOf('.');
+        String method = cacheName.substring(Math.max(at, dot) + 1);
         DebugConsoleBridge bridge = DebugConsoleRegistry.get();
         if (bridge == null) return MethodCallResult.ALLOW;
         boolean interesting =
                 (obj instanceof LuaActivity)
                         || (obj instanceof Class
-                                && ("makeText".equals(cacheName) || "make".equals(cacheName)));
+                                && ("makeText".equals(method) || "make".equals(method)));
         if (!interesting) return MethodCallResult.ALLOW;
 
-        if (obj instanceof LuaActivity && "runFunc".equals(cacheName)) {
+        if (obj instanceof LuaActivity && "runFunc".equals(method)) {
             ConsoleCallMarker.set();
         }
 
@@ -156,7 +161,7 @@ public final class LuaJavaAPI {
             }
         }
         try {
-            return bridge.onMethodCall(obj, cacheName, args, luaState);
+            return bridge.onMethodCall(obj, method, args, luaState);
         } catch (Exception e) {
             return MethodCallResult.ALLOW;
         }

@@ -57,10 +57,23 @@ object SessionManager {
         return members.isEmpty()
     }
 
-    /** 宿主 Activity 销毁：清引用防 stale token（openSheet BadToken）；下一次 begin/join 立即重建。 */
+    /** 宿主 Activity 销毁：清 stale 引用。若销毁的正是当前活动页，则切换至尚存活的成员页，
+     *  保证浮球/面板重建能取得有效宿主（否则 hostActivity()==null → 重建被短路，回旧页浮球丢失）。 */
     @Synchronized
     fun onHostDestroyed(activity: Activity) {
-        if (this.activity === activity) this.activity = null
+        if (this.activity !== activity) return
+        this.activity = members.keys.firstOrNull {
+            it !== activity && !it.isDestroyed && !it.isFinishing
+        }
+    }
+
+    /** 页面恢复：该页属当前代次且存活 → 设为当前宿主。消除「detach 后、destroy 回调前」窗口期
+     *  宿主仍指向已销毁页导致的 openSheet 被 isDestroyed 短路（需点两次浮球才开面板）。 */
+    @Synchronized
+    fun onHostResumed(activity: Activity) {
+        if (members[activity] == gen && !activity.isDestroyed && !activity.isFinishing) {
+            this.activity = activity
+        }
     }
 
     @Synchronized

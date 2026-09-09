@@ -66,7 +66,14 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
                     onBackground()
                 }
             }
-            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityResumed(activity: Activity) {
+                // 回旧页等恢复场景：宿主切到该页，消除 openSheet 读到已销毁宿主而吞点击的竞态
+                SessionManager.onHostResumed(activity)
+                // 页内返回/恢复：浮球缺失则重建（面板开在销毁页上被收走/宿主销毁竞态等场景）
+                if (active && StateMachine.state == ConsoleState.BALL && !overlay.isBallShowing()) {
+                    overlay.showBall()
+                }
+            }
             override fun onActivityPaused(activity: Activity) {}
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
             override fun onActivityDestroyed(activity: Activity) {
@@ -238,8 +245,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         if (methodName == "setContentView" && receiver is android.app.Activity) {
             FileStateTracker.onSetContentView()
         }
-        // F3：newActivity 阻塞确认 / 同参丢弃 / 异参列表单选
-        return newActivityInterceptor.intercept(receiver, methodName, args)
+        // F3：newActivity 阻塞确认 / 同参丢弃 / 异参列表单选（弹窗用调用方 Activity 作 context）
+        return newActivityInterceptor.intercept(receiver as? Activity, methodName, args)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
