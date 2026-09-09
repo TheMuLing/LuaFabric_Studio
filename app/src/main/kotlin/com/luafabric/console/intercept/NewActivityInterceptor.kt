@@ -44,10 +44,21 @@ class NewActivityInterceptor(private val context: Context) {
     @Volatile
     private var session: Session? = null
 
-    private class Session(val ctx: Context) {
+    private class Session(val ctx: Context, val host: Activity?) {
         val entries = LinkedHashMap<String, Entry>()
         val cards = LinkedHashMap<String, JumpCardView>()
         val listHost = LinearLayout(ctx) // 卡片容器（仅主线程读写）
+        /** 弹窗底部「跳转后关闭当前界面」开关行 + 开关（仅主线程读写）。 */
+        var switchRow: LinearLayout? = null
+        var finishSwitch: com.google.android.material.materialswitch.MaterialSwitch? = null
+        /** 弹窗期间收到 finish（Lua 线程置位）；已渲染过开关则置 true（防多 finish 疯狂加视图）。 */
+        @Volatile
+        var pendingFinish = false
+        @Volatile
+        var switchShown = false
+        /** 首个被拦 finish 的调用方（结算时按开关重放关页）。 */
+        @Volatile
+        var finishCaller: Activity? = null
         @Volatile
         var selectedKey: String? = null
         @Volatile
@@ -63,8 +74,8 @@ class NewActivityInterceptor(private val context: Context) {
         val req: Resolved,
         /** 调用方实例（LuaActivity/LuaActivityX），重放真实跳转的目标。 */
         val caller: Activity?,
-        /** 原始 java 参数：重放按此精确匹配 newActivity 重载。 */
-        val args: Array<out Any?>
+        /** 重放参数：Lua 表已转 Object[]（对齐真实调用 createArray），重放按此匹配并 invoke。 */
+        val args: Array<Any?>
     )
 
     /** 解析后的请求：目标绝对路径 + 相对路径展示 + 参数列表 + 签名。 */
@@ -81,25 +92,60 @@ class NewActivityInterceptor(private val context: Context) {
     }
 
     fun intercept(activity: Activity?, methodName: String?, args: Array<out Any?>?): MethodCallResult {
-        if (methodName != "newActivity") return MethodCallResult.ALLOW
+        when (methodName) {
+            "newActivity" -> return interceptNewActivity(activity, args)
+            "finish" -> return interceptFinish(activity) // A：弹窗期间拦 finish
+            else -> return MethodCallResult.ALLOW
+        }
+    }
+
+    private fun interceptNewActivity(activity: Activity?, args: Array<out Any?>?): MethodCallResult {
         if (args == null) return MethodCallResult.ALLOW
         val req = resolve(activity, args) ?: return MethodCallResult.ALLOW
+        // 重放参数即刻归一：Lua 表（LuaTable/Map）→ Object[]，与真实调用 createArray 语义一致。
+        // 不能留到主线程重放时才转——LuaTable.get 要碰 Lua 栈，跨线程不安全。
+        val replay = args.map { if (it is Map<*, *>) toObjectArray(it) else it }.toTypedArray()
         synchronized(this) {
             val cur = session
             if (cur != null) {
                 synchronized(cur) {
                     if (cur.entries.containsKey(req.signature)) return MethodCallResult.veto() // 已存在 → 无操作
-                    cur.entries[req.signature] = Entry(req.signature, req, activity, args)
+                    cur.entries[req.signature] = Entry(req.signature, req, activity, replay)
                 }
                 mainHandler.post { appendCardIfAbsent(cur, req.signature) }
             } else {
-                val ns = Session(activity ?: context)
-                ns.entries[req.signature] = Entry(req.signature, req, activity, args)
+                val ns = Session(activity ?: context, activity)
+                ns.entries[req.signature] = Entry(req.signature, req, activity, replay)
                 session = ns
                 mainHandler.post { openDialog(ns) }
             }
         }
         return MethodCallResult.veto() // B：恒否决回 Lua，脚本继续；放行在 settle 后重放
+    }
+
+    /**
+     * A：弹窗期间拦截「调用方同页」的 finish → veto 页不真关 + 记 pendingFinish，主线程保证
+     * 「跳转后关闭当前界面」开关只出现一次（默认开）。其余时机/他页 finish 一律放行。
+     */
+    private fun interceptFinish(activity: Activity?): MethodCallResult {
+        if (activity == null) return MethodCallResult.ALLOW
+        val cur = session ?: return MethodCallResult.ALLOW
+        if (cur.host !== activity) return MethodCallResult.ALLOW // 非本会话宿主（他页 finish）→ 放行
+        synchronized(cur) {
+            if (cur.settled) return MethodCallResult.ALLOW // 已结算：不再拦
+            cur.pendingFinish = true
+            cur.finishCaller = activity
+        }
+        mainHandler.post { ensureFinishSwitch(cur) }
+        return MethodCallResult.veto()
+    }
+
+    /** A：幂等显示「跳转后关闭当前界面」开关（首次 finish 被拦时）。主线程调用。 */
+    private fun ensureFinishSwitch(s: Session) {
+        if (s.settled || s.switchShown) return
+        s.switchShown = true
+        s.switchRow?.visibility = View.VISIBLE
+        s.finishSwitch?.isChecked = true // 默认开启（镜像脚本语义）；用户后续手动选择不被覆盖
     }
 
     // ---------- 解析 ----------
@@ -136,9 +182,33 @@ class NewActivityInterceptor(private val context: Context) {
         s.listHost.setPadding(s.ctx.dp(14), s.ctx.dp(4), s.ctx.dp(14), s.ctx.dp(6))
         scroll.addView(s.listHost)
         appendAllCards(s)
+        // 容器：卡片区（权重 1）+ 底部「跳转后关闭当前界面」开关行（默认隐藏，finish 被拦才显）
+        val root = LinearLayout(s.ctx).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val switchRow = LinearLayout(s.ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(s.ctx.dp(16), s.ctx.dp(4), s.ctx.dp(16), s.ctx.dp(8))
+            visibility = View.GONE
+        }
+        switchRow.addView(
+            TextView(s.ctx).apply {
+                text = "跳转后关闭当前界面"
+                textSize = 14f
+                setTextColor(ConsoleTheme.onSurface)
+            },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        val finishSwitch = com.google.android.material.materialswitch.MaterialSwitch(s.ctx).apply {
+            isChecked = true // 默认开；结算时读取当前状态
+        }
+        switchRow.addView(finishSwitch)
+        s.switchRow = switchRow
+        s.finishSwitch = finishSwitch
+        root.addView(switchRow)
         val dlg = MaterialAlertDialogBuilder(s.ctx)
             .setTitle("跳转拦截")
-            .setView(scroll)
+            .setView(root)
             .setPositiveButton("允许") { _, _ -> settle(s, s.selectedKey) }
             .setNegativeButton("取消") { _, _ -> settle(s, null) }
             .setCancelable(false)
@@ -157,6 +227,8 @@ class NewActivityInterceptor(private val context: Context) {
         negative.setTextColor(ConsoleTheme.primary)
         positive.isEnabled = false // 未选中前不可允许
         s.positiveButton = positive
+        // finish 可能先于弹窗构建到达（Lua 线程 → post 乱序）→ 补齐开关显示
+        if (s.pendingFinish) ensureFinishSwitch(s)
     }
 
     /** 弹窗主题化：窗口背景 surface + 圆角（md3 28dp）。 */
@@ -193,16 +265,38 @@ class NewActivityInterceptor(private val context: Context) {
 
     // ---------- 重放：真实跳转 ----------
 
-    /** 重放选中条目的真实 newActivity：反射重载解析 + 原始 args 精确匹配。失败安全吞、不崩。 */
+    /** 重放选中条目的真实 newActivity：反射重载解析 + 重放参数精确匹配。失败仅记日志、不崩。 */
     private fun reExec(e: Entry) {
         val caller = e.caller ?: return
         if (caller.isFinishing || caller.isDestroyed) return
         try {
-            val method = resolveOverload(caller, "newActivity", e.args) ?: return // 匹配失败 → 弃跳
-            method.invoke(caller, *e.args)
+            val method = resolveOverload(caller, "newActivity", e.args)
+                ?: throw IllegalStateException("no overload matches args ${e.args.joinToString { it?.javaClass?.simpleName ?: "null" }}")
+            method.invoke(caller, *coerceArgs(method.parameterTypes, e.args))
         } catch (t: Throwable) {
-            // 重放失败（FileNotFound 等）→ 静默弃跳
+            android.util.Log.w("LuaFabric-Intercept", "replay newActivity(${e.req.absPath}) failed", t)
         }
+    }
+
+    /** 按目标参数类型规整重放参数：基本类型 Number 按目标类型取数（对齐 convertLuaNumber），其余原样。 */
+    private fun coerceArgs(params: Array<Class<*>>, args: Array<out Any?>): Array<Any?> {
+        val out = arrayOfNulls<Any?>(params.size)
+        for (i in params.indices) {
+            val p = params[i]
+            val a = args.getOrNull(i)
+            out[i] = if (p.isPrimitive && a is Number) {
+                when (p.name) {
+                    "int" -> a.toInt()
+                    "long" -> a.toLong()
+                    "double" -> a.toDouble()
+                    "float" -> a.toFloat()
+                    "short" -> a.toShort()
+                    "byte" -> a.toByte()
+                    else -> a
+                }
+            } else a
+        }
+        return out
     }
 
     /** 按调用方类型找 newActivity 重载：参数个数 + 可赋性（含基本类型拆箱）。多义 → null（安全失败）。 */
@@ -228,14 +322,10 @@ class NewActivityInterceptor(private val context: Context) {
     private fun assignable(param: Class<*>, arg: Any?): Boolean {
         if (arg == null) return !param.isPrimitive
         if (!param.isPrimitive) return param.isInstance(arg)
+        // Lua 数字经 toJavaObject 多为 Long/Double 装箱，基本类型一律按 Number 判定（invoke 前 coerceArgs 取数）
         return when (param.name) {
-            "int" -> arg is Int
-            "long" -> arg is Long
+            "int", "long", "double", "float", "short", "byte" -> arg is Number
             "boolean" -> arg is Boolean
-            "double" -> arg is Double
-            "float" -> arg is Float
-            "short" -> arg is Short
-            "byte" -> arg is Byte
             "char" -> arg is Char
             else -> false
         }
@@ -447,6 +537,19 @@ class NewActivityInterceptor(private val context: Context) {
     }
 
     // ---------- 类型/内联 ----------
+
+    /** Lua 表（Map/LuaTable）转 Object[]，对齐 compareTypes.createArray 语义（整数索引表 → 数组）。 */
+    private fun toObjectArray(map: Map<*, *>): Array<Any?> {
+        // 按整数键从 1 开始取（Lua 表惯例），顺序填数组直到首次缺漏
+        val list = mutableListOf<Any?>()
+        var i = 1
+        while (true) {
+            val key = i++
+            if (!map.containsKey(key)) break
+            list.add(map[key])
+        }
+        return list.toTypedArray()
+    }
 
     private fun luaTypeOf(v: Any?): String = when (v) {
         null -> "nil"
