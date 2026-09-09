@@ -109,6 +109,9 @@ class NewActivityInterceptor(
         // 放行原路径随意失败。脚本自身语法问题，解释器不背锅、不配对补救。
         if (activity == null || activity.isFinishing || activity.isDestroyed) return MethodCallResult.ALLOW
         val req = resolve(activity, args) ?: return MethodCallResult.ALLOW
+        // D：拦截瞬间目标文件已删除 → 不拦，放行原路径真实 newActivity 在原地抛 FileNotFound，
+        // 不把外部删除动作憋进弹窗流程（弹窗会阻碍用户分析 bug）。
+        if (!File(req.absPath).exists()) return MethodCallResult.ALLOW
         // 重放参数即刻归一：Lua 表（LuaTable/Map）→ Object[]，与真实调用 createArray 语义一致。
         // 不能留到主线程重放时才转——LuaTable.get 要碰 Lua 栈，跨线程不安全。
         val replay = args.map { if (it is Map<*, *>) toObjectArray(it) else it }.toTypedArray()
