@@ -24,6 +24,7 @@ object SessionManager {
         private set
 
     private val members = WeakHashMap<Activity, Long>()
+    private val infos = WeakHashMap<Activity, SessionInfo>()
 
     @Volatile
     private var pendingNew = false
@@ -46,6 +47,7 @@ object SessionManager {
         current = info
         activity = info.activity
         members[info.activity] = gen
+        infos[info.activity] = info
         return fresh
     }
 
@@ -53,9 +55,14 @@ object SessionManager {
     @Synchronized
     fun detach(info: SessionInfo): Boolean {
         val g = members.remove(info.activity)
+        infos.remove(info.activity)
         if (g == null || g != gen) return false
         return members.isEmpty()
     }
+
+    /** 调用方 Activity 的工程根目录（luaDir），F3 相对路径解析用；未知返回 null。 */
+    @Synchronized
+    fun luaDirOf(activity: Activity?): String? = activity?.let { infos[it]?.luaDir }
 
     /** 宿主 Activity 销毁：清 stale 引用。若销毁的正是当前活动页，则切换至尚存活的成员页，
      *  保证浮球/面板重建能取得有效宿主（否则 hostActivity()==null → 重建被短路，回旧页浮球丢失）。 */
