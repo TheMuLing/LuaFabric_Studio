@@ -88,7 +88,8 @@ class OverlayController(private val appContext: Context) {
     private fun moveBy(dx: Float, dy: Float) {
         if (wm != null && params != null) {
             val size = maxBallBounds()
-            params!!.x = (params!!.x + dx).toInt().coerceIn(0, size[0])
+            // END 重力下 x 为距右缘距离：向右拖 dx>0 → 球右移 → x 减小（此前方向反了）
+            params!!.x = (params!!.x - dx).toInt().coerceIn(0, size[0])
             params!!.y = (params!!.y + dy).toInt().coerceIn(0, size[1])
             try {
                 wm?.updateViewLayout(ball, params)

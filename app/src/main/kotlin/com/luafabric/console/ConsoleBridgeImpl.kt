@@ -78,6 +78,11 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         Handler(Looper.getMainLooper()).post { overlay.setErrorCount(0) }
     }
 
+    /** 设置页「拦截界面跳转/结束请求」开关：同步拦截器总开关（默认开，即时生效）。 */
+    fun setInterceptEnabled(v: Boolean) {
+        newActivityInterceptor.enabled = v
+    }
+
     /** 前后台感知：后台藏球+面板强收，前台按 BALL 态恢复；会话/logcat 不中断。 */
     private fun registerForegroundCallbacks() {
         val app = context.applicationContext as? Application ?: return
@@ -269,9 +274,9 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         luaState: Long
     ): MethodCallResult {
         if (!active) return MethodCallResult.ALLOW
-        // F2：观察 setContentView（布局判定）
+        // F2：观察 setContentView（布局判定）；显式字符串参数直传，否则靠 require 模块推 .aly
         if (methodName == "setContentView" && receiver is android.app.Activity) {
-            FileStateTracker.onSetContentView()
+            FileStateTracker.onSetContentView(args?.firstOrNull() as? String)
         }
         // F3：newActivity 阻塞确认 / 同参丢弃 / 异参列表单选（弹窗用调用方 Activity 作 context）
         return newActivityInterceptor.intercept(receiver as? Activity, methodName, args)

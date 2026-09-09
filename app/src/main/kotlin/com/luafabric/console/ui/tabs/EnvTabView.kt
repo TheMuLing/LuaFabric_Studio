@@ -44,6 +44,7 @@ class EnvTabView(context: Context) : ScrollView(context) {
         envCard.addBody(kvRow("Lua 版本", LuaEnvironment.versionLabel()))
         envCard.addBody(kvRow("JIT", if (LuaEnvironment.jit) "启用" else "未启用"))
         envCard.addBody(kvRow("当前文件", FileStateTracker.relativePath.ifBlank { "(无)" }))
+        envCard.addBody(kvRow("绑定布局", bindLayoutLabel()))
         content.addView(envCard)
 
         // 2. Lua 模块（自定义 lua 文件模块）
@@ -93,6 +94,12 @@ class EnvTabView(context: Context) : ScrollView(context) {
             ).apply { topMargin = context.dp(4) }
         )
     }
+
+    /** 绑定布局三态文案：ALY → ./相对路径（layout.aly）；内联布局 / 无布局 → 原标签。 */
+    private fun bindLayoutLabel(): String =
+        if (FileStateTracker.layout == FileStateTracker.Layout.ALY) {
+            "./" + FileStateTracker.alyRelativePath.trimStart('/')
+        } else FileStateTracker.layout.label
 
     /** 键值对样式：一行一条，左键右值，宽度最大。 */
     private fun kvRow(key: String, value: String): LinearLayout =

@@ -19,6 +19,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.luafabric.console.core.SessionManager
 import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.dp
+import com.luafabric.console.ui.themeSwitch
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.core.console.MethodCallResult
 import java.io.File
@@ -43,6 +44,34 @@ class NewActivityInterceptor(
 ) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    companion object {
+        /**
+         * 直达拉起（结构页 golf 用）：绕过拦截器分支，反射调用 LuaActivity.newActivity(String 绝对路径)。
+         * host 需为 LuaActivity 子类；失败（无宿主/已消亡/无匹配重载/调用抛错）返回 false，由调用方提示。
+         */
+        fun launchDirect(activity: Activity?, path: String): Boolean {
+            if (activity == null || activity.isFinishing || activity.isDestroyed) return false
+            return try {
+                for (m in activity.javaClass.methods) {
+                    if (m.name == "newActivity" && m.parameterTypes.size == 1 &&
+                        m.parameterTypes[0] == String::class.java
+                    ) {
+                        m.invoke(activity, path)
+                        return true
+                    }
+                }
+                false
+            } catch (t: Throwable) {
+                android.util.Log.w("LuaFabric-Intercept", "golf newActivity($path) failed", t)
+                false
+            }
+        }
+    }
+
+    /** 拦截总开关（设置页「拦截界面跳转/结束请求」控制），默认开；关则全部放行。 */
+    @Volatile
+    var enabled = true
 
     /** 当前拦截会话；null = 无会话。 */
     @Volatile
@@ -96,6 +125,7 @@ class NewActivityInterceptor(
     }
 
     fun intercept(activity: Activity?, methodName: String?, args: Array<out Any?>?): MethodCallResult {
+        if (!enabled) return MethodCallResult.ALLOW // 设置页总开关：关 → 全部放行
         when (methodName) {
             "newActivity" -> return interceptNewActivity(activity, args)
             "finish" -> return interceptFinish(activity) // A：弹窗期间拦 finish
@@ -187,6 +217,7 @@ class NewActivityInterceptor(
 
     private fun openDialog(s: Session) {
         if (s.settled) return
+        ConsoleTheme.refresh(s.ctx) // 弹窗打开前刷新主题（开关/卡片颜色跟随 luafabric 设置）
         val scroll = ScrollView(s.ctx)
         s.listHost.orientation = LinearLayout.VERTICAL
         s.listHost.setPadding(s.ctx.dp(14), s.ctx.dp(4), s.ctx.dp(14), s.ctx.dp(6))
@@ -211,6 +242,7 @@ class NewActivityInterceptor(
         )
         val finishSwitch = com.google.android.material.materialswitch.MaterialSwitch(s.ctx).apply {
             isChecked = true // 默认开；结算时读取当前状态
+            themeSwitch() // 颜色跟随 luafabric 主题
         }
         switchRow.addView(finishSwitch)
         s.switchRow = switchRow

@@ -13,7 +13,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.tabs.TabLayout
 import com.luafabric.console.ui.tabs.DebugTabView
 import com.luafabric.console.ui.tabs.EnvTabView
-import com.luafabric.console.ui.tabs.FileTabView
+import com.luafabric.console.ui.tabs.StructTabView
 import com.luafabric.console.ui.tabs.LogcatTabView
 import com.luafabric.console.ui.tabs.OutputTabView
 import com.luafabric.console.ui.tabs.SettingsTabView
@@ -73,7 +73,7 @@ class ConsoleSheet(
 
         val tabs = TabLayout(ctx).apply {
             addTab(newTab().setText("输出"))
-            addTab(newTab().setText("文件"))
+            addTab(newTab().setText("结构"))
             addTab(newTab().setText("环境"))
             addTab(newTab().setText("Logcat"))
             addTab(newTab().setText("调试"))
@@ -123,7 +123,7 @@ class ConsoleSheet(
             view,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         )
-        (view as? FileTabView)?.refresh()
+        (view as? StructTabView)?.refresh()
         (view as? EnvTabView)?.refresh()
         (view as? DebugTabView)?.refresh()
         (view as? SettingsTabView)?.refresh()
@@ -135,7 +135,7 @@ class ConsoleSheet(
 
     private fun buildTab(pos: Int): View = when (pos) {
         0 -> OutputTabView(context)
-        1 -> FileTabView(context)
+        1 -> StructTabView(context)
         2 -> EnvTabView(context)
         3 -> LogcatTabView(context)
         4 -> DebugTabView(context)

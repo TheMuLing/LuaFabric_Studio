@@ -26,4 +26,9 @@ class ConsoleSettings(context: Context) {
     var toastLuaErrors: Boolean
         get() = sp.getBoolean("toast_lua_errors", false)
         set(v) = sp.edit().putBoolean("toast_lua_errors", v).apply()
+
+    /** 拦截界面跳转/结束请求（newActivity/finish 拦截确认总开关），默认开。 */
+    var interceptNavigation: Boolean
+        get() = sp.getBoolean("intercept_navigation", true)
+        set(v) = sp.edit().putBoolean("intercept_navigation", v).apply()
 }

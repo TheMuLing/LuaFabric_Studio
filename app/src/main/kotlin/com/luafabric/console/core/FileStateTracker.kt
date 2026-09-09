@@ -1,5 +1,7 @@
 package com.luafabric.console.core
 
+import com.luafabric.console.env.ModuleTracker
+import com.luafabric.console.output.OutputManager
 import com.luafabric.studio.falling.core.console.SessionInfo
 import java.io.File
 
@@ -50,11 +52,49 @@ object FileStateTracker {
         layout = detectAly() ?: Layout.NONE
     }
 
-    /** setContentView 已观察：无 aly 文件时判定为内联布局。 */
+    /**
+     * setContentView 已观察 → 判定布局来源。
+     * @param layoutName setContentView 显式字符串参数（LuaActivity.setContentView(String) 直传）；无则为 null。
+     * 判定顺序：显式文件名命中 .aly → ALY；按文件已 require 模块找「项目下同名 .aly」→ ALY（覆盖
+     * main.lua + layout.aly 异名情况，require 发生在 loadlayout 模块内部，traced 仍捕获）；否则 INLINE。
+     */
     @Synchronized
-    fun onSetContentView() {
+    fun onSetContentView(layoutName: String? = null) {
         if (layout == Layout.ALY) return
+        if (!layoutName.isNullOrBlank() && resolveAlyByName(layoutName)) return
+        if (resolveAlyFromRequiredModules()) return
         layout = Layout.INLINE
+    }
+
+    /** 按模块名解析 .aly（去路径去扩展名）：luaDir / luaExtDir / assets。 */
+    private fun resolveAlyByName(name: String): Boolean {
+        val alyName = name.substringAfterLast('/').substringBeforeLast('.') + ".aly"
+        for (f in listOfNotNull(luaDir, luaExtDir).map { File(it, alyName) }) {
+            if (f.exists()) {
+                alyRelativePath = computeRelative(f.absolutePath)
+                layout = Layout.ALY
+                return true
+            }
+        }
+        return try {
+            SessionManager.current?.activity?.assets?.open(alyName)?.close()
+            alyRelativePath = "/$alyName"
+            layout = Layout.ALY
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** 从 ModuleTracker 记录的 require 模块中找项目下同名 .aly（layout.aly 异名布局主判据）。 */
+    private fun resolveAlyFromRequiredModules(): Boolean {
+        val file = OutputManager.currentFile
+        if (file.isBlank()) return false
+        for (lib in ModuleTracker.luaLibs(file)) {
+            if (lib.native) continue
+            if (resolveAlyByName(lib.module)) return true
+        }
+        return false
     }
 
     private fun computeRelative(path: String): String {

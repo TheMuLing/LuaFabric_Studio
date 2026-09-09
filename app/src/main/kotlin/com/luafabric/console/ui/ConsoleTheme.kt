@@ -140,3 +140,23 @@ object ConsoleTheme {
         (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
 }
+
+/** 控制台 MaterialSwitch 主题化：轨道/拇指颜色跟随 ConsoleTheme（需已 refresh()）。 */
+fun android.widget.CompoundButton.themeSwitch() {
+    (this as? com.google.android.material.materialswitch.MaterialSwitch)?.let { sw ->
+        val thumbUnchecked = if (ConsoleTheme.isDark) 0xFFB6B6C6.toInt() else 0xFF8B93A7.toInt()
+        val trackUnchecked = android.graphics.Color.argb(
+            0x40, android.graphics.Color.red(ConsoleTheme.onSurface),
+            android.graphics.Color.green(ConsoleTheme.onSurface),
+            android.graphics.Color.blue(ConsoleTheme.onSurface)
+        )
+        sw.thumbTintList = android.content.res.ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(ConsoleTheme.onPrimary, thumbUnchecked)
+        )
+        sw.trackTintList = android.content.res.ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(ConsoleTheme.primary, trackUnchecked)
+        )
+    }
+}
