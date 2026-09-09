@@ -156,6 +156,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         FileStateTracker.updateFromSession(info)
         LuaEnvironment.probe(info.luaState)
         OutputManager.currentFile = info.luaPath ?: ""
+        // 主线程早期 print（游标建立前落入兜底缓冲）并入当前文件，保证主线程输出可见
+        OutputManager.rebaseCatchAll(OutputManager.currentFile)
         if (!active) return
         if (fresh) {
             StateMachine.transition(ConsoleState.BALL)
@@ -237,7 +239,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     }
 
     override fun onPrint(text: String?, luaTypes: IntArray?, rawArgs: Array<out Any?>?) {
-        if (!active) return
+        // 不 gate active：主线程顶层 chunk 的 print 可能先于 onSessionStart 到达（游标未建），
+        // 一律入兜底缓冲，会话建立后由 rebaseCatchAll 并入当前文件；非调试会话随后 clearAll 清空。
         val depth = settings.parseDepth
         val l1 = ArrayList<String>(luaTypes?.size ?: 0)
         val l2 = ArrayList<String>(luaTypes?.size ?: 0)

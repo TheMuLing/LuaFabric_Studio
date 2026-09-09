@@ -338,45 +338,80 @@ class NewActivityInterceptor(
         }
     }
 
-    /** 按目标参数类型规整重放参数：基本类型 Number 按目标类型取数（对齐 convertLuaNumber），其余原样。 */
+    /** 按目标参数类型规整重放参数：基本类型 Number 取数；尾部数组参数打包还原 luajava 展开态。 */
     private fun coerceArgs(params: Array<Class<*>>, args: Array<out Any?>): Array<Any?> {
+        if (params.isEmpty()) return emptyArray()
         val out = arrayOfNulls<Any?>(params.size)
-        for (i in params.indices) {
-            val p = params[i]
-            val a = args.getOrNull(i)
-            out[i] = if (p.isPrimitive && a is Number) {
-                when (p.name) {
-                    "int" -> a.toInt()
-                    "long" -> a.toLong()
-                    "double" -> a.toDouble()
-                    "float" -> a.toFloat()
-                    "short" -> a.toShort()
-                    "byte" -> a.toByte()
-                    else -> a
-                }
-            } else a
+        val lastIdx = params.size - 1
+        val last = params[lastIdx]
+        // 尾部为数组参数且实参未直接给数组 → 尾巴打包（newActivity(String, Object[]) 还原 [String,Long] 形态）
+        val pack = last.isArray &&
+            !(args.size == params.size && args[lastIdx] != null && last.isInstance(args[lastIdx]))
+        val fixed = if (pack) lastIdx else params.size
+        for (i in 0 until fixed) out[i] = box(params[i], args.getOrNull(i))
+        if (pack) {
+            val comp = last.componentType!!
+            val tail = (args.size - (params.size - 1)).coerceAtLeast(0)
+            val arr = java.lang.reflect.Array.newInstance(comp, tail)
+            for (j in 0 until tail) java.lang.reflect.Array.set(arr, j, box(comp, args[j + params.size - 1]))
+            out[lastIdx] = arr
         }
         return out
     }
 
-    /** 按调用方类型找 newActivity 重载：参数个数 + 可赋性（含基本类型拆箱）。多义 → null（安全失败）。 */
-    private fun resolveOverload(caller: Any, name: String, args: Array<out Any?>): Method? {
-        var best: Method? = null
-        for (m in caller.javaClass.methods) {
-            if (m.name != name || m.parameterTypes.size != args.size) continue
-            var ok = true
-            for (i in m.parameterTypes.indices) {
-                if (!assignable(m.parameterTypes[i], args[i])) {
-                    ok = false
-                    break
-                }
-            }
-            if (ok) {
-                if (best != null) return null
-                best = m
+    /** 基本类型取数（Long/Double 装箱 → 目标基本类型），其余原样。 */
+    private fun box(p: Class<*>, a: Any?): Any? {
+        if (p.isPrimitive && a is Number) {
+            return when (p.name) {
+                "int" -> a.toInt()
+                "long" -> a.toLong()
+                "double" -> a.toDouble()
+                "float" -> a.toFloat()
+                "short" -> a.toShort()
+                "byte" -> a.toByte()
+                else -> a
             }
         }
-        return best
+        return a
+    }
+
+    /** 重载解析：先定长全匹配；无则尾部数组参数打包匹配（luajava 的 (String, Object[]) 展开态）。多候选 → null 安全失败。 */
+    private fun resolveOverload(caller: Any, name: String, args: Array<out Any?>): Method? {
+        val methods = caller.javaClass.methods
+        var exact: Method? = null
+        for (m in methods) {
+            if (m.name != name || m.parameterTypes.size != args.size) continue
+            var ok = true
+            val ps = m.parameterTypes
+            for (i in ps.indices) if (!assignable(ps[i], args[i])) { ok = false; break }
+            if (ok) {
+                if (exact != null) return null
+                exact = m
+            }
+        }
+        if (exact != null) return exact
+        var packed: Method? = null
+        for (m in methods) {
+            if (m.name != name) continue
+            val ps = m.parameterTypes
+            if (ps.isEmpty() || !ps.last().isArray || ps.size - 1 > args.size) continue
+            var ok = true
+            for (i in 0 until ps.size - 1) if (!assignable(ps[i], args[i])) { ok = false; break }
+            if (!ok) continue
+            val comp = ps.last().componentType ?: continue
+            for (j in ps.size - 1 until args.size) if (!tailAssignable(comp, args[j])) { ok = false; break }
+            if (ok) {
+                if (packed != null) return null
+                packed = m
+            }
+        }
+        return packed
+    }
+
+    private fun tailAssignable(comp: Class<*>, arg: Any?): Boolean {
+        if (arg == null) return !comp.isPrimitive
+        if (!comp.isPrimitive) return comp.isInstance(arg)
+        return arg is Number
     }
 
     private fun assignable(param: Class<*>, arg: Any?): Boolean {

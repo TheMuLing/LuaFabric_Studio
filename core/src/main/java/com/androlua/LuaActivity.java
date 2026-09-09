@@ -1799,7 +1799,9 @@ public class LuaActivity extends AppCompatActivity
         case 0:
           {
             String data = msg.getData().getString(DATA);
-            if (mDebug) showToast(data);
+            // 报错/print toast 统一由控制台「使用 Toast 输出 Lua 侧错误」开关门控（默认关）；
+            // 非控制台应用（bridge 未注册）registry 恒 true，保持旧行为。
+            if (mDebug && DebugConsoleRegistry.isErrorToastEnabled()) showToast(data);
             status.append(data + "\n");
             adapter.add(data);
           }

@@ -35,6 +35,7 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
     private val adapter = OutputAdapter(settings) { refreshSelectionBar() }
     /** 仅事件模式：列表只显示 runFunc 事件流（原「事件」页合并入输出页）。 */
     private var onlyEvents = false
+    private var onlyEventsBtn: ImageButton? = null
 
     private val titleView = TextView(context)
     private val selBar = LinearLayout(context)
@@ -50,25 +51,21 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
             setPadding(context.dp(12), context.dp(6), context.dp(12), context.dp(6))
             maxLines = 1
         }
-        addView(titleView)
 
-        // 常规操作栏：元数据开关 + 清空当前缓冲
+        // 常规操作栏（置顶居左，纯图标）：仅事件（calendar 切换）+ 清空（trash-can）；无文本开关
         val toolBar = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(context.dp(12), context.dp(2), context.dp(12), context.dp(2))
+            gravity = Gravity.START
+            setPadding(context.dp(4), context.dp(2), context.dp(12), context.dp(2))
         }
-        toolBar.addView(actionText("元数据：${if (settings.showMeta) "开" else "关"}") {
-            settings.showMeta = !settings.showMeta
-            (toolBar.getChildAt(0) as TextView).text = "元数据：${if (settings.showMeta) "开" else "关"}"
-            adapter.setShowMeta(settings.showMeta)
-        })
-        toolBar.addView(actionText("仅事件：关") {
+        val btn = iconButton(R.drawable.ic_calendar_blank, "仅事件：关") {
             onlyEvents = !onlyEvents
-            (toolBar.getChildAt(1) as TextView).text = "仅事件：${if (onlyEvents) "开" else "关"}"
+            onlyEventsBtn?.let(::syncOnlyEventsIcon)
             refresh()
-        })
-        toolBar.addView(actionText("清空") {
+        }
+        onlyEventsBtn = btn
+        toolBar.addView(btn)
+        toolBar.addView(iconButton(R.drawable.ic_trash_can, "清空") {
             if (onlyEvents) {
                 EventTracker.clear()
                 refresh()
@@ -76,7 +73,7 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         })
         addView(toolBar)
 
-        // 选择操作栏（默认隐藏）
+        addView(titleView)
         selBar.orientation = HORIZONTAL
         selBar.gravity = Gravity.CENTER_VERTICAL
         selBar.setPadding(context.dp(12), context.dp(4), context.dp(12), context.dp(4))
@@ -117,6 +114,12 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
             contentDescription = desc
             setOnClickListener { onClick() }
         }
+
+    /** 仅事件开关图标回写：开 calendar-check / 关 calendar-blank（图标切换，非文本标签）。 */
+    private fun syncOnlyEventsIcon(btn: ImageButton) {
+        btn.setImageResource(if (onlyEvents) R.drawable.ic_calendar_check else R.drawable.ic_calendar_blank)
+        btn.contentDescription = "仅事件：${if (onlyEvents) "开" else "关"}"
+    }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()

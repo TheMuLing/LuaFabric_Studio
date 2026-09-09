@@ -26,7 +26,7 @@ class SettingsTabView(context: Context) : ScrollView(context) {
         orientation = LinearLayout.VERTICAL
         setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
     }
-    private var metaValue: TextView? = null
+    private var metaSwitch: MaterialSwitch? = null
     private var depthValue: TextView? = null
     private var toastSwitch: MaterialSwitch? = null
     private var interceptSwitch: MaterialSwitch? = null
@@ -37,10 +37,11 @@ class SettingsTabView(context: Context) : ScrollView(context) {
 
         // 输出
         content.addView(ExpandableCard(context, "输出").apply {
-            addBody(actionRow("元数据展示", "开 / 关二级元数据（完整时间 · 线程 · 类型解析）") {
-                settings.showMeta = !settings.showMeta
-                refresh()
-            }.also { metaValue = it.second }.first)
+            addBody(switchRow(
+                "元数据展示",
+                "开 / 关二级元数据（完整时间 · 线程 · 类型解析）",
+                initial = settings.showMeta
+            ) { on -> settings.showMeta = on }.also { metaSwitch = it.second }.first)
             addBody(divider())
             addBody(actionRow("解析深度", "1=浅（类名/短预览），2=中（默认），3=深（递归表）") {
                 settings.parseDepth = when (settings.parseDepth) {
@@ -86,7 +87,7 @@ class SettingsTabView(context: Context) : ScrollView(context) {
 
     /** 切页/回显时刷新设置行状态。 */
     fun refresh() {
-        metaValue?.text = if (settings.showMeta) "开" else "关"
+        metaSwitch?.isChecked = settings.showMeta
         depthValue?.text = "${settings.parseDepth}"
         toastSwitch?.isChecked = settings.toastLuaErrors
         interceptSwitch?.isChecked = settings.interceptNavigation

@@ -51,6 +51,23 @@ object OutputManager {
         }
     }
 
+    /**
+     * 会话游标建立后，把早于 currentFile 设定的「兜底缓冲」（key=""，主线程/启动阶段 print）并入新文件键，
+     * 保证主线程输出不被此后的文件过滤吞掉。同一会话只执行一次（移动后清空源）。
+     */
+    fun rebaseCatchAll(to: String) {
+        if (to.isBlank()) return
+        synchronized(pool) {
+            val src = pool.getOrCreate("")
+            val dst = pool.getOrCreate(to)
+            if (src !== dst && src.size() > 0) {
+                src.all().forEach(dst::append)
+                src.clear()
+            }
+        }
+        notifyChange()
+    }
+
     fun addListener(l: Listener) = listeners.addIfAbsent(l)
 
     fun removeListener(l: Listener) = listeners.remove(l)

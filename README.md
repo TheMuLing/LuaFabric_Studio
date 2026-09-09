@@ -4,6 +4,32 @@
 
 # 更新日志
 
+## 26.09.09（续）
+
+- 结构页（原「文件」页更名）：项目文件树，按项目根目录惰性展开、目录在前字母序；行布局为 折叠指示器（折叠 `menu-right` / 展开 `menu-down`）+ 文件（夹）图标（文件 `file` / 文件夹 `folder` / 展开 `folder-open`）+ 名称文本，子叶点击带波纹；单击文件选中高亮（单选互斥），右上角悬浮操作栏（多层底色区分于页面）仅选中 `.lua` 时显示，点击 golf 图标直达拉起该 lua（`newActivity` 直调、绕过拦截确认）
+
+- 浮球拖动修复：主浮窗 END 重力下横向拖动方向反转（向右拖左移）——X 坐标现按距右缘距离递减修正
+
+- newActivity 拦截强化：
+
+  - 重放支持尾部数组参数打包：luajava 将 Lua 多参展开为 `(String, Object[])`，`resolveOverload` 现先定长精确匹配、无命中再尾部打包匹配，修复「允许跳转」后 `no overload matches args String, Long / String, String` 重放失败
+
+  - 「跳转后关闭当前界面」开关配色修复：MaterialSwitch 开启态拇指改 `onPrimary`，不再与轨道同色成整块
+
+- 设置页重构：折叠卡片分组（输出 / 拦截 / 报错，默认全部折叠，样式与环境页一致）；移除「控制台设置」标题；「元数据展示」由文本开关改为 MaterialSwitch；新增「拦截界面跳转/结束请求」总开关（默认开，关闭后 newActivity / finish 全部放行）；修复进页崩溃（ScrollView 单子布局冲突）
+
+- 输出页：移除「元数据：开/关」「仅事件：开/关」「清空」文字开关，改为置顶居左纯图标工具栏——`calendar-blank`（仅事件开启时切 `calendar-check`）+ `trash-can`（清空），功能不变
+
+- 环境页：环境信息折叠卡新增「绑定布局」键值对——显式 `setContentView("xxx")` 字符串参数命中 `.aly`、或按文件 require 记录找到项目下同名 `.aly`（如 `layout.aly`，`loadlayout` 内部 require 经 traced 捕获）时显示基于项目根目录的相对路径（`./layout.aly`）；否则「内联布局」/「无布局」
+
+- 调试页：移除文件树（文件树并入结构页），仅保留「重启项目」「重建当前文件」
+
+- 修复：
+
+  - 「使用 Toast 输出 Lua 侧错误」开关无效：Lua 运行时错误经 `doFile`/`doString`/`doAsset` 等 `sendMsg` 直出 toast，绕过设置门控；现由 `LuaActivity` MainHandler 按设置统一门控，开关关闭后 Lua 侧错误（含线程内）不再以 Toast 回显，错误仍正常入 F1 缓冲与浮球角标
+
+  - 主线程 `print` 全部丢失：`import.lua` 将全局 `print` 覆盖为 Lua 闭包直调 `activity.sendMsg`，绕过 LuaPrint / 控制台采集；改为保存原 `print`（LuaPrint）透传，主线程顶层输出（含类型解析）回归控制台，同时消除重复输出
+
 ## 26.09.09
 
 - 版本号更新：`versionCode 26090901` / `versionName 26.09.09-alpha`
