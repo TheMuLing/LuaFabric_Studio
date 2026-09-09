@@ -33,6 +33,14 @@ class OverlayController(private val appContext: Context) {
     private var fallbackHost: Activity? = null
     /** 完全关闭进行中：dismiss 必触发 onDismissed，须拦截防浮球复活。 */
     private var fullyClosing = false
+    /** 未读 Lua 错误角标计数（浮球重建/换宿主后仍保持）。 */
+    private var ballErrorCount = 0
+
+    /** 设置/清除浮球未读错误角标；浮球不在时缓存，下次 showBall 补上。 */
+    fun setErrorCount(n: Int) {
+        ballErrorCount = n
+        ball?.setErrorCount(n)
+    }
 
     fun canOverlay(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(appContext)
@@ -44,6 +52,7 @@ class OverlayController(private val appContext: Context) {
         val activity = hostActivity() ?: return
         val view = ConsoleBallView(appContext) { openSheet() }
         view.onMove = { dx, dy -> moveBy(dx, dy) }
+        view.setErrorCount(ballErrorCount)
         ball = view
         if (canOverlay()) {
             wm = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -54,7 +63,7 @@ class OverlayController(private val appContext: Context) {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 android.graphics.PixelFormat.TRANSLUCENT
             ).apply {
-                gravity = Gravity.TOP or Gravity.START
+                gravity = Gravity.TOP or Gravity.END
                 x = appContext.dp(12)
                 y = appContext.dp(160)
             }
@@ -68,8 +77,8 @@ class OverlayController(private val appContext: Context) {
         }
         // 权限兜底：挂到当前 Activity 内容视图
         val lp = FrameLayout.LayoutParams(appContext.dp(56), appContext.dp(56))
-        lp.gravity = Gravity.TOP or Gravity.START
-        lp.setMargins(appContext.dp(12), appContext.dp(160), 0, 0)
+        lp.gravity = Gravity.TOP or Gravity.END
+        lp.setMargins(0, appContext.dp(160), appContext.dp(12), 0)
         (activity.window.decorView as ViewGroup).addView(view, lp)
         fallbackAttached = true
         fallbackHost = activity
@@ -89,7 +98,8 @@ class OverlayController(private val appContext: Context) {
         }
         if (fallbackAttached) {
             val p = ball?.layoutParams as? FrameLayout.LayoutParams ?: return
-            p.marginStart = (p.marginStart + dx).toInt().coerceAtLeast(0)
+            // END 重力：向右拖动 → marginEnd 减小
+            p.marginEnd = (p.marginEnd - dx).toInt().coerceAtLeast(0)
             p.topMargin = (p.topMargin + dy).toInt().coerceAtLeast(0)
             ball?.layoutParams = p
         }

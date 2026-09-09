@@ -19,10 +19,12 @@ import com.luafabric.console.output.OutputEntry
 import com.luafabric.console.output.OutputExporter
 import com.luafabric.console.output.OutputManager
 import com.luafabric.console.persist.ConsolePaths
+import com.luafabric.console.ConsoleBridgeImpl
 import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.adapters.OutputAdapter
 import com.luafabric.console.ui.dp
 import com.luafabric.studio.falling.R
+import com.luafabric.studio.falling.core.console.DebugConsoleRegistry
 import java.io.File
 import java.io.FileOutputStream
 
@@ -165,7 +167,11 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         AlertDialog.Builder(context)
             .setTitle("清空当前缓冲")
             .setMessage("仅清空当前文件「${OutputManager.currentFile.ifBlank { "(无)" }}」的输出缓冲，其他文件保留。")
-            .setPositiveButton("清空") { _, _ -> OutputManager.clearCurrentFile() }
+            .setPositiveButton("清空") { _, _ ->
+            OutputManager.clearCurrentFile()
+            // E：清空当前文件缓冲 → 未读错误角标一并清零
+            (DebugConsoleRegistry.get() as? ConsoleBridgeImpl)?.clearErrorBadge()
+        }
             .setNegativeButton("取消", null)
             .show()
     }

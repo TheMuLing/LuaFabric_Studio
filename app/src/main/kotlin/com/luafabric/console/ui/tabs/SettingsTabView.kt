@@ -5,9 +5,11 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.luafabric.console.core.ConsoleSettings
 import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.dp
+import com.luafabric.studio.falling.core.console.DebugConsoleRegistry
 
 /** 设置页：元数据开关 / 解析深度（SharedPreferences 持久化，输出页/适配器实时读取生效）。 */
 class SettingsTabView(context: Context) : LinearLayout(context) {
@@ -43,6 +45,17 @@ class SettingsTabView(context: Context) : LinearLayout(context) {
             refresh()
         }.also { depthValue = it.second }
 
+        // E：Lua 侧报错 Toast 回显（默认关）。无论开关，报错恒入 F1 缓冲 + 浮球右上角角标。
+        switchRow(
+            label = "使用 Toast 输出 Lua 侧错误",
+            desc = "默认关：报错仅入控制台输出并显示角标；开启后同时以 Toast 回显",
+            initial = settings.toastLuaErrors
+        ) { on ->
+            settings.toastLuaErrors = on
+            DebugConsoleRegistry.setErrorToastEnabled(on) // 同步 core：LuaActivity.sendError 按此门控 toast
+            refresh()
+        }
+
         addView(TextView(context).apply {
             text = "注：音量 - 键可随时隐藏/显示控制台浮球。"
             textSize = 12f
@@ -55,6 +68,43 @@ class SettingsTabView(context: Context) : LinearLayout(context) {
     fun refresh() {
         metaValue?.text = if (settings.showMeta) "开" else "关"
         depthValue?.text = "${settings.parseDepth}"
+    }
+
+    private fun switchRow(
+        label: String,
+        desc: String,
+        initial: Boolean,
+        onChange: (Boolean) -> Unit
+    ) {
+        val toggle = MaterialSwitch(context).apply {
+            isChecked = initial
+            setOnCheckedChangeListener { _, checked -> onChange(checked) }
+        }
+        val row = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(context.dp(16), context.dp(10), context.dp(16), context.dp(10))
+            setOnClickListener { toggle.toggle() } // 点行等价于点开关
+            addView(
+                LinearLayout(context).apply {
+                    orientation = VERTICAL
+                    addView(TextView(context).apply {
+                        text = label
+                        textSize = 14f
+                        setTextColor(ConsoleTheme.onSurface)
+                    })
+                    addView(TextView(context).apply {
+                        text = desc
+                        textSize = 11f
+                        setTextColor(ConsoleTheme.onSurfaceVariant)
+                    })
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            addView(toggle)
+        }
+        addView(divider())
+        addView(row)
     }
 
     private fun sectionTitle(text: String): TextView =

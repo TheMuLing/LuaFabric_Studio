@@ -1667,8 +1667,10 @@ public class LuaActivity extends AppCompatActivity
   @Override
   public void sendError(String title, Exception msg) {
     Object ret = runFunc("onError", title, msg);
+    // 报错 Toast 由控制台设置项门控（默认关），避免高版本受限 toast 遮 UI / 卡点击；
+    // 无论开关与否，错误都会经 reportConsoleError 入控制台 F1 缓冲（角标可见）。
     if (ret != null && ret.getClass() == Boolean.class && (Boolean) ret) {
-    } else sendMsg(title + ": " + msg.getMessage());
+    } else if (DebugConsoleRegistry.isErrorToastEnabled()) sendMsg(title + ": " + msg.getMessage());
     reportConsoleError(title, msg != null ? msg.getMessage() : String.valueOf(msg));
   }
 

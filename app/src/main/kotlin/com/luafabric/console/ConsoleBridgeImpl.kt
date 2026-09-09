@@ -29,6 +29,7 @@ import com.luajava.LuaState
 import java.io.File
 import muling.views.tool.utils.JsonUtil
 import com.luafabric.studio.falling.core.console.DebugConsoleBridge
+import com.luafabric.studio.falling.core.console.DebugConsoleRegistry
 import com.luafabric.studio.falling.core.console.MethodCallResult
 import com.luafabric.studio.falling.core.console.SessionInfo
 
@@ -39,8 +40,10 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     private val overlay = OverlayController(context)
     private val newActivityInterceptor = NewActivityInterceptor(context) { primary ->
         // B：newActivity 允许后重放失败（目标文件被删等）→ error 条目入 F1 缓冲，不复播 toast
-        Handler(Looper.getMainLooper()).post { appendEntry("error", primary) }
+        reportError(primary)
     }
+    /** 未读 Lua 错误计数 → 浮球右上角角标；打开面板 / 清空当前缓冲时清零。 */
+    private val errorUnread = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** 会话门控：仅 debugmode 项目激活捕获（非调试会话零捕获）。 */
     @Volatile
@@ -51,7 +54,28 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         CrashCapture.onCrash = {
             Handler(Looper.getMainLooper()).post { overlay.setBallRed(true) }
         }
+        // E：报错 toast 由设置项门控（默认关），同步到 core 注册表（LuaActivity.sendError 读取）
+        DebugConsoleRegistry.setErrorToastEnabled(settings.toastLuaErrors)
+        // E：打开控制台面板 → 未读错误角标清零（打开即视为已读）
+        StateMachine.addListener(object : StateMachine.Listener {
+            override fun onStateChanged(old: ConsoleState, new: ConsoleState) {
+                if (new == ConsoleState.PANEL) clearErrorBadge()
+            }
+        })
         registerForegroundCallbacks()
+    }
+
+    /** E：错误条目入 F1 缓冲 + 未读计数 +1 → 浮球角标更新。线程安全（onError 来自 Lua 线程）。 */
+    private fun reportError(primary: String) {
+        appendEntry("error", primary)
+        errorUnread.incrementAndGet()
+        Handler(Looper.getMainLooper()).post { overlay.setErrorCount(errorUnread.get()) }
+    }
+
+    /** E：清空未读错误角标（面板打开 / 清空当前文件缓冲）。 */
+    fun clearErrorBadge() {
+        errorUnread.set(0)
+        Handler(Looper.getMainLooper()).post { overlay.setErrorCount(0) }
     }
 
     /** 前后台感知：后台藏球+面板强收，前台按 BALL 态恢复；会话/logcat 不中断。 */
@@ -131,6 +155,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         if (fresh) {
             StateMachine.transition(ConsoleState.BALL)
             overlay.showBall()
+            overlay.setErrorCount(errorUnread.get()) // 新会话浮球重建后补回未读角标
         } else if (StateMachine.state == ConsoleState.BALL && !overlay.isBallShowing()) {
             // 宿主销毁后 join：浮球缺失则重建（兜底挂旧页 decorView 一并覆盖）
             overlay.showBall()
@@ -234,7 +259,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     override fun onError(title: String?, message: String?) {
         if (!active) return
         val primary = if (title.isNullOrBlank()) (message ?: "") else "$title: ${message ?: ""}"
-        appendEntry("error", primary)
+        reportError(primary)
     }
 
     override fun onMethodCall(

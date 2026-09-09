@@ -21,4 +21,9 @@ class ConsoleSettings(context: Context) {
     var firstCloseDone: Boolean
         get() = sp.getBoolean("first_close_done", false)
         set(v) = sp.edit().putBoolean("first_close_done", v).apply()
+
+    /** Lua 侧报错是否以 Toast 回显（默认关；无论开关，报错恒入 F1 缓冲 + 浮球角标）。 */
+    var toastLuaErrors: Boolean
+        get() = sp.getBoolean("toast_lua_errors", false)
+        set(v) = sp.edit().putBoolean("toast_lua_errors", v).apply()
 }
