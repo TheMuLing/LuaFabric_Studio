@@ -52,6 +52,30 @@ class OutputAdapter(
         onSelectionChanged()
     }
 
+    /** 全选当前缓冲全部条目。 */
+    fun selectAll() {
+        selected.clear()
+        selected.addAll(items.map { it.id })
+        notifyDataSetChanged()
+        onSelectionChanged()
+    }
+
+    /** 反选：已选取消，未选选中。 */
+    fun invertSelection() {
+        val ids = selected.toHashSet()
+        selected.clear()
+        selected.addAll(items.filter { it.id !in ids }.map { it.id })
+        notifyDataSetChanged()
+        onSelectionChanged()
+    }
+
+    /** 取消选择：清空已选，保持选择模式。 */
+    fun clearSelection() {
+        selected.clear()
+        notifyDataSetChanged()
+        onSelectionChanged()
+    }
+
     fun setShowMeta(show: Boolean) {
         expanded.clear()
         if (show) expanded.addAll(items.map { it.id })

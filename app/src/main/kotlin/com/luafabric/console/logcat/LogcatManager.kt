@@ -10,9 +10,9 @@ object LogcatManager {
 
     val store: LogcatFileStore? get() = capture?.store
 
-    fun start(projectName: String) {
+    fun start(projectDirPath: String?, projectName: String) {
         stop()
-        val c = LogcatCapture(ConsolePaths.logcat(), projectName)
+        val c = LogcatCapture(ConsolePaths.projectLogcat(projectDirPath), projectName)
         c.start()
         capture = c
     }

@@ -3,8 +3,10 @@ package com.luafabric.console.ui.tabs
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
+import android.content.res.ColorStateList
 import android.view.Gravity
 import android.view.View
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -20,6 +22,7 @@ import com.luafabric.console.persist.ConsolePaths
 import com.luafabric.console.ui.ConsoleTheme
 import com.luafabric.console.ui.adapters.OutputAdapter
 import com.luafabric.console.ui.dp
+import com.luafabric.studio.falling.R
 import java.io.File
 import java.io.FileOutputStream
 
@@ -78,6 +81,9 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         selBar.visibility = View.GONE
         selCount.textSize = 13f
         selBar.addView(selCount, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        selBar.addView(iconButton(R.drawable.ic_select_all, "全选") { adapter.selectAll() })
+        selBar.addView(iconButton(R.drawable.ic_select_inverse, "反选") { adapter.invertSelection() })
+        selBar.addView(iconButton(R.drawable.ic_select_off, "取消选择") { adapter.clearSelection() })
         selBar.addView(actionText("复制") { copySelected() })
         selBar.addView(actionText("导出") { exportSelected() })
         selBar.addView(actionText("完成") { adapter.setSelectionMode(false) })
@@ -96,6 +102,17 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
             textSize = 13f
             setTextColor(ConsoleTheme.primary)
             setPadding(context.dp(8), context.dp(6), context.dp(8), context.dp(6))
+            setOnClickListener { onClick() }
+        }
+
+    /** 选择操作栏图标按钮：矢量图标 + primary 着色，禁止文本替代图标。 */
+    private fun iconButton(@Suppress("unused") res: Int, desc: String, onClick: () -> Unit): ImageButton =
+        ImageButton(context).apply {
+            setImageResource(res)
+            background = null
+            setPadding(context.dp(8), context.dp(6), context.dp(8), context.dp(6))
+            imageTintList = ColorStateList.valueOf(ConsoleTheme.primary)
+            contentDescription = desc
             setOnClickListener { onClick() }
         }
 

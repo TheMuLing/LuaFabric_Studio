@@ -2,18 +2,23 @@ package com.luafabric.console.persist
 
 import com.luafabric.console.output.OutputExporter
 import com.luafabric.console.output.OutputManager
+import com.luafabric.studio.falling.core.console.SessionInfo
 import java.io.File
 
 /**
- * 会话归档：会话结束时将全部输出缓冲按导出格式写入
- * sessions/<项目名>_<毫秒时间戳>/outputs.txt。缓冲本身保留（跨会话仍可查看）。
+ * 会话归档：会话结束时将该项目的输出缓冲按导出格式写入
+ * projects/<项目哈希>/sessions/<毫秒时间戳>/outputs.txt。
+ * 缓冲按项目目录前缀过滤，杜绝其他项目输出混入；缓冲本身保留（跨会话仍可查看）。
  */
 object SessionArchiver {
 
-    fun archive(projectName: String): File? {
-        val buffers = OutputManager.buffers().filter { it.size() > 0 }
+    fun archive(info: SessionInfo): File? {
+        val projectDirPath = info.luaDir
+        val buffers = OutputManager.buffers()
+            .filter { it.size() > 0 }
+            .filter { projectDirPath.isNullOrBlank() || it.fileKey.startsWith(projectDirPath) }
         if (buffers.isEmpty()) return null
-        val dir = File(ConsolePaths.sessions(), "${projectName}_${System.currentTimeMillis()}")
+        val dir = File(ConsolePaths.projectSessions(projectDirPath), "${System.currentTimeMillis()}")
         if (!dir.mkdirs()) return null
         val sb = StringBuilder()
         for (b in buffers) {

@@ -103,12 +103,14 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         if (fresh) {
             // 重启/重建/文件调起：旧会话先归档 + 停旧 logcat，再开新会话
             if (prev != null && active) {
-                SessionArchiver.archive(projectName(prev))
+                SessionArchiver.archive(prev)
                 LogcatManager.stop()
             }
+            // 项目级输出隔离：新会话清空缓冲池，杜绝上一项目输出混入本会话
+            OutputManager.clearAll()
             active = info.debugMode
             ConsolePaths.init(context)
-            if (active) LogcatManager.start(projectName(info))
+            if (active) LogcatManager.start(info.luaDir, projectName(info))
             injectDebugParams(info)
         }
         // 每页上下文刷新（页面相关，跨页会话持续）
@@ -130,7 +132,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         val last = SessionManager.detach(info)
         if (!last) return
         if (active) {
-            SessionArchiver.archive(projectName(info))
+            SessionArchiver.archive(info)
             overlay.closeAll()
             StateMachine.transition(ConsoleState.IDLE)
             LogcatManager.stop()

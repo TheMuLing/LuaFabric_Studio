@@ -1398,6 +1398,7 @@ public class LuaActivity extends AppCompatActivity
       setTitle(errorReason(ok));
       setContentView(layout);
       sendMsg(e.getMessage());
+      reportConsoleError(errorReason(ok), e.getMessage());
       String s = e.getMessage();
       String p = "android.permission.";
       int i = s.indexOf(p);
@@ -1448,6 +1449,7 @@ public class LuaActivity extends AppCompatActivity
       setTitle(errorReason(ok));
       setContentView(layout);
       sendMsg(e.getMessage());
+      reportConsoleError(errorReason(ok), e.getMessage());
     }
 
     return null;
@@ -1667,6 +1669,20 @@ public class LuaActivity extends AppCompatActivity
     Object ret = runFunc("onError", title, msg);
     if (ret != null && ret.getClass() == Boolean.class && (Boolean) ret) {
     } else sendMsg(title + ": " + msg.getMessage());
+    reportConsoleError(title, msg != null ? msg.getMessage() : String.valueOf(msg));
+  }
+
+  /**
+   * 调试控制台：Lua 运行时错误上报。桥未注册/非调试会话（桥实现内部按 active 门控）时零开销。
+   */
+  private void reportConsoleError(String title, String message) {
+    DebugConsoleBridge bridge = DebugConsoleRegistry.get();
+    if (bridge != null) {
+      try {
+        bridge.onError(title, message);
+      } catch (Exception ignored) {
+      }
+    }
   }
 
   /*
