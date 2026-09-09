@@ -105,6 +105,9 @@ class NewActivityInterceptor(
 
     private fun interceptNewActivity(activity: Activity?, args: Array<out Any?>?): MethodCallResult {
         if (args == null) return MethodCallResult.ALLOW
+        // C：反序写法（finish 先于 newActivity）等导致调用方已处于消亡流程 → 不拦不开弹窗，
+        // 放行原路径随意失败。脚本自身语法问题，解释器不背锅、不配对补救。
+        if (activity == null || activity.isFinishing || activity.isDestroyed) return MethodCallResult.ALLOW
         val req = resolve(activity, args) ?: return MethodCallResult.ALLOW
         // 重放参数即刻归一：Lua 表（LuaTable/Map）→ Object[]，与真实调用 createArray 语义一致。
         // 不能留到主线程重放时才转——LuaTable.get 要碰 Lua 栈，跨线程不安全。
