@@ -37,7 +37,10 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
 
     private val settings = ConsoleSettings(context)
     private val overlay = OverlayController(context)
-    private val newActivityInterceptor = NewActivityInterceptor(context)
+    private val newActivityInterceptor = NewActivityInterceptor(context) { primary ->
+        // B：newActivity 允许后重放失败（目标文件被删等）→ error 条目入 F1 缓冲，不复播 toast
+        Handler(Looper.getMainLooper()).post { appendEntry("error", primary) }
+    }
 
     /** 会话门控：仅 debugmode 项目激活捕获（非调试会话零捕获）。 */
     @Volatile

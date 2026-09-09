@@ -36,7 +36,11 @@ import java.lang.reflect.Method
  *
  * 线程模型：拦截方全部非阻塞（无 looper 泵、无锁等待）；弹窗/插卡/重放全部主线程。
  */
-class NewActivityInterceptor(private val context: Context) {
+class NewActivityInterceptor(
+    private val context: Context,
+    /** 重放真实跳转失败（目标文件已删等）→ 入 F1 缓冲（error 条目），替代静默吞错。 */
+    private val onReplayError: (String) -> Unit = {}
+) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -256,25 +260,43 @@ class NewActivityInterceptor(private val context: Context) {
         } catch (e: Exception) {
         }
         if (allowKey != null) {
-            s.entries[allowKey]?.let { reExec(it) }
+            val jumped = s.entries[allowKey]?.let { reExec(it) } == true
+            // B：跳转成功且开关开 → 重放被拦的 finish（关页）；跳转失败/开关关/取消 → finish 弃执行
+            if (jumped && s.pendingFinish && s.finishSwitch?.isChecked == true) {
+                doFinish(s.finishCaller)
+            }
         }
         synchronized(this) {
             if (session === s) session = null
         }
     }
 
+    /** B：安全重放 finish（宿主未死才调，失败静默——关页失败不影响已完成的跳转）。 */
+    private fun doFinish(caller: Activity?) {
+        try {
+            if (caller != null && !caller.isFinishing && !caller.isDestroyed) caller.finish()
+        } catch (t: Throwable) {
+            android.util.Log.w("LuaFabric-Intercept", "replay finish failed", t)
+        }
+    }
+
     // ---------- 重放：真实跳转 ----------
 
-    /** 重放选中条目的真实 newActivity：反射重载解析 + 重放参数精确匹配。失败仅记日志、不崩。 */
-    private fun reExec(e: Entry) {
-        val caller = e.caller ?: return
-        if (caller.isFinishing || caller.isDestroyed) return
-        try {
+    /** 重放选中条目的真实 newActivity：反射重载解析 + 重放参数精确匹配；失败入 F1 error 并返回 false。 */
+    private fun reExec(e: Entry): Boolean {
+        val caller = e.caller ?: return false
+        if (caller.isFinishing || caller.isDestroyed) return false
+        return try {
             val method = resolveOverload(caller, "newActivity", e.args)
                 ?: throw IllegalStateException("no overload matches args ${e.args.joinToString { it?.javaClass?.simpleName ?: "null" }}")
             method.invoke(caller, *coerceArgs(method.parameterTypes, e.args))
+            true
         } catch (t: Throwable) {
+            onReplayError(
+                "newActivity 跳转失败 ${e.req.relPath}\n${e.req.absPath}\n${t.message ?: t.javaClass.simpleName}"
+            )
             android.util.Log.w("LuaFabric-Intercept", "replay newActivity(${e.req.absPath}) failed", t)
+            false
         }
     }
 
