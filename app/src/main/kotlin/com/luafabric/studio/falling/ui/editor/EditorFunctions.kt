@@ -155,6 +155,7 @@ suspend fun buildProject(context: Context, projectPath: String): String =
         val packageName = settings["package"] as? String ?: "com.example.myapp"
         val versionName = settings["versionName"] as? String ?: "1.0.0"
         val versionCode = settings["versionCode"] as? String ?: "1"
+        val entryFile = settings["entryFile"] as? String ?: "main.lua"
 
         // 获取应用名称
         val appName = try {
@@ -223,9 +224,9 @@ val mavenDependencies = try {
             LogCatcher.e("CodeEditScreen", "解析uses_sdk失败，使用默认值", e)
         }
 
-        // 检查必要的文件
-        val mainLuaFile = File(projectPath, "main.lua")
-        if (!mainLuaFile.exists()) {
+        // 检查必要的文件（入口文件可为自定义，默认 main.lua）
+        val entryLuaFile = File(projectPath, entryFile)
+        if (!entryLuaFile.exists() || !entryLuaFile.isFile) {
             return@withContext "error: ${context.getString(R.string.code_editor_main_lua_not_found)}"
         }
 
@@ -283,7 +284,8 @@ val mavenDependencies = try {
                 externalApkPath,             // outputPath
                 minSdkVersion,               // minSdkVersion
                 targetSdkVersion,             // targetSdkVersion
-                mavenDependencies
+                mavenDependencies,
+                entryFile
             )
 
             // 构建后再次检查内存

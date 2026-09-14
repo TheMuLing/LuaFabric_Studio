@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.luafabric.studio.falling.R
+import com.luafabric.studio.falling.ui.components.FilePickerDialog
+import com.luafabric.studio.falling.ui.components.SelectionMode
 import com.luafabric.studio.falling.ui.components.SwitchBar
 import com.luafabric.studio.falling.ui.project.CompactUtilCard
 import com.luafabric.studio.falling.ui.project.GlobalUtilItem
@@ -174,6 +176,8 @@ fun AttributeScreen(
     var minSdkVersion by remember { mutableStateOf(29) }
     var targetSdkVersion by remember { mutableStateOf(29) }
     var debugMode by remember { mutableStateOf(false) }
+    var entryFile by remember { mutableStateOf("main.lua") }
+    var showEntryPicker by remember { mutableStateOf(false) }
 
     val allPermissions = remember { mutableStateListOf<PermissionItem>() }
 
@@ -210,6 +214,7 @@ fun AttributeScreen(
                     packageName = jsonMap["package"] as? String ?: ""
                     versionName = jsonMap["versionName"] as? String ?: "1.0"
                     versionCode = jsonMap["versionCode"] as? String ?: "1"
+                    entryFile = jsonMap["entryFile"] as? String ?: "main.lua"
                     debugMode =
                         ((jsonMap["application"] as? Map<*, *>)?.get("debugmode") as? Boolean)
                             ?: false
@@ -260,6 +265,7 @@ fun AttributeScreen(
                     jsonMap["package"] = packageName
                     jsonMap["versionName"] = versionName
                     jsonMap["versionCode"] = versionCode
+                    jsonMap["entryFile"] = entryFile
 
                     val usesSdk = (jsonMap["uses_sdk"] as? Map<String, Any?>)?.toMutableMap()
                         ?: mutableMapOf<String, Any?>()
@@ -462,6 +468,19 @@ fun AttributeScreen(
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
+                    OutlinedTextField(
+                        value = entryFile,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.attribute_entry_file)) },
+                        trailingIcon = {
+                            Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showEntryPicker = true },
+                        singleLine = true
+                    )
                 }
 
                 // SDK 版本卡片
@@ -620,6 +639,24 @@ fun AttributeScreen(
                 onConfirm = { showPermissionSheet = false }
             )
         }
+    }
+
+    if (showEntryPicker) {
+        FilePickerDialog(
+            initialPath = projectPath,
+            selectionMode = SelectionMode.FILE,
+            title = stringResource(R.string.attribute_entry_picker_title),
+            allowedExtensions = listOf("lua"),
+            onDismiss = { showEntryPicker = false },
+            onFileSelected = { path ->
+                entryFile = try {
+                    File(path).relativeTo(File(projectPath)).path.replace('\\', '/')
+                } catch (e: IllegalArgumentException) {
+                    "main.lua"
+                }
+                showEntryPicker = false
+            }
+        )
     }
 }
 

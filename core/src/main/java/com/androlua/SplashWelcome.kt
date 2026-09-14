@@ -123,8 +123,22 @@ class SplashWelcome : ComponentActivity() {
             e.printStackTrace()
         }
 
-        val mainFile = File(app.getLuaPath("main.lua"))
+        val mainFile = File(app.getLuaPath(entryNameIn(localDir)))
         return !(mainFile.exists() && mainFile.isFile)
+    }
+
+    // 读取打包期写入的 .entry 引导确定入口（默认 main.lua，支持子目录相对路径）
+    private fun entryNameIn(dir: String): String {
+        return try {
+            val f = File(dir, ".entry")
+            if (f.exists() && f.isFile) {
+                f.readText().trim().ifEmpty { "main.lua" }.let {
+                    if (it.startsWith("/") || it.contains("../")) "main.lua" else it
+                }
+            } else "main.lua"
+        } catch (e: Exception) {
+            "main.lua"
+        }
     }
 
     private fun onUpdate() {

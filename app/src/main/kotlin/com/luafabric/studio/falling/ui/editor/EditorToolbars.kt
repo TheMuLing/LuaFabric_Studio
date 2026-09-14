@@ -48,6 +48,7 @@ import com.luafabric.studio.falling.ui.editor.persistence.EditorStateUtil
 import com.luafabric.studio.falling.ui.editor.viewmodel.EditorViewModel
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import muling.views.tool.utils.LogCatcher
+import muling.views.tool.utils.JsonUtil
 import muling.views.tool.utils.NonBlockingToastState
 import kotlinx.coroutines.launch
 import java.io.File
@@ -104,16 +105,23 @@ fun EditorTopBar(
                 scope.launch {
                     viewModel.saveAllFilesSilently()
 
-                    val mainLuaFile = File(projectPath, "main.lua")
+                    val settingsFile = File(projectPath, "settings.json")
+                    val entryFile = runCatching {
+                        if (settingsFile.exists()) {
+                            JsonUtil.parseObject(settingsFile.readText())["entryFile"] as? String
+                        } else null
+                    }.getOrNull() ?: "main.lua"
 
-                    if (!mainLuaFile.exists() || !mainLuaFile.isFile) {
+                    val entryLuaFile = File(projectPath, entryFile)
+
+                    if (!entryLuaFile.exists() || !entryLuaFile.isFile) {
                         toast.showToast(context.getString(R.string.code_editor_main_lua_not_found))
                         return@launch
                     }
 
                     try {
                         val intent = Intent(context, com.androlua.LuaActivity::class.java)
-                        intent.data = Uri.fromFile(mainLuaFile)
+                        intent.data = Uri.fromFile(entryLuaFile)
                         context.startActivity(intent)
 
                     } catch (_: ActivityNotFoundException) {

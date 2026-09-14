@@ -470,6 +470,8 @@
     <string name="attribute_package_name">包名</string>
     <string name="attribute_version_name">版本名称</string>
     <string name="attribute_version_code">版本代码</string>
+    <string name="attribute_entry_file">入口文件</string>
+    <string name="attribute_entry_picker_title">选择入口文件</string>
     <string name="attribute_sdk_title">SDK 版本</string>
     <string name="attribute_min_sdk">最小 SDK</string>
     <string name="attribute_target_sdk">目标 SDK</string>

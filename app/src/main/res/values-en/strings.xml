@@ -460,6 +460,8 @@
     <string name="attribute_package_name">Package name</string>
     <string name="attribute_version_name">Version name</string>
     <string name="attribute_version_code">Version code</string>
+    <string name="attribute_entry_file">Entry file</string>
+    <string name="attribute_entry_picker_title">Select entry file</string>
     <string name="attribute_sdk_title">SDK Versions</string>
     <string name="attribute_min_sdk">Minimum SDK</string>
     <string name="attribute_target_sdk">Target SDK</string>

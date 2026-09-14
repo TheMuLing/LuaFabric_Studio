@@ -89,7 +89,8 @@ class ApkBuilder {
             outputPath: String,
             minSdkVersion: Int,
             targetSdkVersion: Int,
-            mavenDependencies: List<String> = emptyList()
+            mavenDependencies: List<String> = emptyList(),
+            entryFile: String = "main.lua"
         ): String {
             LogCatcher.i("ApkBuilder", "开始构建APK")
             LogCatcher.i("ApkBuilder", "项目路径: $projectPath")
@@ -159,7 +160,8 @@ class ApkBuilder {
                     tempApkPath,
                     projectPath,
                     unsignedApkPath,
-                    mavenJars
+                    mavenJars,
+                    entryFile
                 )
 
                 if (unsignedApkPath == null) {
@@ -710,7 +712,8 @@ class ApkBuilder {
             tempApkPath: String,
             projectPath: String,
             outputPath: String,
-            mavenJars: List<File> = emptyList()
+            mavenJars: List<File> = emptyList(),
+            entryFile: String = "main.lua"
         ): String? {
             val L = getSharedLuaState()
 
@@ -744,7 +747,7 @@ class ApkBuilder {
                 }
 
                 // 7. 复制项目文件到assets
-                copyProjectToAssets(projectPath, assetsDir.absolutePath)
+                copyProjectToAssets(projectPath, assetsDir.absolutePath, entryFile)
 
                 // 8. 加密项目文件
                 encryptProjectFiles(L, assetsDir)
@@ -1280,7 +1283,7 @@ class ApkBuilder {
         }
 
         // 复制项目文件到assets目录
-        private fun copyProjectToAssets(projectPath: String, assetsPath: String) {
+        private fun copyProjectToAssets(projectPath: String, assetsPath: String, entryFile: String) {
             try {
                 val projectDir = File(projectPath)
                 val assetsDir = File(assetsPath)
@@ -1292,6 +1295,10 @@ class ApkBuilder {
                 // 打包产物丢弃 settings.json：产物运行时不依赖它（LuaActivity.initENV 缺失即容错），
                 // 且避免把项目包名/权限/调试开关/global_utils 等元数据打进成品。
                 copyDirectory(projectDir, assetsDir) { name -> name == "settings.json" }
+
+                // 引导文件：记录产物启动入口（相对项目根，运行时 SplashWelcome 读取替代写死的 main.lua）
+                File(assetsDir, ".entry").writeText(entryFile.trimStart('/'))
+
                 LogCatcher.i("ApkBuilder", "项目文件已复制到assets: $assetsPath")
 
             } catch (e: IOException) {
