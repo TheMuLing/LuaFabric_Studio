@@ -679,7 +679,8 @@ fun AttributeScreen(
                 val rel = runCatching {
                     File(path).relativeTo(File(projectPath)).path.replace('\\', '/')
                 }.getOrNull()
-                if (rel != null && !rel.contains("..") && !path.startsWith("/")) {
+                // 仅以 relativeTo 结果判定：不同根抛异常->null 拒绝；同根父目录逃逸->rel 含 .. 拒绝
+                if (rel != null && !rel.contains("..")) {
                     entryFile = rel
                     showEntryPicker = false
                 } else {
