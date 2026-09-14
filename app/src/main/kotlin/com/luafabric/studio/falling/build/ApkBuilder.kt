@@ -1297,7 +1297,13 @@ class ApkBuilder {
                 copyDirectory(projectDir, assetsDir) { name -> name == "settings.json" }
 
                 // 引导文件：记录产物启动入口（相对项目根，运行时 SplashWelcome 读取替代写死的 main.lua）
-                File(assetsDir, ".entry").writeText(entryFile.trimStart('/'))
+                // 兜底防御：越界/绝对路径一律回落 main.lua，保证产物永不读取项目外文件
+                val safeEntry = if (entryFile.startsWith("/") || entryFile.contains("..")) {
+                    "main.lua"
+                } else {
+                    entryFile.trim().trimStart('/')
+                }
+                File(assetsDir, ".entry").writeText(safeEntry)
 
                 LogCatcher.i("ApkBuilder", "项目文件已复制到assets: $assetsPath")
 

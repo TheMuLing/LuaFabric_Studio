@@ -225,6 +225,9 @@ val mavenDependencies = try {
         }
 
         // 检查必要的文件（入口文件可为自定义，默认 main.lua）
+        if (entryFile.startsWith("/") || entryFile.contains("..")) {
+            return@withContext "error: ${context.getString(R.string.attribute_entry_outside_project)}"
+        }
         val entryLuaFile = File(projectPath, entryFile)
         if (!entryLuaFile.exists() || !entryLuaFile.isFile) {
             return@withContext "error: ${context.getString(R.string.code_editor_main_lua_not_found)}"

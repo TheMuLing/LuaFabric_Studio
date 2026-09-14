@@ -144,13 +144,19 @@ fun FilePickerDialog(
         SelectionMode.DIRECTORY -> stringResource(R.string.file_picker_select_directory)
     },
     allowedExtensions: List<String> = emptyList(),
+    rootPath: String? = null,
     onDismiss: () -> Unit,
     onFileSelected: (String) -> Unit = {},
     onDirectorySelected: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
-    // 当前路径状态
-    var currentPath by remember { mutableStateOf(initialPath) }
+    // 当前路径状态（提供 rootPath 时钳制在根内，禁止越界选择）
+    val effectiveInitialPath = if (rootPath != null && !isPathWithin(path = initialPath, root = rootPath)) {
+        rootPath
+    } else {
+        initialPath
+    }
+    var currentPath by remember { mutableStateOf(effectiveInitialPath) }
 
     // 文件和目录列表状态
     var fileItems by remember { mutableStateOf<List<PickerFileItem>>(emptyList()) }
@@ -190,9 +196,14 @@ fun FilePickerDialog(
         }
     }
 
-    // 计算是否可以返回上一级
-    val canGoBack = currentPath != "/" &&
-            currentPath != Environment.getExternalStorageDirectory().absolutePath
+    // 计算是否可以返回上一级（rootPath 锁根时禁止越出）
+    val canGoBack = if (rootPath != null) {
+        val parent = File(currentPath).parent
+        currentPath != rootPath && parent != null && isPathWithin(parent, rootPath)
+    } else {
+        currentPath != "/" &&
+                currentPath != Environment.getExternalStorageDirectory().absolutePath
+    }
 
     // 对话框
     Dialog(
@@ -284,7 +295,7 @@ fun FilePickerDialog(
                         HorizontalPathBreadcrumbs(
                             segments = pathSegments,
                             onSegmentClick = { segment ->
-                                if (segment.isClickable) {
+                                if (segment.isClickable && (rootPath == null || isPathWithin(segment.path, rootPath))) {
                                     currentPath = segment.path
                                     selectedItem = null
                                 }
@@ -321,7 +332,7 @@ fun FilePickerDialog(
                                     isSelected = false,
                                     onClick = {
                                         val parent = File(currentPath).parent
-                                        if (parent != null) {
+                                        if (parent != null && (rootPath == null || isPathWithin(parent, rootPath))) {
                                             currentPath = parent
                                             selectedItem = null
                                         }
@@ -819,6 +830,14 @@ fun FileItemCard(
 fun getFileIcon(fileName: String): androidx.compose.ui.graphics.vector.ImageVector {
     val extension = fileName.substringAfterLast('.', "").lowercase()
     return fileTypeIcons[".$extension"] ?: Icons.Outlined.Description
+}
+
+// rootPath 锁根辅助：判断 path 是否位于 root 之下（含相等）
+private fun isPathWithin(path: String, root: String): Boolean {
+    val rootAbs = File(root).absoluteFile
+    val pathAbs = File(path).absoluteFile
+    if (pathAbs == rootAbs) return true
+    return pathAbs.path.startsWith(rootAbs.path + File.separator)
 }
 
 // 加载文件和目录

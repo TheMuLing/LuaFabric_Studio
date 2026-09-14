@@ -215,6 +215,19 @@ fun AttributeScreen(
                     versionName = jsonMap["versionName"] as? String ?: "1.0"
                     versionCode = jsonMap["versionCode"] as? String ?: "1"
                     entryFile = jsonMap["entryFile"] as? String ?: "main.lua"
+                    // 打开自检：入口越界/绝对路径 → 恢复 main.lua 并落盘，防止脏值持续生效
+                    if (entryFile.startsWith("/") || entryFile.contains("..")) {
+                        entryFile = "main.lua"
+                        val safeMap =
+                            (jsonMap as? Map<String, Any?>)?.toMutableMap() ?: mutableMapOf()
+                        safeMap["entryFile"] = "main.lua"
+                        try {
+                            settingsFile.writeText(JsonUtil.toFormattedString(safeMap, 4))
+                            LogCatcher.i("AttributeScreen", "入口文件越界，已恢复为 main.lua")
+                        } catch (e: Exception) {
+                            LogCatcher.e("AttributeScreen", "回写修复后的入口文件失败", e)
+                        }
+                    }
                     debugMode =
                         ((jsonMap["application"] as? Map<*, *>)?.get("debugmode") as? Boolean)
                             ?: false
@@ -660,14 +673,18 @@ fun AttributeScreen(
             selectionMode = SelectionMode.FILE,
             title = stringResource(R.string.attribute_entry_picker_title),
             allowedExtensions = listOf("lua"),
+            rootPath = projectPath, // 锁根：禁止导航到项目外
             onDismiss = { showEntryPicker = false },
             onFileSelected = { path ->
-                entryFile = try {
+                val rel = runCatching {
                     File(path).relativeTo(File(projectPath)).path.replace('\\', '/')
-                } catch (e: IllegalArgumentException) {
-                    "main.lua"
+                }.getOrNull()
+                if (rel != null && !rel.contains("..") && !path.startsWith("/")) {
+                    entryFile = rel
+                    showEntryPicker = false
+                } else {
+                    toast.showToast(context.getString(R.string.attribute_entry_outside_project))
                 }
-                showEntryPicker = false
             }
         )
     }
