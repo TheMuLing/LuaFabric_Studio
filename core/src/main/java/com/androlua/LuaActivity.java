@@ -396,7 +396,8 @@ public class LuaActivity extends AppCompatActivity
           luaDir = parent;
           break;
         } else {
-          if (new File(parent, "main.lua").exists() && new File(parent, "settings.json").exists()) {
+          // 项目根标志：settings.json（IDE 项目）或 .entry（打包产物，产物不含 settings.json）
+          if (new File(parent, "settings.json").exists() || new File(parent, ".entry").exists()) {
             luaDir = parent;
             if (!prjCache.contains(luaDir)) prjCache.add(luaDir);
             break;
