@@ -9,6 +9,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.util.Log
+import com.luafabric.console.core.SessionManager
+import com.luajava.LuaStateFactory
+import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.lang.ref.WeakReference
@@ -22,11 +25,13 @@ object CrashManager {
     internal const val EXTRA_EXCEPTION_TYPE = "EXTRA_EXCEPTION_TYPE"
     internal const val EXTRA_THREAD_INFO = "EXTRA_THREAD_INFO"
     internal const val EXTRA_CRASH_CONTEXT = "EXTRA_CRASH_CONTEXT"
+    internal const val EXTRA_DIAGNOSTICS = "EXTRA_DIAGNOSTICS"
 
     private const val TAG = "crashmanager"
     private const val CAOC_HANDLER_PACKAGE_NAME = "com.crashmanager"
     private const val DEFAULT_HANDLER_PACKAGE_NAME = "com.android.internal.os"
     private const val MAX_STACK_TRACE_SIZE = 131071 // 128 KB - 1
+    private const val MAX_DIAGNOSTICS_SIZE = 300_000 // 300 KB，防 dump 撑爆 Binder Intent
 
     private var application: Application? = null
     private var lastActivityCreated = WeakReference<Activity>(null)
@@ -92,6 +97,11 @@ object CrashManager {
                         thread.name + " (ID:" + thread.id + ")"
                     )
                     intent.putExtra(EXTRA_CRASH_CONTEXT, getCrashContext(application!!))
+                    // 崩溃现场诊断：全线程 dump + 锁 owner + LuaState 存活清单 + 会话上下文。
+                    // 此刻进程未死（如 FinalizerWatchdogDaemon 刚抛超时、native 仍卡着），现场仍可采。
+                    val diagnostics = buildCrashDiagnostics()
+                    intent.putExtra(EXTRA_DIAGNOSTICS, diagnostics)
+                    saveDiagnosticsFile(application!!, diagnostics)
                     intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     application!!.startActivity(intent)
                 }
@@ -182,6 +192,78 @@ object CrashManager {
                 "\nTime: " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
     }
 
+    /**
+     * 崩溃现场诊断采集。设计约束：
+     * - 全线程 dump 走 ThreadMXBean.dumpAllThreads，ThreadInfo.toString() 自带 lock owner、
+     *   锁对象名与栈，直接呈现谁持锁、谁等锁；
+     * - LuaState 存活清单走 LuaStateFactory.snapshotStates()（只读裸指针，绝不触碰 synchronized 方法，
+     *   否则在 LuaState monitor 卡死现场（LuaObject.finalize 超时）采集线程会自锁死循环）；
+     * - 会话上下文读 SessionManager @Volatile 字段，全程 try/catch（崩溃时 console 体系可能未初始化）。
+     * 全部采集成功后整体落盘私有目录，供 adb pull 挖掘。
+     */
+    private fun buildCrashDiagnostics(): String = try {
+        buildString {
+            append("\n[Thread Dump]\n")
+            // Android 无 ThreadMXBean/锁 owner 公开 API，只能走 Thread.getAllStackTraces()。
+            // 定位方式改为交叉推断：卡死线程（BLOCKED/等 monitor）与「停在 synchronized 的 LuaState
+            // native 方法内不动的线程」互指 → 谁持 LuaState monitor 一目了然。
+            val traces = Thread.getAllStackTraces()
+            var bytes = 0
+            for ((t, stack) in traces) {
+                val state = t.state
+                val marker = if (state != Thread.State.RUNNABLE && state != Thread.State.NEW && state != Thread.State.TERMINATED) {
+                    " <-- " + state.name
+                } else {
+                    ""
+                }
+                val s = "Thread: " + t.name + " (id=" + t.id + ") state=" + state + marker + "\n" +
+                        stack.joinToString("\n") { "\tat " + it } + "\n\n"
+                bytes += s.length
+                if (bytes > MAX_DIAGNOSTICS_SIZE) {
+                    append("~~~ thread dump truncated at $MAX_DIAGNOSTICS_SIZE bytes ~~~\n")
+                    break
+                }
+                append(s)
+            }
+            append("\n[LuaState Registry]\n")
+            append(LuaStateFactory.snapshotStates()).append('\n')
+            append("[Session Context]\n")
+            append(buildSessionContext())
+        }
+    } catch (t: Throwable) {
+        "Diagnostics unavailable: $t"
+    }
+
+    private fun buildSessionContext(): String {
+        val sb = StringBuilder()
+        try {
+            val s = SessionManager.current
+            sb.append("gen=").append(SessionManager.gen).append('\n')
+            sb.append("luaDir=").append(s?.luaDir ?: "n/a").append('\n')
+            sb.append("luaPath=").append(s?.luaPath ?: "n/a").append('\n')
+            sb.append("startTimeMs=").append(s?.startTimeMs ?: "n/a").append('\n')
+            sb.append("debugMode=").append(s?.debugMode ?: "n/a").append('\n')
+            sb.append("sessionLuaStatePtr=").append(s?.luaState?.getPointerUnsafe() ?: "n/a").append('\n')
+            sb.append("hostActivity=").append(SessionManager.activity?.javaClass?.name ?: "n/a").append('\n')
+        } catch (t: Throwable) {
+            sb.append("session context unavailable: ").append(t).append('\n')
+        }
+        return sb.toString()
+    }
+
+    /** 完整诊断落盘至私有目录 filesDir/crash_report/，文件名带毫秒时间戳防覆盖。 */
+    private fun saveDiagnosticsFile(context: Context, diagnostics: String) {
+        try {
+            val dir = File(context.filesDir, "crash_report")
+            if (!dir.exists()) dir.mkdirs()
+            val f = File(dir, "crash_report_" + System.currentTimeMillis() + ".txt")
+            f.writeText(diagnostics)
+            Log.e(TAG, "Diagnostics saved to " + f.absolutePath)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Unable to save crash diagnostics file", t)
+        }
+    }
+
     @JvmStatic
     fun getAllErrorDetailsFromIntent(context: Context, intent: Intent): String {
         val details = StringBuilder()
@@ -212,6 +294,8 @@ object CrashManager {
 
         details.append("Crash Details\n")
         details.append(getStackTraceFromIntent(intent))
+        details.append("\n\n[Diagnostics]\n")
+        details.append(intent.getStringExtra(EXTRA_DIAGNOSTICS) ?: "unavailable")
 
         return details.toString()
     }

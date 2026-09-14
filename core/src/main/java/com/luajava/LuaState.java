@@ -162,6 +162,15 @@ public class LuaState {
     }
 
     /**
+     * 崩溃诊断用：非同步读取原生指针字段，等价于 getPointer() 但不加锁。
+     * 当某个线程在 LuaState monitor 上卡死（如 LuaObject.finalize 超时）时，
+     * 崩溃采集线程若调用同步方法会自锁，必须用非同步字段快照（允许读到过期值，作诊断即可）。
+     */
+    public long getPointerUnsafe() {
+        return luaState;
+    }
+
+    /**
      * Return the long representing the LuaState pointer
      *
      * @return long

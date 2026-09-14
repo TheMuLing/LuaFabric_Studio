@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.crash.CrashManager.EXTRA_CRASH_CONTEXT
+import com.luafabric.studio.falling.ui.crash.CrashManager.EXTRA_DIAGNOSTICS
 import com.luafabric.studio.falling.ui.crash.CrashManager.EXTRA_EXCEPTION_TYPE
 import com.luafabric.studio.falling.ui.crash.CrashManager.EXTRA_STACK_TRACE
 import com.luafabric.studio.falling.ui.crash.CrashManager.EXTRA_THREAD_INFO
@@ -101,6 +102,7 @@ fun CrashLogScreen(intent: Intent) {
     val threadInfo = intent.getStringExtra(EXTRA_THREAD_INFO) ?: "Unknown"
     val crashContext = intent.getStringExtra(EXTRA_CRASH_CONTEXT) ?: "Unknown"
     val stackTrace = intent.getStringExtra(EXTRA_STACK_TRACE) ?: "No stack trace"
+    val diagnostics = intent.getStringExtra(EXTRA_DIAGNOSTICS) ?: "unavailable"
 
     // 获取当前时间
     val crashTime = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()) }
@@ -250,13 +252,47 @@ fun CrashLogScreen(intent: Intent) {
                 processStackTraceWithUnderlinedClassNames(stackTrace, normalStyle)
             }
             Text(text = annotatedStackTrace)
+
+            // [Diagnostics] - 崩溃现场诊断（全线程 dump + LuaState 清单 + 会话上下文）
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(text = "[Diagnostics]", style = titleStyle)
+            Spacer(modifier = Modifier.height(4.dp))
+            val diagnosticText = remember(diagnostics) {
+                decomposeDiagnostics(diagnostics)
+            }
+            diagnosticText.forEach { (title, body) ->
+                Text(text = title, style = titleStyle)
+                Text(text = body, style = normalStyle)
+                Spacer(modifier = Modifier.height(6.dp))
+            }
         }
     }
 }
 
 /**
- * 处理堆栈跟踪字符串，为其中的类名添加下划线样式
+ * 把诊断文本按 "[Section]" 标题拆成 (标题, 正文) 列表，供崩页平铺显示。
+ * 输入来自 CrashManager.buildCrashDiagnostics()，结构：
+ * [Thread Dump] / [LuaState Registry] / [Session Context]
  */
+private fun decomposeDiagnostics(raw: String): List<Pair<String, String>> {
+    val result = mutableListOf<Pair<String, String>>()
+    if (raw.isBlank() || raw == "unavailable") {
+        result.add("Diagnostics" to raw)
+        return result
+    }
+    // 在 "[" 前切分（非空段），再在每个段提取标题
+    val segments = raw.trimStart().split(Regex("(?=\\[[^\\]]+])"))
+    val header = Regex("""^\[([^]]+)](.*)$""", RegexOption.DOT_MATCHES_ALL)
+    for (seg in segments) {
+        val m = header.find(seg.trimStart())
+        if (m != null) {
+            result.add(m.groupValues[1] to m.groupValues[2].trim())
+        } else if (seg.isNotBlank()) {
+            result.add("Diagnostics" to seg.trim())
+        }
+    }
+    return result
+}
 private fun processStackTraceWithUnderlinedClassNames(
     stackTrace: String,
     baseStyle: TextStyle

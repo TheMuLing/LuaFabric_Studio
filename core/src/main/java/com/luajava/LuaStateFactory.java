@@ -98,5 +98,26 @@ public final class LuaStateFactory {
         states.put(idx, null);
     }
 
+    /**
+     * 崩溃诊断用：列出所有注册过的 native 指针及其当前 wrapper 的关闭状态。
+     * 注意：不调用 LuaState 任何 synchronized 方法，只读裸字段，避免在
+     * LuaState monitor 卡死（LuaObject.finalize 超时）现场追加自锁。
+     * 同指针可能对应多个 wrapper（removeLuaState 置 null 后再 getExistingState 复活），
+     * 借此可发现「残留 LuaState/LuaFunction 与已关闭 native state 脱钩」这一崩溃根因。
+     */
+    public static String snapshotStates() {
+        StringBuilder sb = new StringBuilder();
+        synchronized (LuaStateFactory.class) {
+            for (Map.Entry<Long, LuaState> e : states.entrySet()) {
+                LuaState L = e.getValue();
+                boolean closed = L == null || L.getPointerUnsafe() == 0;
+                sb.append("ptr=").append(e.getKey())
+                  .append(" closed=").append(closed)
+                  .append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
 
 }
