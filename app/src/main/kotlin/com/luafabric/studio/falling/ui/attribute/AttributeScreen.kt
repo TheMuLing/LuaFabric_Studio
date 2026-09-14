@@ -178,6 +178,8 @@ fun AttributeScreen(
     var debugMode by remember { mutableStateOf(false) }
     var entryFile by remember { mutableStateOf("main.lua") }
     var showEntryPicker by remember { mutableStateOf(false) }
+    var showIconPicker by remember { mutableStateOf(false) }
+    var iconRefreshTick by remember { mutableStateOf(0) }
 
     val allPermissions = remember { mutableStateListOf<PermissionItem>() }
 
@@ -428,6 +430,9 @@ fun AttributeScreen(
                                         .data(imageModel)
                                         .crossfade(true)
                                         .size(256) // 缩小采样，避免超大图标解码致内存压力（卡顿/点击失效）
+                                        // iconRefreshTick 参与缓存键：项目内换图复制覆盖 icon.png 后强制刷新预览
+                                        .memoryCacheKey("project_icon_${iconRefreshTick}")
+                                        .diskCacheKey("project_icon_${iconRefreshTick}")
                                         .build(),
                                     contentDescription = stringResource(R.string.cd_project_icon),
                                     modifier = Modifier.fillMaxSize(),
@@ -448,6 +453,24 @@ fun AttributeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp)
+                        )
+
+                        // 图标路径（只读，点击按钮在项目内选择并复制覆盖 icon.png）
+                        OutlinedTextField(
+                            value = "icon.png",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text(stringResource(R.string.attribute_icon_path)) },
+                            shape = MaterialTheme.shapes.small,
+                            trailingIcon = {
+                                IconButton(onClick = { showIconPicker = true }) {
+                                    Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            singleLine = true
                         )
                     }
                 }
@@ -685,6 +708,36 @@ fun AttributeScreen(
                     showEntryPicker = false
                 } else {
                     toast.showToast(context.getString(R.string.attribute_entry_outside_project))
+                }
+            }
+        )
+    }
+
+    if (showIconPicker) {
+        FilePickerDialog(
+            initialPath = projectPath,
+            selectionMode = SelectionMode.FILE,
+            title = stringResource(R.string.attribute_icon_picker_title),
+            allowedExtensions = listOf("png", "jpg", "jpeg", "webp", "gif"),
+            rootPath = projectPath, // 锁根：只在项目内选择
+            onDismiss = { showIconPicker = false },
+            onFileSelected = { path ->
+                showIconPicker = false
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) {
+                        runCatching {
+                            File(path).copyTo(File(projectPath, "icon.png"), overwrite = true)
+                        }.isSuccess
+                    }
+                    if (ok) {
+                        iconUri = null
+                        // hasExistingIcon 由重组时 iconFile.exists() 重算，无需手动置位
+                        iconRefreshTick++ // 强制 coil 换缓存键刷新预览（亦触发重组重算 hasExistingIcon）
+                        toast.showToast(context.getString(R.string.attribute_icon_updated))
+                    } else {
+                        LogCatcher.e("AttributeScreen", "图标复制失败: $path")
+                        toast.showToast(context.getString(R.string.attribute_icon_copy_failed))
+                    }
                 }
             }
         )

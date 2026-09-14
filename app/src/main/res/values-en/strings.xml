@@ -463,6 +463,10 @@
     <string name="attribute_entry_file">Entry file</string>
     <string name="attribute_entry_picker_title">Select entry file</string>
     <string name="attribute_entry_outside_project">Entry file must be inside the project</string>
+    <string name="attribute_icon_path">Icon path</string>
+    <string name="attribute_icon_picker_title">Select project icon</string>
+    <string name="attribute_icon_updated">Icon updated</string>
+    <string name="attribute_icon_copy_failed">Failed to copy icon</string>
     <string name="attribute_sdk_title">SDK Versions</string>
     <string name="attribute_min_sdk">Minimum SDK</string>
     <string name="attribute_target_sdk">Target SDK</string>

@@ -473,6 +473,10 @@
     <string name="attribute_entry_file">入口文件</string>
     <string name="attribute_entry_picker_title">选择入口文件</string>
     <string name="attribute_entry_outside_project">入口文件必须位于项目内</string>
+    <string name="attribute_icon_path">图标路径</string>
+    <string name="attribute_icon_picker_title">选择项目图标</string>
+    <string name="attribute_icon_updated">图标已更新</string>
+    <string name="attribute_icon_copy_failed">图标复制失败</string>
     <string name="attribute_sdk_title">SDK 版本</string>
     <string name="attribute_min_sdk">最小 SDK</string>
     <string name="attribute_target_sdk">目标 SDK</string>
