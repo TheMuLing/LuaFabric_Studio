@@ -1,6 +1,9 @@
 # Gradle files
 .gradle/
+
+# Gradle output dirs (exclude Kotlin package named build, e.g. falling.build)
 build/
+!**/falling/build/
 
 # Local configuration file (sdk path, etc)
 local.properties

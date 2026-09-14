@@ -1323,7 +1323,11 @@ public class LuaActivity extends AppCompatActivity
   }
 
   private void initENV() throws LuaException {
-    if (!new File(luaDir + "/settings.json").exists()) return;
+    if (!new File(luaDir + "/settings.json").exists()) {
+      // 打包产物不再携带 settings.json：显式关闭调试，避免 mDebug 默认 true 误开控制台/调试链路。
+      mDebug = false;
+      return;
+    }
 
     try {
       L.newTable();

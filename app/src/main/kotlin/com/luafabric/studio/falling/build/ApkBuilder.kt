@@ -1289,7 +1289,9 @@ class ApkBuilder {
                     throw IOException("项目目录不存在: $projectPath")
                 }
 
-                copyDirectory(projectDir, assetsDir)
+                // 打包产物丢弃 settings.json：产物运行时不依赖它（LuaActivity.initENV 缺失即容错），
+                // 且避免把项目包名/权限/调试开关/global_utils 等元数据打进成品。
+                copyDirectory(projectDir, assetsDir) { name -> name == "settings.json" }
                 LogCatcher.i("ApkBuilder", "项目文件已复制到assets: $assetsPath")
 
             } catch (e: IOException) {
@@ -1455,8 +1457,12 @@ class ApkBuilder {
             return crc.value
         }
 
-        // 工具方法：复制目录
-        private fun copyDirectory(source: File, destination: File) {
+        // 工具方法：复制目录（skipFile 返回 true 的文件跳过，不复制）
+        private fun copyDirectory(
+            source: File,
+            destination: File,
+            skipFile: (String) -> Boolean = { false }
+        ) {
             if (source.isDirectory) {
                 if (!destination.exists()) {
                     destination.mkdirs()
@@ -1464,9 +1470,10 @@ class ApkBuilder {
 
                 val files = source.list()
                 files?.forEach { file ->
+                    if (skipFile(file)) return@forEach
                     val srcFile = File(source, file)
                     val destFile = File(destination, file)
-                    copyDirectory(srcFile, destFile)
+                    copyDirectory(srcFile, destFile, skipFile)
                 }
             } else {
                 FileInputStream(source).use { input ->
