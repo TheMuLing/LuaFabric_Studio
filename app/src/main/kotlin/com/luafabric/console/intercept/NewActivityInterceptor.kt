@@ -149,7 +149,7 @@ class NewActivityInterceptor(
             val cur = session
             if (cur != null) {
                 synchronized(cur) {
-                    if (cur.entries.containsKey(req.signature)) return MethodCallResult.veto() // 已存在 → 无操作
+                    if (cur.entries.containsKey(req.signature)) return MethodCallResult.replace(activity) // 已存在 → 无操作，但占位保持链式
                     cur.entries[req.signature] = Entry(req.signature, req, activity, replay)
                 }
                 mainHandler.post { appendCardIfAbsent(cur, req.signature) }
@@ -160,7 +160,10 @@ class NewActivityInterceptor(
                 mainHandler.post { openDialog(ns) }
             }
         }
-        return MethodCallResult.veto() // B：恒否决回 Lua，脚本继续；放行在 settle 后重放
+        // B：返回调用方 activity 占位回 Lua（REPLACE，非 nil），保证链式 newActivity(a).finish() 不因
+        // nil 索引崩溃；随后链上的 finish 会再次经 invoke 命中拦截（pendingFinish + 弹窗显示开关）。
+        // 真实跳转仍由 settle 后主线程按原始 args 重放。
+        return MethodCallResult.replace(activity)
     }
 
     /**
