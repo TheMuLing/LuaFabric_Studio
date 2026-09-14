@@ -236,7 +236,9 @@ fun AttributeScreen(
 
         loadAppPermissions(context, allPermissions)
 
-        val selectedSet = getSelectedPermissionsFromSettings(projectPath)
+        val selectedSet = withContext(Dispatchers.IO) {
+            getSelectedPermissionsFromSettings(projectPath)
+        }
         allPermissions.forEach { perm ->
             perm.isChecked = selectedSet.contains(perm.shortName)
         }
@@ -412,6 +414,7 @@ fun AttributeScreen(
                                     model = ImageRequest.Builder(context)
                                         .data(imageModel)
                                         .crossfade(true)
+                                        .size(256) // 缩小采样，避免超大图标解码致内存压力（卡顿/点击失效）
                                         .build(),
                                     contentDescription = stringResource(R.string.cd_project_icon),
                                     modifier = Modifier.fillMaxSize(),
@@ -442,6 +445,7 @@ fun AttributeScreen(
                         value = label,
                         onValueChange = { label = it },
                         label = { Text(stringResource(R.string.attribute_app_name)) },
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -449,6 +453,7 @@ fun AttributeScreen(
                         value = packageName,
                         onValueChange = { packageName = it },
                         label = { Text(stringResource(R.string.attribute_package_name)) },
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
@@ -457,6 +462,7 @@ fun AttributeScreen(
                         value = versionName,
                         onValueChange = { versionName = it },
                         label = { Text(stringResource(R.string.attribute_version_name)) },
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -464,6 +470,7 @@ fun AttributeScreen(
                         value = versionCode,
                         onValueChange = { versionCode = it },
                         label = { Text(stringResource(R.string.attribute_version_code)) },
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -473,8 +480,12 @@ fun AttributeScreen(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text(stringResource(R.string.attribute_entry_file)) },
+                        shape = MaterialTheme.shapes.small,
                         trailingIcon = {
-                            Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                            // 独立按钮通道：避免 TextField 内部手势吞掉整框 clickable 导致点击偶发无反应
+                            IconButton(onClick = { showEntryPicker = true }) {
+                                Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -494,6 +505,7 @@ fun AttributeScreen(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text(stringResource(R.string.attribute_min_sdk)) },
+                            shape = MaterialTheme.shapes.small,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = minSdkMenuExpanded) },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -526,6 +538,7 @@ fun AttributeScreen(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text(stringResource(R.string.attribute_target_sdk)) },
+                            shape = MaterialTheme.shapes.small,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = targetSdkMenuExpanded) },
                             modifier = Modifier
                                 .fillMaxWidth()

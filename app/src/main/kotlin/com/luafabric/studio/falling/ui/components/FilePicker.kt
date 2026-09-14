@@ -73,6 +73,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.luafabric.studio.falling.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -162,15 +164,18 @@ fun FilePickerDialog(
     // 面包屑滚动状态
     val breadcrumbScrollState = rememberScrollState()
 
-    // 加载文件和目录
+    // 加载文件和目录（IO 线程计算，主线程回写快照状态）
     LaunchedEffect(currentPath) {
-        loadFilesAndDirectories(
-            path = currentPath,
-            allowedExtensions = allowedExtensions,
-            onItemsLoaded = { items ->
-                fileItems = items
-            }
-        )
+        val items = withContext(Dispatchers.IO) {
+            val result = mutableListOf<PickerFileItem>()
+            loadFilesAndDirectories(
+                path = currentPath,
+                allowedExtensions = allowedExtensions,
+                onItemsLoaded = { result.addAll(it) }
+            )
+            result.toList()
+        }
+        fileItems = items
     }
 
     // 生成路径面包屑
