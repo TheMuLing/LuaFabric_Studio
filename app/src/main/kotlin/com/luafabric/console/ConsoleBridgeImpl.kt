@@ -45,6 +45,13 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     /** 未读 Lua 错误计数 → 浮球右上角角标；打开面板 / 清空当前缓冲时清零。 */
     private val errorUnread = java.util.concurrent.atomic.AtomicInteger(0)
 
+    /** 弹窗采集：make 登记实例→文本；show() 配对输出「已调用 show」；当前 lua 文件切换时 dump 残留为「未调用 show」。 */
+    private val pendingPopups = java.util.WeakHashMap<Any, PopupInfo>()
+    private var lastDumpFile: String? = null
+
+    /** 弹窗登记信息：展示文本 + 类型（快照于 make 时，show/dump 时按开关门控输出）。 */
+    private data class PopupInfo(val text: String, val snackbar: Boolean)
+
     /** 会话门控：仅 debugmode 项目激活捕获（非调试会话零捕获）。 */
     @Volatile
     private var active = false
@@ -239,6 +246,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     }
 
     override fun onPrint(text: String?, luaTypes: IntArray?, rawArgs: Array<out Any?>?) {
+        // 门控：捕获 print 关闭则不解析不入缓冲（不 gate active：非调试会话本就 clearAll，见原注释）
+        if (!settings.capturePrint) return
         // 不 gate active：主线程顶层 chunk 的 print 可能先于 onSessionStart 到达（游标未建），
         // 一律入兜底缓冲，会话建立后由 rebaseCatchAll 并入当前文件；非调试会话随后 clearAll 清空。
         val depth = settings.parseDepth
@@ -254,14 +263,39 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         appendEntry("print", text ?: "", l1, l2)
     }
 
-    override fun onToast(text: String?) {
+    override fun onPopupCaptured(instance: Any, text: String?, snackbar: Boolean) {
         if (!active) return
-        appendEntry("toast", text ?: "")
+        // 同实例重复 make（罕见）覆盖旧文本；WeakHashMap 弱键随 GC 回收未 show 残留
+        pendingPopups[instance] = PopupInfo(text ?: "", snackbar)
     }
 
-    override fun onSnackbar(text: String?) {
+    override fun onPopupShown(instance: Any) {
         if (!active) return
-        appendEntry("snackbar", text ?: "")
+        pendingPopups.remove(instance)?.let { info ->
+            outputPopup(info, shown = true)
+        }
+    }
+
+    /** 当前 lua 文件切换锚点触发：残留「从未 show」的弹窗一次性落缓冲。 */
+    private fun dumpPendingPopups() {
+        if (pendingPopups.isEmpty()) return
+        val it = pendingPopups.entries.iterator()
+        while (it.hasNext()) {
+            val (_, info) = it.next()
+            it.remove()
+            outputPopup(info, shown = false)
+        }
+    }
+
+    /** 弹窗输出：按类型开关门控，标注是否调用 show()。 */
+    private fun outputPopup(info: PopupInfo, shown: Boolean) {
+        val want = if (info.snackbar) settings.captureSnackbar else settings.captureToast
+        if (!want) return
+        val label = if (info.snackbar) "snackbar" else "toast"
+        appendEntry(
+            label,
+            info.text + (if (shown) "（已调用 show）" else "（未调用 show）"),
+        )
     }
 
     override fun onError(title: String?, message: String?) {
@@ -277,6 +311,12 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         luaState: Long
     ): MethodCallResult {
         if (!active) return MethodCallResult.ALLOW
+        // 弹窗残留 dump 锚点：当前 lua 文件变化（会话游标切换）→ 上一文件未 show 的弹窗一次性落缓冲
+        val curFile = OutputManager.currentFile
+        if (curFile != lastDumpFile) {
+            lastDumpFile = curFile
+            dumpPendingPopups()
+        }
         // F2：观察 setContentView（布局判定）；显式字符串参数直传，否则靠 require 模块推 .aly
         if (methodName == "setContentView" && receiver is android.app.Activity) {
             FileStateTracker.onSetContentView(args?.firstOrNull() as? String)

@@ -30,12 +30,14 @@ import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Build;
 
+import android.widget.Toast;
 import com.android.cglib.proxy.EnhancerInterface;
 import com.android.cglib.proxy.MethodFilter;
 import com.androlua.LuaActivity;
 import com.androlua.LuaBitmap;
 import com.androlua.LuaEnhancer;
 import com.androlua.LuaGcable;
+import com.google.android.material.snackbar.Snackbar;
 import com.luafabric.studio.falling.core.console.ConsoleCallMarker;
 import com.luafabric.studio.falling.core.console.DebugConsoleBridge;
 import com.luafabric.studio.falling.core.console.DebugConsoleRegistry;
@@ -140,8 +142,16 @@ public final class LuaJavaAPI {
         boolean interesting =
                 (obj instanceof LuaActivity)
                         || (obj instanceof Class
-                                && ("makeText".equals(method) || "make".equals(method)));
+                                && ("makeText".equals(method) || "make".equals(method)))
+                        || ((obj instanceof Toast || obj instanceof Snackbar)
+                                && "show".equals(method));
         if (!interesting) return MethodCallResult.ALLOW;
+
+        // 调试控制台：Toast/Snackbar show() —— 与 make 登记的实例配对，标注「已调用 show」，放行原显示
+        if ((obj instanceof Toast || obj instanceof Snackbar) && "show".equals(method)) {
+            bridge.onPopupShown(obj);
+            return MethodCallResult.ALLOW;
+        }
 
         if (obj instanceof LuaActivity && "runFunc".equals(method)) {
             ConsoleCallMarker.set();
@@ -307,6 +317,19 @@ public final class LuaJavaAPI {
                         //e.printStackTrace();
                         msgBuilder.append("  at ").append(method).append("\n  -> ").append((e.getCause() != null) ? e.getCause() : e).append("\n");
                         continue;
+                    }
+
+                    // 调试控制台：makeText/make 工厂返回实例 → 登记文本，show() 时配对标注（不阻断原显示）
+                    if ((ret instanceof Toast || ret instanceof Snackbar)
+                            && ("makeText".equals(method.getName()) || "make".equals(method.getName()))) {
+                        DebugConsoleBridge popupBridge = DebugConsoleRegistry.get();
+                        if (popupBridge != null) {
+                            Object popupText = objs.length > 1 ? objs[1] : null;
+                            popupBridge.onPopupCaptured(
+                                    ret,
+                                    popupText == null ? "" : String.valueOf(popupText),
+                                    ret instanceof Snackbar);
+                        }
                     }
 
                     switch (methodType) {

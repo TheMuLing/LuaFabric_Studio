@@ -21,11 +21,16 @@ public interface DebugConsoleBridge {
     /** Lua 侧 print 输出（含每个参数的一级 Lua 类型与原始值）。 */
     default void onPrint(String text, int[] luaTypes, Object[] rawArgs) {}
 
-    /** Lua 侧调用 Toast.makeText 的内容（luajava 调用层观察）。 */
-    default void onToast(String text) {}
+    /**
+     * Lua 侧调用 Toast.makeText / Snackbar.make 且已返回实例（luajava 调用层观察）。
+     * 仅为捕获登记，不阻断原显示；是否真正 show() 由 onPopupShown 配对后标注。
+     *
+     * @param snackbar true = Snackbar，false = Toast
+     */
+    default void onPopupCaptured(Object instance, String text, boolean snackbar) {}
 
-    /** Lua 侧调用 Snackbar.make 的内容（luajava 调用层观察）。 */
-    default void onSnackbar(String text) {}
+    /** Lua 侧对已登记的 Toast/Snackbar 实例调用 show()（仅标注，不阻断原显示）。 */
+    default void onPopupShown(Object instance) {}
 
     /** Lua 脚本报错（LuaActivity.sendError）。 */
     default void onError(String title, String message) {}

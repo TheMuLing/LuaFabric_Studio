@@ -31,4 +31,19 @@ class ConsoleSettings(context: Context) {
     var interceptNavigation: Boolean
         get() = sp.getBoolean("intercept_navigation", true)
         set(v) = sp.edit().putBoolean("intercept_navigation", v).apply()
+
+    /** 捕获 print() 内容入控制台缓冲（默认开；关闭后不再写入，render 主线程早期输出不受影响）。 */
+    var capturePrint: Boolean
+        get() = sp.getBoolean("capture_print", true)
+        set(v) = sp.edit().putBoolean("capture_print", v).apply()
+
+    /** 捕获 Toast 内容入控制台缓冲（默认开；不拦截原显示，make/show 均捕获，标注是否调用 show）。 */
+    var captureToast: Boolean
+        get() = sp.getBoolean("capture_toast", true)
+        set(v) = sp.edit().putBoolean("capture_toast", v).apply()
+
+    /** 捕获 Snackbar 内容入控制台缓冲（默认关；不拦截原显示，make/show 均捕获，标注是否调用 show）。 */
+    var captureSnackbar: Boolean
+        get() = sp.getBoolean("capture_snackbar", false)
+        set(v) = sp.edit().putBoolean("capture_snackbar", v).apply()
 }

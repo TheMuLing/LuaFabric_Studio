@@ -30,6 +30,9 @@ class SettingsTabView(context: Context) : ScrollView(context) {
     private var depthValue: TextView? = null
     private var toastSwitch: MaterialSwitch? = null
     private var interceptSwitch: MaterialSwitch? = null
+    private var printSwitch: MaterialSwitch? = null
+    private var toastCaptureSwitch: MaterialSwitch? = null
+    private var snackbarCaptureSwitch: MaterialSwitch? = null
 
     init {
         setBackgroundColor(ConsoleTheme.surface)
@@ -63,6 +66,24 @@ class SettingsTabView(context: Context) : ScrollView(context) {
                 settings.interceptNavigation = on
                 (DebugConsoleRegistry.get() as? ConsoleBridgeImpl)?.setInterceptEnabled(on) // 即时生效
             }.also { interceptSwitch = it.second }.first)
+            addBody(divider())
+            addBody(switchRow(
+                "捕获 print() 的内容",
+                "默认开：print() 输出入控制台缓冲；关闭后不再记录",
+                initial = settings.capturePrint
+            ) { on -> settings.capturePrint = on }.also { printSwitch = it.second }.first)
+            addBody(divider())
+            addBody(switchRow(
+                "捕获 Toast 的内容",
+                "默认开：不拦截原显示，入控制台并标注是否调用 show()",
+                initial = settings.captureToast
+            ) { on -> settings.captureToast = on }.also { toastCaptureSwitch = it.second }.first)
+            addBody(divider())
+            addBody(switchRow(
+                "捕获 Snackbar 的内容",
+                "默认关：不拦截原显示，入控制台并标注是否调用 show()",
+                initial = settings.captureSnackbar
+            ) { on -> settings.captureSnackbar = on }.also { snackbarCaptureSwitch = it.second }.first)
         })
 
         // 报错
@@ -91,6 +112,9 @@ class SettingsTabView(context: Context) : ScrollView(context) {
         depthValue?.text = "${settings.parseDepth}"
         toastSwitch?.isChecked = settings.toastLuaErrors
         interceptSwitch?.isChecked = settings.interceptNavigation
+        printSwitch?.isChecked = settings.capturePrint
+        toastCaptureSwitch?.isChecked = settings.captureToast
+        snackbarCaptureSwitch?.isChecked = settings.captureSnackbar
     }
 
     /** 折叠卡内设置项行：左侧文本 + 右侧开关。 */
