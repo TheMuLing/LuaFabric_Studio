@@ -64,6 +64,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         }
         // E：报错 toast 由设置项门控（默认关），同步到 core 注册表（LuaActivity.sendError 读取）
         DebugConsoleRegistry.setErrorToastEnabled(settings.toastLuaErrors)
+        // F3：拦截器总开关须以持久化设置初始化（否则重建桥/清后台后 enabled 回落默认 true，开关显示关仍拦截）
+        newActivityInterceptor.enabled = settings.interceptNavigation
         // E：打开控制台面板 → 未读错误角标清零（打开即视为已读）
         StateMachine.addListener(object : StateMachine.Listener {
             override fun onStateChanged(old: ConsoleState, new: ConsoleState) {
@@ -145,6 +147,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     }
 
     override fun onSessionStart(info: SessionInfo) {
+        // F3：每次会话入/重启/换项目均重同步拦截开关（热重入时 init 不重跑，仅此处能对齐持久化值）
+        newActivityInterceptor.enabled = settings.interceptNavigation
         val prev = SessionManager.current
         val fresh = SessionManager.begin(info)
         if (fresh) {
@@ -256,17 +260,21 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         val l1 = ArrayList<String>(luaTypes?.size ?: 0)
         val l2 = ArrayList<String>(luaTypes?.size ?: 0)
         val contents = ArrayList<String>(luaTypes?.size ?: 0)
+        val fullContents = ArrayList<String>(luaTypes?.size ?: 0)
         if (luaTypes != null) {
             for (i in luaTypes.indices) {
                 val r = TypeResolver.resolve(luaTypes[i], rawArgs?.getOrNull(i), depth)
                 l1 += r.level1
                 l2 += r.type
                 contents += r.content
+                fullContents += r.full ?: r.content
             }
         }
         // 内容区 = 真实解码内容（与 Lua print 同款 \t 连接）；元数据右侧 = 仅真实类型
         val primary = if (luaTypes != null) contents.joinToString("\t") else (text ?: "")
-        appendEntry("print", primary, l1, l2)
+        // 完整内容（不截断）：复制选项弹窗预览用；非 print 通道沿用展示文本
+        val fullText = if (luaTypes != null) fullContents.joinToString("\t") else (text ?: "")
+        appendEntry("print", primary, l1, l2, fullText = fullText)
     }
 
     override fun onPopupCaptured(instance: Any, text: String?, snackbar: Boolean) {
@@ -362,7 +370,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         ModuleTracker.recordBindClass(OutputManager.currentFile, className, clazz)
     }
 
-    private fun appendEntry(label: String, primary: String, luaTypes: List<String> = emptyList(), typeDetails: List<String> = emptyList()) {
+    private fun appendEntry(label: String, primary: String, luaTypes: List<String> = emptyList(), typeDetails: List<String> = emptyList(), fullText: String? = null) {
         OutputManager.append(
             OutputEntry(
                 id = OutputManager.nextId(),
@@ -373,7 +381,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
                 luaTypes = luaTypes,
                 typeDetails = typeDetails,
                 isMainThread = Looper.getMainLooper().thread === Thread.currentThread(),
-                timestampMs = System.currentTimeMillis()
+                timestampMs = System.currentTimeMillis(),
+                fullText = fullText
             )
         )
     }

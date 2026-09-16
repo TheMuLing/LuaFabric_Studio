@@ -20,7 +20,11 @@ class OutputEntry(
     val isMainThread: Boolean,
     val timestampMs: Long,
     /** 创建时刻的项目相对路径（展示用，区别于 buffer 键 file）。 */
-    val relFile: String = ""
+    val relFile: String = "",
+    /** 事件条目的函数名：非空则正文行首渲染独立药丸 chip（(函数名) + 事件监听触发）。 */
+    val eventFunc: String? = null,
+    /** 完整内容（不截断，供复制选项弹窗预览；primary 为列表展示截断版）。 */
+    val fullText: String? = null
 ) {
     val shortTime: String get() = TIME_SHORT.format(Date(timestampMs))
     val fullTime: String get() = TIME_FULL.format(Date(timestampMs))

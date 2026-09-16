@@ -1,5 +1,8 @@
 package com.luafabric.console.output
 
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.util.IdentityHashMap
 
 /**
@@ -16,7 +19,7 @@ object TypeResolver {
         7 to "userdata", 8 to "thread"
     )
 
-    data class ResolvedArg(val level1: String, val type: String, val content: String)
+    data class ResolvedArg(val level1: String, val type: String, val content: String, val full: String? = null)
 
     fun resolve(luaType: Int, raw: Any?, depth: Int): ResolvedArg {
         val l1 = LUA_TYPE_NAMES[luaType] ?: "unknown"
@@ -24,10 +27,10 @@ object TypeResolver {
             "userdata", "lightuserdata" -> if (raw == null) {
                 ResolvedArg(l1, "null", "null")
             } else {
-                ResolvedArg(l1, javaTypeName(raw), singleLine(previewValue(raw)))
+                ResolvedArg(l1, javaTypeName(raw), singleLine(previewValue(raw)), previewValue(raw))
             }
-            "table" -> ResolvedArg(l1, "table", resolveTable(raw, depth))
-            else -> ResolvedArg(l1, javaTypeName(raw), singleLine(raw?.toString() ?: "null"))
+            "table" -> ResolvedArg(l1, "table", resolveTable(raw, depth), resolveTableFull(raw, depth))
+            else -> ResolvedArg(l1, javaTypeName(raw), singleLine(raw?.toString() ?: "null"), raw?.toString())
         }
     }
 
@@ -56,10 +59,34 @@ object TypeResolver {
         return baseName + "[]".repeat(dims)
     }
 
+    // ---------- table 行内预览 ----------
+
     private fun resolveTable(raw: Any?, depth: Int): String {
         if (raw !is Map<*, *>) return singleLine(raw?.toString() ?: "null")
         return tablePreview(raw, depth, IdentityHashMap())
     }
+
+    /** table 完整内容（不截断，供复制预览）：非 Map 返回 null。 */
+    private fun resolveTableFull(raw: Any?, depth: Int): String? {
+        if (raw !is Map<*, *>) return null
+        return tableFullPreview(raw, depth, IdentityHashMap())
+    }
+
+    private fun tableFullPreview(map: Map<*, *>, depth: Int, seen: IdentityHashMap<Any, Boolean>): String {
+        if (depth <= 0 || seen.put(map, true) != null) return "{...}"
+        val sb = StringBuilder("{")
+        var i = 0
+        for ((k, v) in map) {
+            if (i > 0) sb.append(", ")
+            sb.append(noCap(k?.toString() ?: "null")).append('=')
+            sb.append(if (v is Map<*, *>) tableFullPreview(v, depth - 1, seen) else noCap(v?.toString() ?: ""))
+            i++
+        }
+        return sb.append('}').toString()
+    }
+
+    /** 清空换行（仅多行变量折叠为单行），不做长度截断。 */
+    private fun noCap(text: String): String = text.replace('\n', ' ')
 
     private fun tablePreview(map: Map<*, *>, depth: Int, seen: IdentityHashMap<Any, Boolean>): String {
         if (depth <= 0 || seen.put(map, true) != null) return "{...}"
@@ -78,19 +105,36 @@ object TypeResolver {
         return sb.append('}').toString()
     }
 
-    /** 内容预览（真实内容）：数组解码（避免 [B@hash 之类默认 toString），普通对象回退安全 toString。 */
+    /** 内容预览（真实内容）：数组解码（避免 [B@hash 之类默认 toString），普通对象回退安全 toString。
+     *  字节数组优先 UTF-8 解码为字符串，解码失败（含非法字节）回退元素列表。 */
     private fun previewValue(raw: Any): String = when (raw) {
         is BooleanArray -> raw.contentToString()
-        is ByteArray -> raw.contentToString()
+        is ByteArray -> decodeBytes(raw)
         is CharArray -> raw.contentToString()
         is ShortArray -> raw.contentToString()
         is IntArray -> raw.contentToString()
         is LongArray -> raw.contentToString()
         is FloatArray -> raw.contentToString()
         is DoubleArray -> raw.contentToString()
-        is Array<*> -> raw.contentDeepToString()
+        is Array<*> -> if (raw.all { it is Byte }) {
+            decodeBytes(ByteArray(raw.size) { raw[it] as Byte })
+        } else {
+            raw.contentDeepToString()
+        }
         else -> safeToString(raw)
     }
+
+    /** 严格 UTF-8 解码；失败回退字节元素列表（如 contentToString 的 [1, 2, 3]）。 */
+    private fun decodeBytes(bytes: ByteArray): String =
+        try {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (e: CharacterCodingException) {
+            bytes.joinToString(", ", "[", "]") { it.toString() }
+        }
 
     private fun safeToString(raw: Any): String =
         try {

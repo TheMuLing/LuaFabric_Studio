@@ -114,10 +114,31 @@ class OutputAdapter(
             scaleX = 1.1f
             scaleY = 1.1f
         }
+        // 事件函数名药丸 chip（(onPause) 样式，同条目药丸：primary 淡底全圆角）
+        val pill = TextView(ctx).apply {
+            textSize = 10f
+            visibility = View.GONE
+            setTextColor(ConsoleTheme.primary)
+            setPadding(ctx.dp(6), ctx.dp(1), ctx.dp(6), ctx.dp(1))
+            background = GradientDrawable().apply {
+                setColor((ConsoleTheme.primary and 0x00FFFFFF) or 0x14000000)
+                cornerRadius = 999f // 药丸形
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { rightMargin = ctx.dp(6) }
+        }
         val content = TextView(ctx).apply {
             textSize = 14f
             setTextColor(ConsoleTheme.onSurface)
         }
+        val contentHost = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        contentHost.addView(pill)
+        contentHost.addView(content, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         // 元数据行（原「真实类型+相对文件」合并单行）：左 = 项目相对路径，右 = 真实类型
         val metaRow = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -170,7 +191,10 @@ class OutputAdapter(
             rightMargin = ctx.dp(4)
         }
         row.addView(check)
-        column.addView(content)
+        column.addView(contentHost, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
         column.addView(metaRow)
         chipRow.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -194,12 +218,20 @@ class OutputAdapter(
             RecyclerView.LayoutParams.MATCH_PARENT,
             RecyclerView.LayoutParams.WRAP_CONTENT
         )
-        return VH(root, check, content, metaRow, leftPath, typeRight, chipRow, time, divider, back, ripple)
+        return VH(root, check, contentHost, pill, content, metaRow, leftPath, typeRight, chipRow, time, divider, back, ripple)
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val e = items[position]
         holder.content.text = e.primary
+
+        // 事件条目：函数名独立药丸 chip（(funcName)）+ 正文
+        if (e.eventFunc != null) {
+            holder.pill.visibility = View.VISIBLE
+            holder.pill.text = "(${e.eventFunc})"
+        } else {
+            holder.pill.visibility = View.GONE
+        }
 
         val typeLine = e.typeDetails.joinToString(" · ")
         val hasMeta = e.relFile.isNotEmpty() || typeLine.isNotEmpty()
@@ -268,6 +300,8 @@ class OutputAdapter(
     class VH(
         itemView: View,
         val check: MaterialCheckBox,
+        val contentHost: LinearLayout,
+        val pill: TextView,
         val content: TextView,
         val metaRow: LinearLayout,
         val leftPath: TextView,
