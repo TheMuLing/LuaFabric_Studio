@@ -172,8 +172,6 @@
     <string name="settings_app_language">应用语言</string>
     <string name="language_chinese">中文</string>
     <string name="language_english">English</string>
-    <string name="settings_swipe_gesture">滑动手势</string>
-    <string name="settings_swipe_gesture_desc">在编辑器中上下滑动隐藏/显示快捷功能栏</string>
 
     <!-- 编辑器配置 -->
     <string name="settings_editor_font">编辑器字体</string>

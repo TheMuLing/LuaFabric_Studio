@@ -529,6 +529,7 @@ Column(
                                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = fontMenuExpanded)
                                 },
                                 colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                                shape = MaterialTheme.shapes.medium,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .menuAnchor()
@@ -643,6 +644,7 @@ Column(
                                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = editorFontMenuExpanded)
                                 },
                                 colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                                shape = MaterialTheme.shapes.medium,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .menuAnchor()
@@ -731,6 +733,7 @@ Column(
                                             Text(stringResource(R.string.settings_font_file_hint))
                                         }
                                     },
+                                    shape = MaterialTheme.shapes.medium,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -738,7 +741,7 @@ Column(
                     }
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                     )
@@ -746,6 +749,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_tab_history),
                         subtitle = stringResource(R.string.settings_tab_history_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.History,
@@ -769,7 +773,7 @@ Column(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                     )
@@ -777,6 +781,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_indent_guide),
                         subtitle = stringResource(R.string.settings_indent_guide_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.AutoMirrored.Filled.FormatIndentIncrease,
@@ -800,7 +805,7 @@ Column(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                     )
@@ -808,6 +813,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_completion_case_sensitive),
                         subtitle = stringResource(R.string.settings_completion_case_sensitive_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.AutoMirrored.Filled.MergeType,
@@ -831,7 +837,7 @@ Column(
                     )
                     
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                     )
@@ -839,6 +845,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_hex_color_highlight),
                         subtitle = stringResource(R.string.settings_hex_color_highlight_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.ColorLens,
@@ -860,7 +867,7 @@ Column(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                     )
@@ -868,6 +875,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_smart_sorting),
                         subtitle = stringResource(R.string.settings_smart_sorting_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.AutoMirrored.Filled.Sort,
@@ -889,38 +897,6 @@ Column(
                             updateSettingsWithSave(currentSettingsState.copy(smartSortingEnabled = !currentSettingsState.smartSortingEnabled))
                         }
                     )
-                    
-                    HorizontalDivider(
-    modifier = Modifier.padding(vertical = 4.dp),
-    thickness = 0.5.dp,
-    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-)
-
-SettingsListItem(
-    title = stringResource(R.string.settings_swipe_gesture),
-    subtitle = stringResource(R.string.settings_swipe_gesture_desc),
-    leadingIcon = {
-        Icon(
-            Icons.Filled.Swipe,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary
-        )
-    },
-    trailingContent = {
-        Switch(
-            checked = currentSettingsState.enableSwipeGesture,
-            onCheckedChange = {
-                updateSettingsWithSave(
-                    currentSettingsState.copy(enableSwipeGesture = it)
-                )
-            }
-        )
-    },
-    onClick = {
-        updateSettingsWithSave(currentSettingsState.copy(enableSwipeGesture = !currentSettingsState.enableSwipeGesture))
-    }
-)
-
                 }
             }
 
@@ -1370,9 +1346,60 @@ fun SettingsListItem(
     leadingIcon: @Composable (() -> Unit)? = null,
     trailingContent: @Composable (() -> Unit)? = null,
     onClick: () -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    compact: Boolean = false
 ) {
-    Card(
+    if (compact) {
+        // 紧凑模式：无卡片背景，行间细分割线由调用方提供（左右不碰壁）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (enabled) Modifier.clickable { onClick() } else Modifier)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (leadingIcon != null) {
+                    Box(modifier = Modifier.size(24.dp)) {
+                        leadingIcon()
+                    }
+                }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = if (enabled) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+
+                    if (subtitle != null) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                            maxLines = 2
+                        )
+                    }
+                }
+            }
+
+            if (trailingContent != null) {
+                trailingContent()
+            }
+        }
+    } else {
+        Card(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
@@ -1434,6 +1461,7 @@ fun SettingsListItem(
             if (trailingContent != null) {
                 trailingContent()
             }
+        }
         }
     }
 }

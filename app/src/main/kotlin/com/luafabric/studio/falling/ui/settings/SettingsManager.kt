@@ -82,9 +82,6 @@ private object PreferencesKeys {
 
     // 【新增】十六进制颜色高亮开关
     val HEX_COLOR_HIGHLIGHT_ENABLED = booleanPreferencesKey("hex_color_highlight_enabled")
-
-    // 【新增】滑动手势开关
-    val ENABLE_SWIPE_GESTURE = booleanPreferencesKey("enable_swipe_gesture")
 }
 
 // 排序方式枚举
@@ -159,7 +156,7 @@ object SettingsManager {
             preferences[PreferencesKeys.EDITOR_FONT_TYPE] ?: "JETBRAINS_MONO"
         )
         val customFontPath = preferences[PreferencesKeys.CUSTOM_FONT_PATH] ?: ""
-        val enableTabHistory = preferences[PreferencesKeys.ENABLE_TAB_HISTORY] ?: false
+        val enableTabHistory = preferences[PreferencesKeys.ENABLE_TAB_HISTORY] ?: true
         val indentGuideEnabled = preferences[PreferencesKeys.INDENT_GUIDE_ENABLED] ?: true
 
         val fixedPath = getFixedProjectStoragePath()
@@ -203,7 +200,7 @@ object SettingsManager {
         }
 
         // 加载智能排序开关
-        val smartSortingEnabled = preferences[PreferencesKeys.SMART_SORTING_ENABLED] ?: false
+        val smartSortingEnabled = preferences[PreferencesKeys.SMART_SORTING_ENABLED] ?: true
 
         // 加载 Toast 位置
         val toastPositionName = preferences[PreferencesKeys.TOAST_POSITION] ?: "BOTTOM"
@@ -222,10 +219,7 @@ object SettingsManager {
         val languageTag = preferences[PreferencesKeys.LANGUAGE_TAG] ?: "zh"
 
         // 【新增】加载十六进制颜色高亮开关
-        val hexColorHighlightEnabled = preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] ?: false
-
-        // 【新增】加载滑动手势开关
-        val enableSwipeGesture = preferences[PreferencesKeys.ENABLE_SWIPE_GESTURE] ?: false
+        val hexColorHighlightEnabled = preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] ?: true
 
         updateSettings(
             SettingsData(
@@ -256,8 +250,7 @@ object SettingsManager {
                 toastBorderEnabled = toastBorderEnabled,
                 editorWordWrap = editorWordWrap,
                 languageTag = languageTag,
-                hexColorHighlightEnabled = hexColorHighlightEnabled,
-                enableSwipeGesture = enableSwipeGesture  // 【新增】
+                hexColorHighlightEnabled = hexColorHighlightEnabled
             )
         )
     }
@@ -311,9 +304,6 @@ object SettingsManager {
 
             // 【新增】保存十六进制颜色高亮开关
             preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] = currentSettings.hexColorHighlightEnabled
-
-            // 【新增】保存滑动手势开关
-            preferences[PreferencesKeys.ENABLE_SWIPE_GESTURE] = currentSettings.enableSwipeGesture
         }
         notifyListeners()
     }
@@ -400,7 +390,7 @@ data class SettingsData(
     val dynamicColor: Boolean = false,
     val editorFontType: EditorFontType = EditorFontType.JETBRAINS_MONO,
     val customFontPath: String = "",
-    val enableTabHistory: Boolean = false,
+    val enableTabHistory: Boolean = true,
     val classNameColor: Color = Color(0xFF6E81D9),
     val localVariableColor: Color = Color(0xFFAAAA88),
     val keywordColor: Color = Color(0xFFFF565E),
@@ -413,11 +403,10 @@ data class SettingsData(
     val completionCaseSensitive: Boolean = false,
     val sortOrder: SortOrder = SortOrder.NAME_ASC,
     val pinnedProjects: Set<String> = emptySet(),
-    val smartSortingEnabled: Boolean = false,
+    val smartSortingEnabled: Boolean = true,
     val toastPosition: ToastPosition = ToastPosition.BOTTOM,
     val toastBorderEnabled: Boolean = false,
     val editorWordWrap: Boolean = false,
     val languageTag: String = "zh",
-    val hexColorHighlightEnabled: Boolean = false,  // 【新增】十六进制颜色高亮开关
-    val enableSwipeGesture: Boolean = false,         // 【新增】滑动手势开关
+    val hexColorHighlightEnabled: Boolean = true,  // 【新增】十六进制颜色高亮开关
 )

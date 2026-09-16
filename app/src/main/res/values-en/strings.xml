@@ -166,8 +166,6 @@
     <string name="settings_app_language">App Language</string>
     <string name="language_chinese">中文</string>
     <string name="language_english">English</string>
-    <string name="settings_swipe_gesture">Swipe Gesture</string>
-    <string name="settings_swipe_gesture_desc">Swipe up and down in the editor to hide/show the quick function bar</string>
 
     <!-- Editor Configuration -->
     <string name="settings_editor_font">Editor font</string>
