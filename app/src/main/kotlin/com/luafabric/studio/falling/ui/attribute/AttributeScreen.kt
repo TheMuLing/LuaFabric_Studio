@@ -5,6 +5,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -183,7 +186,6 @@ fun AttributeScreen(
 
     val selectedGlobalUtils = remember { mutableStateMapOf<String, Boolean>() }
 
-    var iconUri by remember { mutableStateOf<Uri?>(null) }
     var iconPath by remember { mutableStateOf("icon.png") } // 相对项目根；图标路径框的值
     val iconFile = File(projectPath, iconPath)
     val hasExistingIcon = iconFile.exists() && iconFile.isFile
@@ -260,76 +262,54 @@ fun AttributeScreen(
         }
     }
 
+    // 仅落盘，无 UI 行为；供 FAB 保存与相册图标即时同步共用
+    suspend fun persistSettings() {
+        withContext(Dispatchers.IO) {
+            val settingsFile = File(projectPath, "settings.json")
+            val jsonMap: MutableMap<String, Any?> = if (settingsFile.exists()) {
+                val parsed = JsonUtil.parseObject(settingsFile.readText())
+                (parsed as? Map<String, Any?>)?.toMutableMap() ?: mutableMapOf()
+            } else {
+                mutableMapOf()
+            }
+
+            val application = (jsonMap["application"] as? Map<String, Any?>)?.toMutableMap()
+                ?: mutableMapOf<String, Any?>()
+            application["label"] = label
+            application["debugmode"] = debugMode
+            jsonMap["application"] = application
+
+            jsonMap["package"] = packageName
+            jsonMap["versionName"] = versionName
+            jsonMap["versionCode"] = versionCode
+            jsonMap["entryFile"] = entryFile
+            jsonMap["iconPath"] = iconPath
+
+            val usesSdk = (jsonMap["uses_sdk"] as? Map<String, Any?>)?.toMutableMap()
+                ?: mutableMapOf<String, Any?>()
+            usesSdk["minSdkVersion"] = minSdkVersion.toString()
+            usesSdk["targetSdkVersion"] = targetSdkVersion.toString()
+            jsonMap["uses_sdk"] = usesSdk
+
+            // 保存权限（只保存短名称）
+            val checkedPermissions =
+                allPermissions.filter { it.isChecked }.map { it.shortName }
+            jsonMap["user_permission"] = checkedPermissions
+
+            val checkedUtils = selectedGlobalUtils.filterValues { it }.keys.toList()
+            jsonMap["global_utils"] = checkedUtils
+
+            val updatedJson = JsonUtil.toFormattedString(jsonMap, 4)
+            settingsFile.writeText(updatedJson)
+        }
+    }
+
     fun saveSettings() {
         if (isSaving) return
         isSaving = true
         scope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    val settingsFile = File(projectPath, "settings.json")
-                    val jsonMap: MutableMap<String, Any?> = if (settingsFile.exists()) {
-                        val parsed = JsonUtil.parseObject(settingsFile.readText())
-                        (parsed as? Map<String, Any?>)?.toMutableMap() ?: mutableMapOf()
-                    } else {
-                        mutableMapOf()
-                    }
-
-                    val application = (jsonMap["application"] as? Map<String, Any?>)?.toMutableMap()
-                        ?: mutableMapOf<String, Any?>()
-                    application["label"] = label
-                    application["debugmode"] = debugMode
-                    jsonMap["application"] = application
-
-                    jsonMap["package"] = packageName
-                    jsonMap["versionName"] = versionName
-                    jsonMap["versionCode"] = versionCode
-                    jsonMap["entryFile"] = entryFile
-                    jsonMap["iconPath"] = iconPath
-
-                    val usesSdk = (jsonMap["uses_sdk"] as? Map<String, Any?>)?.toMutableMap()
-                        ?: mutableMapOf<String, Any?>()
-                    usesSdk["minSdkVersion"] = minSdkVersion.toString()
-                    usesSdk["targetSdkVersion"] = targetSdkVersion.toString()
-                    jsonMap["uses_sdk"] = usesSdk
-
-                    // 保存权限（只保存短名称）
-                    val checkedPermissions =
-                        allPermissions.filter { it.isChecked }.map { it.shortName }
-                    jsonMap["user_permission"] = checkedPermissions
-
-                    val checkedUtils = selectedGlobalUtils.filterValues { it }.keys.toList()
-                    jsonMap["global_utils"] = checkedUtils
-
-                    val updatedJson = JsonUtil.toFormattedString(jsonMap, 4)
-                    settingsFile.writeText(updatedJson)
-
-                    // 更换图标（系统图库，必然在项目外）：复制到项目根目录，保持原文件名与后缀不改名
-                    iconUri?.let { uri ->
-                        val displayName = runCatching {
-                            context.contentResolver
-                                .query(
-                                    uri,
-                                    arrayOf(OpenableColumns.DISPLAY_NAME),
-                                    null,
-                                    null,
-                                    null
-                                )?.use { c ->
-                                    if (c.moveToFirst()) {
-                                        c.getString(c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
-                                    } else null
-                                }
-                        }.getOrNull()?.substringAfterLast('/')?.trim()
-                            ?.takeIf { it.isNotBlank() && !it.contains("..") && !it.contains('\\') }
-                        val safeName = displayName ?: "icon.png"
-                        File(projectPath, safeName).let { outputFile ->
-                            context.contentResolver.openInputStream(uri)?.use { input ->
-                                FileOutputStream(outputFile).use { output -> input.copyTo(output) }
-                            }
-                        }
-                        iconPath = safeName // 同步路径框（相对路径）
-                        iconUri = null // 已落盘，预览改走 iconPath 文件
-                    }
-                }
+                persistSettings()
                 withContext(Dispatchers.Main) {
                     toast.showToast(context.getString(R.string.attribute_save_success))
                     onSaveComplete()
@@ -343,6 +323,27 @@ fun AttributeScreen(
             }
         }
     }
+
+    // 大图点击 → 系统相册（PhotoPicker）：选中即复制到项目根目录（保持原名+净化）
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            val selected = uri ?: return@rememberLauncherForActivityResult
+            scope.launch {
+                val copiedName = withContext(Dispatchers.IO) {
+                    copyGalleryImageToProject(context, selected, projectPath)
+                }
+                if (copiedName != null) {
+                    iconPath = copiedName
+                    iconRefreshTick++ // 换缓存键刷新预览（亦触发重组重算 hasExistingIcon）
+                    persistSettings()
+                    toast.showToast(context.getString(R.string.attribute_icon_updated))
+                } else {
+                    toast.showToast(context.getString(R.string.attribute_icon_copy_failed))
+                }
+            }
+        }
+    )
 
     BackHandler {
         onBack()
@@ -432,7 +433,9 @@ fun AttributeScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
                                 .clickable {
-                                    showIconPicker = true
+                                    galleryLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
                                 }
                                 .border(
                                     2.dp,
@@ -441,7 +444,7 @@ fun AttributeScreen(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            val imageModel = iconUri ?: if (hasExistingIcon) iconFile else null
+                            val imageModel = if (hasExistingIcon) iconFile else null
                             if (imageModel != null) {
                                 AsyncImage(
                                     model = ImageRequest.Builder(context)
@@ -745,15 +748,43 @@ fun AttributeScreen(
                 val rel = runCatching {
                     File(path).relativeTo(File(projectPath)).path.replace('\\', '/')
                 }.getOrNull()
-                // 编辑入口：仅修改路径引用、不复制；复制仅发生在「更换图标」选定项目外图片时
+                // 编辑入口：仅修改路径引用、不复制；复制仅由「相册更换图标」（大图点击）完成
                 if (rel != null && !rel.contains("..")) {
                     iconPath = rel
-                    iconUri = null // 清未保存的图库预览，改指路径文件
                     iconRefreshTick++ // 换缓存键刷新预览（亦触发重组重算 hasExistingIcon）
                     toast.showToast(context.getString(R.string.attribute_icon_updated))
                 }
             }
         )
+    }
+}
+
+// 从相册 Uri 复制图片到项目根目录，保持原文件名与后缀（净化路径分隔符）；失败返回 null
+private fun copyGalleryImageToProject(
+    context: Context,
+    uri: Uri,
+    projectPath: String
+): String? {
+    return try {
+        val displayName = runCatching {
+            context.contentResolver
+                .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { c ->
+                    if (c.moveToFirst()) {
+                        c.getString(c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+                    } else null
+                }
+        }.getOrNull()?.substringAfterLast('/')?.trim()
+            ?.takeIf { it.isNotBlank() && !it.contains("..") && !it.contains('\\') }
+        val safeName = displayName ?: "icon.png"
+        val outputFile = File(projectPath, safeName)
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            FileOutputStream(outputFile).use { output -> input.copyTo(output) }
+        } ?: return null
+        safeName
+    } catch (e: Exception) {
+        LogCatcher.e("AttributeScreen", "复制相册图标失败", e)
+        null
     }
 }
 
