@@ -189,8 +189,14 @@ val mavenDependencies = try {
     emptyList<String>()
 }
 
-        // 获取图标路径
-        val iconFile = File(projectPath, "icon.png")
+        // 获取图标路径（取自构建源 settings.json 的 iconPath，净化后回退根 icon.png；工程参数直传，产物不依赖此文件）
+        val rawIcon = (settings["iconPath"] as? String ?: "icon.png").trim()
+        val safeIcon = if (rawIcon.isEmpty() || rawIcon.startsWith("/") || rawIcon.contains("..")) {
+            "icon.png"
+        } else {
+            rawIcon
+        }
+        val iconFile = File(projectPath, safeIcon)
         val iconPath = if (iconFile.exists()) iconFile.absolutePath else null
 
         // 获取minSdkVersion和targetSdkVersion

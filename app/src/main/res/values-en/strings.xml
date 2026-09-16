@@ -253,6 +253,8 @@
     <string name="welcome_permission_applist_name">App list permission</string>
     <string name="welcome_permission_applist_desc">Used to detect installed apps (e.g. WeChat) to provide related features</string>
     <string name="welcome_permission_network_desc">Used for downloading dependencies and updates</string>
+    <string name="welcome_permission_media_name">Gallery access</string>
+    <string name="welcome_permission_media_desc">Used to access images in the device gallery (e.g. project icon)</string>
     <string name="welcome_permission_special_badge">Special permission</string>
     <string name="welcome_permission_granted_badge">Granted</string>
     <string name="welcome_permission_tap_to_grant">Tap to grant</string>
@@ -467,6 +469,10 @@
     <string name="attribute_icon_picker_title">Select project icon</string>
     <string name="attribute_icon_updated">Icon updated</string>
     <string name="attribute_icon_copy_failed">Failed to copy icon</string>
+    <string name="attribute_gallery_title">Pick from gallery</string>
+    <string name="attribute_gallery_no_permission">No gallery access. Please enable it in system settings.</string>
+    <string name="attribute_gallery_open_settings">Open system settings</string>
+    <string name="attribute_gallery_empty">No images in gallery</string>
     <string name="attribute_sdk_title">SDK Versions</string>
     <string name="attribute_min_sdk">Minimum SDK</string>
     <string name="attribute_target_sdk">Target SDK</string>

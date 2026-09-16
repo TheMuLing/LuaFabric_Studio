@@ -17,6 +17,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -544,14 +546,14 @@ fun PermissionsPage(
             }
 
             if (userOperatedPermissions.isNotEmpty()) {
-                Column(
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    userOperatedPermissions.forEach { permission ->
+                    items(userOperatedPermissions, key = { it.permission }) { permission ->
                         PermissionCardItem(
                             permissionItem = permission,
                             onPermissionClick = {
@@ -567,7 +569,9 @@ fun PermissionsPage(
                     }
 
                     if (!allGranted) {
-                        PermissionInfoCard()
+                        item {
+                            PermissionInfoCard()
+                        }
                     }
                 }
             }
@@ -903,6 +907,19 @@ private fun getRequiredPermissionsForVersion(context: Context): List<PermissionI
             description = context.getString(R.string.welcome_permission_network_desc)
         )
     )
+
+    // 相册访问权限：仅 API 33+ 独立授权（11/12 走 READ_EXTERNAL_STORAGE，已被存储卡覆盖）
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        permissions.add(
+            PermissionItem(
+                name = context.getString(R.string.welcome_permission_media_name),
+                permission = Manifest.permission.READ_MEDIA_IMAGES,
+                granted = false,
+                requiredForVersion = "14",
+                description = context.getString(R.string.welcome_permission_media_desc)
+            )
+        )
+    }
 
     return permissions
 }

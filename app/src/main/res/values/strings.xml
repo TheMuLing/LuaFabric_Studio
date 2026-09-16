@@ -259,6 +259,8 @@
     <string name="welcome_permission_applist_name">应用列表权限</string>
     <string name="welcome_permission_applist_desc">用于检测设备已安装应用（如微信），以提供对应功能</string>
     <string name="welcome_permission_network_desc">用于下载依赖和更新</string>
+    <string name="welcome_permission_media_name">相册访问权限</string>
+    <string name="welcome_permission_media_desc">用于访问设备相册中的图片（如更换项目图标）</string>
     <string name="welcome_permission_special_badge">特殊权限</string>
     <string name="welcome_permission_granted_badge">已授权</string>
     <string name="welcome_permission_tap_to_grant">点击授权</string>
@@ -477,6 +479,10 @@
     <string name="attribute_icon_picker_title">选择项目图标</string>
     <string name="attribute_icon_updated">图标已更新</string>
     <string name="attribute_icon_copy_failed">图标复制失败</string>
+    <string name="attribute_gallery_title">从相册选择</string>
+    <string name="attribute_gallery_no_permission">未获得相册访问权限，请在系统设置中开启</string>
+    <string name="attribute_gallery_open_settings">前往系统设置</string>
+    <string name="attribute_gallery_empty">相册中没有图片</string>
     <string name="attribute_sdk_title">SDK 版本</string>
     <string name="attribute_min_sdk">最小 SDK</string>
     <string name="attribute_target_sdk">目标 SDK</string>

@@ -137,6 +137,7 @@ class ApkBuilder {
                     packageName,
                     versionName,
                     versionCode,
+                    iconPath,
                     processedPermissions,
                     minSdkVersion,
                     targetSdkVersion,
@@ -471,6 +472,7 @@ class ApkBuilder {
             packageName: String,
             versionName: String,
             versionCode: String,
+            iconPath: String?,
             permissions: Array<String>?,
             minSdkVersion: Int,
             targetSdkVersion: Int,
@@ -495,7 +497,7 @@ class ApkBuilder {
                 }
 
                 // 4. 替换图标文件（如果存在）
-                replaceIconFile(projectPath, tempDir)
+                replaceIconFile(projectPath, tempDir, iconPath)
 
                 // 5. 使用AxmlEditor修改AndroidManifest.xml
                 modifyManifestWithAxmlEditor(
@@ -546,10 +548,12 @@ class ApkBuilder {
         }
 
         // 替换图标文件
-        private fun replaceIconFile(projectPath: String, tempDir: File) {
+        private fun replaceIconFile(projectPath: String, tempDir: File, iconPath: String?) {
             try {
-                // 检查项目目录中是否有icon.png
-                val projectIconFile = File(projectPath, "icon.png")
+                // 图标源：构建入口传入的绝对路径（优先级），缺失回退根目录 icon.png
+                // 决不读取 settings.json——打包产物已剔除该文件，且图标路径经参数直传不依赖文件自读
+                val projectIconFile = iconPath?.let { File(it).takeIf { f -> f.isFile } }
+                    ?: File(projectPath, "icon.png")
 
                 if (!projectIconFile.exists() || !projectIconFile.isFile) {
                     LogCatcher.i("ApkBuilder", "项目目录中未找到icon.png，跳过图标替换")

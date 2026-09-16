@@ -1435,14 +1435,18 @@ fun ProjectCard(
     var manifestInfo by remember { mutableStateOf<ManifestInfo?>(null) }
     var template by remember { mutableStateOf<String?>(null) }
     var projectSizeBytes by remember { mutableStateOf<Long?>(null) }
-    val iconFile = remember(project.path) {
-        File(project.path, "icon.png")
+    var iconPathState by remember { mutableStateOf("icon.png") } // 相对项目根，随 settings.json 刷新
+    val iconFile = remember(project.path, iconPathState) {
+        File(project.path, iconPathState)
     }
     val hasIcon by derivedStateOf {
         iconFile.exists() && iconFile.isFile
     }
 
-    LaunchedEffect(project.path, refreshTrigger) {
+    // settings.json 变更指纹：属性保存后 mtime 变化 → 下方 LaunchedEffect 重读 iconPath，主页图标即时刷新
+    val settingsStamp = File(project.path, "settings.json").lastModified()
+
+    LaunchedEffect(project.path, refreshTrigger, settingsStamp) {
         withContext(Dispatchers.IO) {
             val projectDir = File(project.path)
             if (projectDir.exists() && projectDir.isDirectory) {
@@ -1473,6 +1477,13 @@ fun ProjectCard(
                             debugMode = debugMode
                         )
                         template = jsonMap["template"] as? String
+                        // 图标路径读取（净化越界/绝对路径），来源 settings.json，随 stamp/refresh 刷新
+                        val rawIconPath = (jsonMap["iconPath"] as? String ?: "icon.png").trim()
+                        iconPathState = if (rawIconPath.isEmpty() || rawIconPath.startsWith("/") || rawIconPath.contains("..")) {
+                            "icon.png"
+                        } else {
+                            rawIconPath
+                        }
                     } catch (e: Exception) {
                         LogCatcher.e("ProjectCard", "加载项目设置失败", e)
                     }
