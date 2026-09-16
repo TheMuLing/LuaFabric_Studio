@@ -1,9 +1,12 @@
 package com.luafabric.console.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.ImageView
@@ -40,6 +43,15 @@ class ExpandableCard(context: Context, title: String) : LinearLayout(context) {
                 cornerRadius = context.dp(12).toFloat()
             }
             setOnClickListener { toggle() }
+            // 点击波纹：以 12dp 圆角为掩码，贴合标题圆角
+            foreground = RippleDrawable(
+                ColorStateList.valueOf(0x22000000),
+                null,
+                GradientDrawable().apply {
+                    setColor(Color.TRANSPARENT)
+                    cornerRadius = context.dp(12).toFloat()
+                }
+            )
         }
         header.addView(
             TextView(context).apply {

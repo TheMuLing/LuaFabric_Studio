@@ -24,6 +24,7 @@ import com.luafabric.console.debug.FileLauncher
 import com.luafabric.console.persist.ConsolePaths
 import com.luafabric.console.persist.CrashCapture
 import com.luafabric.console.persist.SessionArchiver
+import com.luafabric.console.ui.ConsoleSheet
 import com.luafabric.console.ui.OverlayController
 import com.luajava.LuaState
 import java.io.File
@@ -45,7 +46,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     /** 未读 Lua 错误计数 → 浮球右上角角标；打开面板 / 清空当前缓冲时清零。 */
     private val errorUnread = java.util.concurrent.atomic.AtomicInteger(0)
 
-    /** 弹窗采集：make 登记实例→文本；show() 配对输出「已调用 show」；当前 lua 文件切换时 dump 残留为「未调用 show」。 */
+    /** 弹窗采集：make 登记实例→文本；show() 配对即时输出；当前 lua 文件切换时 dump 残留（均不标注 show 与否，仅捕获内容）。 */
     private val pendingPopups = java.util.WeakHashMap<Any, PopupInfo>()
     private var lastDumpFile: String? = null
 
@@ -189,6 +190,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         active = false
         EventTracker.clear()
         ModuleTracker.clear()
+        ConsoleSheet.persistedTab = 0
         SessionManager.end()
     }
 
@@ -253,14 +255,18 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         val depth = settings.parseDepth
         val l1 = ArrayList<String>(luaTypes?.size ?: 0)
         val l2 = ArrayList<String>(luaTypes?.size ?: 0)
+        val contents = ArrayList<String>(luaTypes?.size ?: 0)
         if (luaTypes != null) {
             for (i in luaTypes.indices) {
                 val r = TypeResolver.resolve(luaTypes[i], rawArgs?.getOrNull(i), depth)
                 l1 += r.level1
-                l2 += r.level2
+                l2 += r.type
+                contents += r.content
             }
         }
-        appendEntry("print", text ?: "", l1, l2)
+        // 内容区 = 真实解码内容（与 Lua print 同款 \t 连接）；元数据右侧 = 仅真实类型
+        val primary = if (luaTypes != null) contents.joinToString("\t") else (text ?: "")
+        appendEntry("print", primary, l1, l2)
     }
 
     override fun onPopupCaptured(instance: Any, text: String?, snackbar: Boolean) {
@@ -272,7 +278,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     override fun onPopupShown(instance: Any) {
         if (!active) return
         pendingPopups.remove(instance)?.let { info ->
-            outputPopup(info, shown = true)
+            outputPopup(info)
         }
     }
 
@@ -283,19 +289,16 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
         while (it.hasNext()) {
             val (_, info) = it.next()
             it.remove()
-            outputPopup(info, shown = false)
+            outputPopup(info)
         }
     }
 
-    /** 弹窗输出：按类型开关门控，标注是否调用 show()。 */
-    private fun outputPopup(info: PopupInfo, shown: Boolean) {
+    /** 弹窗输出：按类型开关门控（不标注是否调用 show，仅捕获内容）。 */
+    private fun outputPopup(info: PopupInfo) {
         val want = if (info.snackbar) settings.captureSnackbar else settings.captureToast
         if (!want) return
         val label = if (info.snackbar) "snackbar" else "toast"
-        appendEntry(
-            label,
-            info.text + (if (shown) "（已调用 show）" else "（未调用 show）"),
-        )
+        appendEntry(label, info.text)
     }
 
     override fun onError(title: String?, message: String?) {
@@ -364,6 +367,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
             OutputEntry(
                 id = OutputManager.nextId(),
                 file = OutputManager.currentFile,
+                relFile = FileStateTracker.relativePath.ifBlank { OutputManager.currentFile },
                 label = label,
                 primary = primary,
                 luaTypes = luaTypes,

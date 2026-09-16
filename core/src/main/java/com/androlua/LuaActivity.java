@@ -58,7 +58,6 @@ import com.luajava.LuaState;
 import com.luajava.LuaStateFactory;
 
 import com.luafabric.studio.falling.core.R;
-import com.luafabric.studio.falling.core.console.ConsoleCallMarker;
 import com.luafabric.studio.falling.core.console.DebugConsoleBridge;
 import com.luafabric.studio.falling.core.console.DebugConsoleRegistry;
 import com.luafabric.studio.falling.core.console.SessionInfo;
@@ -1469,8 +1468,10 @@ public class LuaActivity extends AppCompatActivity
           L.pushString(funcName);
           L.rawGet(-2);
           if (L.isFunction(-1)) {
+            // 事件捕获：Lua 文件显式定义且实际即将被调用的函数（含 Java 生命周期触发，
+            // 如 onPause/onResume），一律记录；函数未定义则不记录。
             DebugConsoleBridge bridge = DebugConsoleRegistry.get();
-            if (bridge != null && ConsoleCallMarker.consume()) {
+            if (bridge != null) {
               try {
                 bridge.onEvent(funcName, args);
               } catch (Exception ignored) {

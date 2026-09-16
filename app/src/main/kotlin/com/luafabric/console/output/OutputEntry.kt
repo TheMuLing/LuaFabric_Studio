@@ -18,7 +18,9 @@ class OutputEntry(
     val luaTypes: List<String>,
     val typeDetails: List<String>,
     val isMainThread: Boolean,
-    val timestampMs: Long
+    val timestampMs: Long,
+    /** 创建时刻的项目相对路径（展示用，区别于 buffer 键 file）。 */
+    val relFile: String = ""
 ) {
     val shortTime: String get() = TIME_SHORT.format(Date(timestampMs))
     val fullTime: String get() = TIME_FULL.format(Date(timestampMs))

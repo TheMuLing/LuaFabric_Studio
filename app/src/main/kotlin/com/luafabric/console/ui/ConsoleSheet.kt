@@ -29,6 +29,12 @@ class ConsoleSheet(
     private val onDismissed: () -> Unit
 ) : BottomSheetDialog(activity) {
 
+    companion object {
+        /** 上次选中的页签位：面板关闭/重开后保留，退出本次调试（onSessionEnd）时重置为 0。 */
+        @Volatile
+        var persistedTab = 0
+    }
+
     private val cachedTabs = HashMap<Int, View>()
     private var lastShownPos = -1
     private val container by lazy { FrameLayout(context).apply { id = android.view.View.generateViewId() } }
@@ -104,11 +110,18 @@ class ConsoleSheet(
         getBehavior().setDraggable(false)
 
         tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab) = showTab(tab.position)
+            override fun onTabSelected(tab: TabLayout.Tab) {
+                persistedTab = tab.position
+                showTab(tab.position)
+            }
             override fun onTabUnselected(tab: TabLayout.Tab) {}
             override fun onTabReselected(tab: TabLayout.Tab) {}
         })
-        showTab(0)
+        // 恢复上次页签：面板关闭/重开后保留切换状态（退出调试时由 onSessionEnd 重置为 0）
+        // select() 同步 TabLayout 选中指示器并触发 onTabSelected → showTab；兜底防止 select 未触发
+        val restore = persistedTab.coerceIn(0, tabs.tabCount - 1)
+        tabs.getTabAt(restore)?.select()
+        if (lastShownPos != restore) showTab(restore)
 
         setOnDismissListener { onDismissed() }
     }

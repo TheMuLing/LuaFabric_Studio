@@ -26,7 +26,6 @@ class SettingsTabView(context: Context) : ScrollView(context) {
         orientation = LinearLayout.VERTICAL
         setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
     }
-    private var metaSwitch: MaterialSwitch? = null
     private var depthValue: TextView? = null
     private var toastSwitch: MaterialSwitch? = null
     private var interceptSwitch: MaterialSwitch? = null
@@ -39,13 +38,7 @@ class SettingsTabView(context: Context) : ScrollView(context) {
         addView(content)
 
         // 输出
-        content.addView(ExpandableCard(context, "输出").apply {
-            addBody(switchRow(
-                "元数据展示",
-                "开 / 关二级元数据（完整时间 · 线程 · 类型解析）",
-                initial = settings.showMeta
-            ) { on -> settings.showMeta = on }.also { metaSwitch = it.second }.first)
-            addBody(divider())
+        addCard(ExpandableCard(context, "输出").apply {
             addBody(actionRow("解析深度", "1=浅（类名/短预览），2=中（默认），3=深（递归表）") {
                 settings.parseDepth = when (settings.parseDepth) {
                     1 -> 2
@@ -57,7 +50,7 @@ class SettingsTabView(context: Context) : ScrollView(context) {
         })
 
         // 拦截
-        content.addView(ExpandableCard(context, "拦截").apply {
+        addCard(ExpandableCard(context, "拦截").apply {
             addBody(switchRow(
                 "拦截界面跳转/结束请求",
                 "newActivity 确认弹窗 + finish 挂起均由本开关控制，默认开",
@@ -87,7 +80,7 @@ class SettingsTabView(context: Context) : ScrollView(context) {
         })
 
         // 报错
-        content.addView(ExpandableCard(context, "报错").apply {
+        addCard(ExpandableCard(context, "报错").apply {
             addBody(switchRow(
                 "使用 Toast 输出 Lua 侧错误",
                 "默认关：报错仅入控制台输出并显示角标；开启后同时以 Toast 回显",
@@ -106,9 +99,17 @@ class SettingsTabView(context: Context) : ScrollView(context) {
         })
     }
 
-    /** 切页/回显时刷新设置行状态。 */
+    /** 折叠卡片保持 4dp 间距地加入内容容器。 */
+    private fun addCard(card: ExpandableCard) {
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        if (content.childCount > 0) lp.topMargin = context.dp(8)
+        content.addView(card, lp)
+    }
+
     fun refresh() {
-        metaSwitch?.isChecked = settings.showMeta
         depthValue?.text = "${settings.parseDepth}"
         toastSwitch?.isChecked = settings.toastLuaErrors
         interceptSwitch?.isChecked = settings.interceptNavigation

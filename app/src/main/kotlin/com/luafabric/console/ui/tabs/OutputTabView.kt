@@ -4,14 +4,21 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.text.SpannableString
+import android.text.Spannable
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.luafabric.console.core.ConsoleSettings
 import com.luafabric.console.core.EventTracker
 import com.luafabric.console.output.ClipboardHelper
@@ -45,12 +52,15 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         orientation = VERTICAL
         setBackgroundColor(ConsoleTheme.surface)
 
+        // 当前文件标题：置顶固定，路径过长时中间省略（保留前缀与文件名尾部）
         titleView.apply {
             textSize = 13f
             setTextColor(ConsoleTheme.onSurfaceVariant)
-            setPadding(context.dp(12), context.dp(6), context.dp(12), context.dp(6))
-            maxLines = 1
+            setPadding(context.dp(12), context.dp(6), context.dp(12), context.dp(4))
+            setSingleLine(true)
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
         }
+        addView(titleView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         // 常规操作栏（置顶居左，纯图标）：仅事件（calendar 切换）+ 清空（trash-can）；无文本开关
         val toolBar = LinearLayout(context).apply {
@@ -73,7 +83,6 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         })
         addView(toolBar)
 
-        addView(titleView)
         selBar.orientation = HORIZONTAL
         selBar.gravity = Gravity.CENTER_VERTICAL
         selBar.setPadding(context.dp(12), context.dp(4), context.dp(12), context.dp(4))
@@ -85,14 +94,33 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         selBar.addView(iconButton(R.drawable.ic_select_off, "取消选择") { adapter.clearSelection() })
         selBar.addView(actionText("复制") { copySelected() })
         selBar.addView(actionText("导出") { exportSelected() })
-        selBar.addView(actionText("完成") { adapter.setSelectionMode(false) })
+        selBar.addView(actionText("取消") { adapter.setSelectionMode(false) })
         addView(selBar)
 
+        val listHolder = FrameLayout(context)
         val list = RecyclerView(context).apply {
             layoutManager = LinearLayoutManager(context)
             adapter = this@OutputTabView.adapter
         }
-        addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        listHolder.addView(list, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        // 列表边缘渐隐（fading edge），上下各 4dp
+        val fade = context.dp(4)
+        listHolder.addView(View(context).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(ConsoleTheme.surface, ConsoleTheme.surface and 0x00FFFFFF)
+            )
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, fade, Gravity.TOP))
+        listHolder.addView(View(context).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.BOTTOM_TOP,
+                intArrayOf(ConsoleTheme.surface, ConsoleTheme.surface and 0x00FFFFFF)
+            )
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, fade, Gravity.BOTTOM))
+        addView(listHolder, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
     }
 
     private fun actionText(label: String, onClick: () -> Unit): TextView =
@@ -141,15 +169,16 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         titleView.text = "当前文件：${OutputManager.currentFile.ifBlank { "(无)" }}"
         adapter.submit(
             if (onlyEvents) {
-                // 事件流：runFunc 触发记录转输出条目（label=event）
+                // 事件流：runFunc 触发记录转输出条目（label=event → chip「事件」；一线为「(函数) 事件监听触发」）
                 EventTracker.snapshot().mapIndexed { i, e ->
                     OutputEntry(
                         id = e.timeMs * 10000 + i,
                         file = e.fileLabel,
+                        relFile = e.fileLabel,
                         label = "event",
-                        primary = "[${e.timeLabel()}] ${e.funcName}(${e.argsSummary})",
+                        primary = "(${e.funcName}) 事件监听触发",
                         luaTypes = emptyList(),
-                        typeDetails = listOf("${e.fileLabel} · ${if (e.isMainThread) "主线程" else "子线程"}"),
+                        typeDetails = listOf(e.argsSummary),
                         isMainThread = e.isMainThread,
                         timestampMs = e.timeMs
                     )
@@ -166,17 +195,50 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
         selCount.text = "已选 $n"
     }
 
+    /** 清空确认：MD3 弹窗（主题取色跟随 Luafabric 莫奈），左「全部删除」/中「取消」/右「仅当前文件」。 */
     private fun confirmClear() {
-        AlertDialog.Builder(context)
-            .setTitle("清空当前缓冲")
-            .setMessage("仅清空当前文件「${OutputManager.currentFile.ifBlank { "(无)" }}」的输出缓冲，其他文件保留。")
-            .setPositiveButton("清空") { _, _ ->
-            OutputManager.clearCurrentFile()
-            // E：清空当前文件缓冲 → 未读错误角标一并清零
-            (DebugConsoleRegistry.get() as? ConsoleBridgeImpl)?.clearErrorBadge()
+        val message = SpannableString("此操作不可撤销，请谨慎操作").apply {
+            setSpan(ForegroundColorSpan(Color.RED), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-            .setNegativeButton("取消", null)
-            .show()
+        try {
+            val dlg = MaterialAlertDialogBuilder(context)
+                .setTitle("清空控制台输出记录")
+                .setMessage(message)
+                .setNegativeButton("全部删除") { _, _ -> clearAllRecords() }
+                .setNeutralButton("取消", null)
+                .setPositiveButton("仅当前文件") { _, _ -> clearCurrentFileRecords() }
+                .create()
+            dlg.show()
+            // MD3 圆角窗体（28dp）背景跟随主题
+            dlg.window?.setBackgroundDrawable(
+                GradientDrawable().apply {
+                    setColor(ConsoleTheme.surface)
+                    cornerRadius = context.dp(28).toFloat()
+                }
+            )
+        } catch (e: Exception) {
+            // 兜底：Material 主题缺失等极端场景回退系统弹窗，保证功能可用
+            AlertDialog.Builder(context)
+                .setTitle("清空控制台输出记录")
+                .setMessage("此操作不可撤销，请谨慎操作")
+                .setNegativeButton("全部删除") { _, _ -> clearAllRecords() }
+                .setNeutralButton("取消", null)
+                .setPositiveButton("仅当前文件") { _, _ -> clearCurrentFileRecords() }
+                .show()
+        }
+    }
+
+    /** 仅清空当前文件缓冲（其他文件保留）。 */
+    private fun clearCurrentFileRecords() {
+        OutputManager.clearCurrentFile()
+        // E：清空当前文件缓冲 → 未读错误角标一并清零
+        (DebugConsoleRegistry.get() as? ConsoleBridgeImpl)?.clearErrorBadge()
+    }
+
+    /** 全部删除：清空整个会话缓冲池。 */
+    private fun clearAllRecords() {
+        OutputManager.clearAll()
+        (DebugConsoleRegistry.get() as? ConsoleBridgeImpl)?.clearErrorBadge()
     }
 
     private fun copySelected() {

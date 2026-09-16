@@ -38,7 +38,6 @@ import com.androlua.LuaBitmap;
 import com.androlua.LuaEnhancer;
 import com.androlua.LuaGcable;
 import com.google.android.material.snackbar.Snackbar;
-import com.luafabric.studio.falling.core.console.ConsoleCallMarker;
 import com.luafabric.studio.falling.core.console.DebugConsoleBridge;
 import com.luafabric.studio.falling.core.console.DebugConsoleRegistry;
 import com.luafabric.studio.falling.core.console.MethodCallResult;
@@ -151,10 +150,6 @@ public final class LuaJavaAPI {
         if ((obj instanceof Toast || obj instanceof Snackbar) && "show".equals(method)) {
             bridge.onPopupShown(obj);
             return MethodCallResult.ALLOW;
-        }
-
-        if (obj instanceof LuaActivity && "runFunc".equals(method)) {
-            ConsoleCallMarker.set();
         }
 
         LuaState L = LuaStateFactory.getExistingState(luaState);
