@@ -1867,10 +1867,6 @@ class MainActivity : ComponentActivity() {
                         onComplete = {
                             saveWelcomeCompleted(this@MainActivity)
                             shouldShowWelcome = false
-                        },
-                        onSkipWelcome = {
-                            saveWelcomeCompleted(this@MainActivity)
-                            shouldShowWelcome = false
                         }
                     )
                 } else {

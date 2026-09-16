@@ -62,7 +62,53 @@ data class PermissionItem(
 
 fun shouldShowWelcomeScreen(context: Context): Boolean {
     val sharedPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-    return !sharedPrefs.getBoolean("welcome_completed", false)
+    val completed = sharedPrefs.getBoolean("welcome_completed", false)
+    if (!completed) return true
+    // 已完成向导后，仍每次冷启动检查权限，缺失任何一项即重新进入向导
+    return !areCorePermissionsGranted(context)
+}
+
+// 单权限判定，与 WelcomeScreen 内 updatePermissionsState 共享，保持单源
+private fun isPermissionGranted(context: Context, item: PermissionItem): Boolean {
+    return when {
+        item.permission == Manifest.permission.MANAGE_EXTERNAL_STORAGE -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Environment.isExternalStorageManager()
+            } else {
+                true
+            }
+        }
+
+        item.permission == Manifest.permission.INTERNET -> true
+        item.permission == "APP_LIST_QUERY" -> hasAppListPermission(context)
+        item.permission == "ANDROID_10_STORAGE_PERMISSIONS" -> {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                val readGranted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                val writeGranted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                readGranted && writeGranted
+            } else {
+                true
+            }
+        }
+
+        else -> {
+            ContextCompat.checkSelfPermission(context, item.permission) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+}
+
+// 用户操作权限（排除 INTERNET）是否全部授予
+private fun areCorePermissionsGranted(context: Context): Boolean {
+    return getRequiredPermissionsForVersion(context)
+        .filter { it.permission != Manifest.permission.INTERNET }
+        .all { isPermissionGranted(context, it) }
 }
 
 fun saveWelcomeCompleted(context: Context) {
@@ -97,8 +143,7 @@ fun TransparentSystemBars() {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
 fun WelcomeScreen(
-    onComplete: () -> Unit,
-    onSkipWelcome: () -> Unit
+    onComplete: () -> Unit
 ) {
     var welcomeState by remember { mutableStateOf(WelcomeState()) }
     val context = LocalContext.current
@@ -111,42 +156,7 @@ fun WelcomeScreen(
 
     fun updatePermissionsState() {
         val updatedPermissions = requiredPermissions.map { item ->
-            val isGranted = when {
-                item.permission == Manifest.permission.MANAGE_EXTERNAL_STORAGE -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        Environment.isExternalStorageManager()
-                    } else {
-                        true
-                    }
-                }
-
-                item.permission == Manifest.permission.INTERNET -> true
-                item.permission == "APP_LIST_QUERY" -> hasAppListPermission(context)
-                item.permission == "ANDROID_10_STORAGE_PERMISSIONS" -> {
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                        val readGranted = ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.READ_EXTERNAL_STORAGE
-                        ) ==
-                                android.content.pm.PackageManager.PERMISSION_GRANTED
-                        val writeGranted = ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE
-                        ) ==
-                                android.content.pm.PackageManager.PERMISSION_GRANTED
-                        readGranted && writeGranted
-                    } else {
-                        true
-                    }
-                }
-
-                else -> {
-                    ContextCompat.checkSelfPermission(context, item.permission) ==
-                            android.content.pm.PackageManager.PERMISSION_GRANTED
-                }
-            }
-
-            item.copy(granted = isGranted)
+            item.copy(granted = isPermissionGranted(context, item))
         }
 
         val userOperatedPermissions = updatedPermissions.filter {
