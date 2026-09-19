@@ -61,6 +61,7 @@ import com.luafabric.studio.falling.ui.editor.ai.CodeReference
 import com.luafabric.studio.falling.ui.editor.viewmodel.EditorViewModel
 import com.luafabric.studio.falling.ui.javaapi.JavaApiScreen
 import com.luafabric.studio.falling.ui.settings.SettingsManager
+import com.luafabric.studio.falling.ui.sponsor.Sponsorship
 import muling.views.tool.utils.LogCatcher
 import muling.views.tool.utils.NonBlockingToastState
 import muling.views.tool.utils.TransitionUtil
@@ -87,7 +88,8 @@ sealed class OverlayScreen {
 fun CodeEditScreen(
     project: ProjectItem,
     onBack: () -> Unit,
-    toast: NonBlockingToastState
+    toast: NonBlockingToastState,
+    onOpenSponsor: () -> Unit = {}
 ) {
     var isAutoSaving by remember { mutableStateOf(false) }
     var autoSaveCompleted by remember { mutableStateOf(false) }
@@ -372,6 +374,7 @@ fun CodeEditScreen(
         buildJob = scope.launch {
             viewModel.saveAllFilesSilently()
             isBuilding = true
+            Sponsorship.recordBuild(context)
             val result = try {
                 this.async<String>(Dispatchers.IO) { buildProject(context, projectPath) }.await()
             } catch (e: CancellationException) {

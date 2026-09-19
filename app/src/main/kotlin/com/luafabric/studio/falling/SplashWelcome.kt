@@ -42,6 +42,7 @@ import com.luajava.LuaStateFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -87,6 +88,14 @@ class SplashWelcome : ComponentActivity() {
      */
     private suspend fun handleSplashLogic() {
         SettingsManager.loadSavedSettings(this@SplashWelcome)
+
+        // 语言分支可能提前 return，必须先把 lua 运行库解包落盘，
+        // 否则 require "import" 永不解包到 app_lua 导致调试运行/构建加密都失败
+        try {
+            withContext(Dispatchers.IO) { ensureLuaResources() }
+        } catch (_: Exception) {
+            // 解包失败不阻塞启动
+        }
 
         val savedLanguageTag = SettingsManager.currentSettings.languageTag
         val currentLanguageTag = getCurrentAppLanguageTag()

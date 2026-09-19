@@ -448,4 +448,10 @@
         <item name="windowActionModeOverlay">true</item>
 
     </style>
+
+    <!-- 平板横屏右侧滑出面板动画：Dialog 窗口入场从右滑入、出场右滑出 -->
+    <style name="SidePanelDialogAnim" parent="android:Theme.Dialog">
+        <item name="android:windowEnterAnimation">@anim/side_panel_in</item>
+        <item name="android:windowExitAnimation">@anim/side_panel_out</item>
+    </style>
 </resources>

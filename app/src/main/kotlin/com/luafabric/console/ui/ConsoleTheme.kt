@@ -72,9 +72,21 @@ object ConsoleTheme {
         private set
     var isDark: Boolean = false
         private set
+    /** 主题圆角基准（px）：shapeSizeIndex → 4/8/12/16dp，随「主题与外观」设置。 */
+    var cornerRadiusPx: Float = 12f
+        private set
 
     fun refresh(context: Context) {
         val s = SettingsManager.currentSettings
+        // 主题圆角基准（dp）：shapeSizeIndex 0/1/2/3 → 小/中小/中/大
+        val baseDp = when (s.shapeSizeIndex) {
+            0 -> 4f
+            1 -> 8f
+            2 -> 12f
+            3 -> 16f
+            else -> 12f
+        }
+        cornerRadiusPx = baseDp * context.resources.displayMetrics.density
         val dark = when (s.darkMode) {
             DarkMode.FOLLOW_SYSTEM -> isSystemDark(context)
             DarkMode.LIGHT -> false

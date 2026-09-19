@@ -16,7 +16,9 @@ object ModuleTracker {
     private val LUA_BUILTIN = setOf(
         "table", "string", "os", "io", "math", "debug", "package", "coroutine",
         "utf8", "bit32", "loadlayout", "loadbitmap", "loaddimen", "loadcolor",
-        "loadstring", "import", "gc", "collectgarbage", "loadmenu"
+        "loadstring", "import", "gc", "collectgarbage", "loadmenu",
+        // 「require "layout"」返回的是解析后的布局（非代码模块），不算 Lua 模块，跳过
+        "layout"
     )
 
     /** 系统 / 内置 Java 类前缀：bindClass 时跳过，只显示引入的 dex 类。 */

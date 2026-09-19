@@ -33,6 +33,16 @@
     <string name="share">分享</string>
     <string name="pin">置顶</string>
     <string name="unpin">撤顶</string>
+
+    <!-- 项目分类 tabs -->
+    <string name="favorite">收藏</string>
+    <string name="category_all">所有</string>
+    <string name="category">分类</string>
+    <string name="create_category">创建新分类</string>
+    <string name="category_char_limit">最多输入10个字</string>
+    <string name="category_exists">该类别已存在</string>
+    <string name="move_to_category">移动到分类</string>
+    <string name="cd_add_category">新建分类</string>
     <string name="overwrite">覆盖</string>
     <string name="clone">共存</string>
     <string name="debug_mode">调试模式</string>
@@ -42,6 +52,7 @@
     <string name="share_failed_cannot_compress">分享失败，无法压缩项目</string>
     <string name="preparing_share">正在准备分享项目…</string>
     <string name="no_projects">暂无项目</string>
+    <string name="category_empty">该分类下暂无项目</string>
     <string name="create_first_project">点击右下角按钮创建第一个项目</string>
     <string name="modified_time">修改时间: %s</string>
     <string name="project_size">体积: %s</string>
@@ -95,7 +106,6 @@
     <string name="tech_stack_title">开发者</string>
     <string name="community_title">官方社区</string>
     <string name="licenses_title">许可证</string>
-    <string name="changelog_title">更新日志</string>
     <string name="qq_group_name">官方交流群</string>
     <string name="qq_group_number">1106643491</string>
     <string name="no_license_info">暂无协议信息</string>
@@ -104,8 +114,6 @@
     <string name="error_check_failed">检查文件失败: %s</string>
     <string name="unknown_error">未知错误</string>
     <string name="file_label">文件: %s</string>
-    <string name="author_note">LuaFabric Studio 致力于为 Lua 开发者提供最佳的移动端开发体验，支持完整的 Lua 5.5 标准库和常用扩展。</string>
-    <string name="build_time_label">构建时间: %s</string>
     <string name="close">关闭</string>
     <string name="copy">复制</string>
     <string name="visit_website">访问网站</string>

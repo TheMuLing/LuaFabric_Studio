@@ -8,6 +8,7 @@ package com.luafabric.studio.falling.ui.project
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -16,7 +17,6 @@ import android.os.Environment
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -61,9 +61,14 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.luafabric.studio.falling.CATEGORY_ALL
+import com.luafabric.studio.falling.CATEGORY_FAVORITE
 import com.luafabric.studio.falling.R
+import com.luafabric.studio.falling.ui.components.FilePickerDialog
 import com.luafabric.studio.falling.ui.components.MarkdownDialog
+import com.luafabric.studio.falling.ui.components.SelectionMode
 import com.luafabric.studio.falling.ui.components.SwitchBar
+import com.luafabric.studio.falling.ui.settings.SettingsManager
 import muling.views.tool.utils.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -99,13 +104,22 @@ data class NewProjectData(
     val packageName: String,
     val debugMode: Boolean,
     val selectedTemplate: TemplateItem?,
-    val iconUri: Uri?,
-    val globalUtils: List<String> = emptyList()
+    val iconPath: String? = null,
+    val globalUtils: List<String> = emptyList(),
+    val category: String = CATEGORY_ALL
 )
 
 enum class NewProjectPage {
     TEMPLATE_SELECTION,
     PROJECT_INFO
+}
+
+// 分类 token → 显示文案（内置哨兵映射为各地语言，自定义分类原样显示）
+@Composable
+private fun categoryDisplay(context: Context, token: String): String = when (token) {
+    CATEGORY_FAVORITE -> context.getString(R.string.favorite)
+    CATEGORY_ALL -> context.getString(R.string.category_all)
+    else -> token
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
@@ -123,23 +137,15 @@ fun NewProjectScreen(
     var projectName by remember { mutableStateOf("") }
     var packageName by remember { mutableStateOf("") }
     var debugMode by remember { mutableStateOf(true) }
+    var category by remember { mutableStateOf(CATEGORY_ALL) }
     var selectedTemplate by remember { mutableStateOf<TemplateItem?>(null) }
-    var projectIconUri by remember { mutableStateOf<Uri?>(null) }
+    var projectIconPath by remember { mutableStateOf<String?>(null) }
+    var showIconPicker by remember { mutableStateOf(false) }
     var selectedGlobalUtils by remember { mutableStateOf<Set<String>>(emptySet()) }
     var templates by remember { mutableStateOf<List<TemplateItem>>(emptyList()) }
     var isLoadingTemplates by remember { mutableStateOf(true) }
     var isCreating by remember { mutableStateOf(false) }
     var showExtendedFab by remember { mutableStateOf(true) }
-
-    val pickImageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri ->
-            uri?.let {
-                projectIconUri = it
-                LogCatcher.i("NewProjectScreen", "选择了项目图标: ${it}")
-            }
-        }
-    )
 
     fun showToast(message: String) {
         scope.launch {
@@ -196,9 +202,9 @@ fun NewProjectScreen(
                         )
                     }
 
-                    projectIconUri?.let { uri ->
+                    projectIconPath?.let { path ->
                         LogCatcher.i("NewProjectScreen", "复制项目图标")
-                        ProjectUtil.copyIconToProject(context, uri, projectDir)
+                        ProjectUtil.copyIconToProject(context, File(path), projectDir)
                     }
 
                     LogCatcher.i("NewProjectScreen", "保存设置文件")
@@ -216,14 +222,25 @@ fun NewProjectScreen(
 
                 withContext(Dispatchers.Main) {
                     showToast(context.getString(R.string.new_project_create_success))
+                    // 保存项目分类归属（"所有"为缺省值，无需写入）
+                    if (category != CATEGORY_ALL) {
+                        SettingsManager.updateSettings(
+                            SettingsManager.currentSettings.copy(
+                                projectCategory = SettingsManager.currentSettings.projectCategory +
+                                    (projectName to category)
+                            )
+                        )
+                        SettingsManager.saveSettings(context)
+                    }
                     onCreateProject(
                         NewProjectData(
                             projectName = projectName,
                             packageName = packageName,
                             debugMode = debugMode,
                             selectedTemplate = selectedTemplate,
-                            iconUri = projectIconUri,
-                            globalUtils = selectedGlobalUtils.toList()
+                            iconPath = projectIconPath,
+                            globalUtils = selectedGlobalUtils.toList(),
+                            category = category
                         )
                     )
                     onBack()
@@ -446,12 +463,14 @@ fun NewProjectScreen(
     onPackageNameChanged = { packageName = it },
     debugMode = debugMode,
     onDebugModeChanged = { debugMode = it },
-    projectIconUri = projectIconUri,
-    onProjectIconSelected = { uri -> projectIconUri = uri },
+    category = category,
+    onCategoryChanged = { category = it },
+    projectIconPath = projectIconPath,
+    onProjectIconSelected = { path -> projectIconPath = path },
     selectedTemplate = selectedTemplate,
     selectedGlobalUtils = selectedGlobalUtils,
     onGlobalUtilsChanged = { selectedGlobalUtils = it },
-    pickImageLauncher = pickImageLauncher,
+    onPickIcon = { showIconPicker = true },
     focusManager = focusManager,
     onFabExpandedChange = { expanded ->
         showExtendedFab = expanded
@@ -461,6 +480,21 @@ fun NewProjectScreen(
                 }
             }
         }
+    }
+
+    // 点击大图 → 内置文件选择器，默认启动目录 /sdcard/DCIM，选中后仅记录本地路径
+    if (showIconPicker) {
+        FilePickerDialog(
+            initialPath = File(Environment.getExternalStorageDirectory(), "DCIM").absolutePath,
+            selectionMode = SelectionMode.FILE,
+            title = stringResource(R.string.cd_project_icon),
+            allowedExtensions = listOf("jpg", "jpeg", "png", "webp", "gif", "bmp"),
+            onDismiss = { showIconPicker = false },
+            onFileSelected = { path ->
+                showIconPicker = false
+                projectIconPath = path
+            }
+        )
     }
 }
 
@@ -663,17 +697,20 @@ fun ProjectInfoPage(
     onPackageNameChanged: (String) -> Unit,
     debugMode: Boolean,
     onDebugModeChanged: (Boolean) -> Unit,
-    projectIconUri: Uri?,
-    onProjectIconSelected: (Uri?) -> Unit,
+    category: String,
+    onCategoryChanged: (String) -> Unit,
+    projectIconPath: String?,
+    onProjectIconSelected: (String?) -> Unit,
     selectedTemplate: TemplateItem?,
     selectedGlobalUtils: Set<String>,
     onGlobalUtilsChanged: (Set<String>) -> Unit,
-    pickImageLauncher: androidx.activity.compose.ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?>,
+    onPickIcon: () -> Unit,
     focusManager: androidx.compose.ui.focus.FocusManager,
     onFabExpandedChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(scrollState.value) {
         val expanded = scrollState.value <= 50
@@ -774,9 +811,7 @@ fun ProjectInfoPage(
                         .size(120.dp)
                         .clip(CircleShape)
                         .clickable {
-                            pickImageLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
+                            onPickIcon()
                         }
                         .border(
                             width = 2.dp,
@@ -785,10 +820,10 @@ fun ProjectInfoPage(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (projectIconUri != null) {
+                    if (projectIconPath != null) {
                         AsyncImage(
                             model = ImageRequest.Builder(context)
-                                .data(projectIconUri)
+                                .data(File(projectIconPath!!))
                                 .crossfade(true)
                                 .build(),
                             contentDescription = stringResource(R.string.cd_project_icon),
@@ -939,6 +974,64 @@ fun ProjectInfoPage(
                             focusedLabelColor = MaterialTheme.colorScheme.primary
                         )
                     )
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.category),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Box {
+                        OutlinedTextField(
+                            value = categoryDisplay(context, category),
+                            onValueChange = {},
+                            label = { Text(stringResource(R.string.category)) },
+                            readOnly = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { categoryMenuExpanded = true },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Inbox, contentDescription = null)
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { categoryMenuExpanded = true }
+                                ) {
+                                    Icon(
+                                        Icons.Filled.ArrowDropDown,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                focusedLabelColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        DropdownMenu(
+                            expanded = categoryMenuExpanded,
+                            onDismissRequest = { categoryMenuExpanded = false },
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            listOf(CATEGORY_FAVORITE, CATEGORY_ALL)
+                                .plus(SettingsManager.currentSettings.categories)
+                                .forEach { token ->
+                                    DropdownMenuItem(
+                                        text = { Text(categoryDisplay(context, token)) },
+                                        onClick = {
+                                            onCategoryChanged(token)
+                                            categoryMenuExpanded = false
+                                        }
+                                    )
+                                }
+                        }
+                    }
                 }
 
                 SwitchBar(

@@ -2,6 +2,7 @@ package com.luafabric.console.ui
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.Dialog
 import android.content.Context
 import android.os.Build
 import android.os.Handler
@@ -27,7 +28,7 @@ class OverlayController(private val appContext: Context) {
     private var wm: WindowManager? = null
     private var params: WindowManager.LayoutParams? = null
     private var ball: ConsoleBallView? = null
-    private var sheet: ConsoleSheet? = null
+    private var sheet: Dialog? = null
     private var sheetHost: Activity? = null
     private var fallbackAttached = false
     private var fallbackHost: Activity? = null
@@ -124,17 +125,44 @@ class OverlayController(private val appContext: Context) {
         val activity = hostActivity() ?: return
         // 宿主已死/正在结束：等待下次 join 重建，防 BadTokenException
         if (activity.isDestroyed || activity.isFinishing) return
-        val s = ConsoleSheet(
-            activity = activity,
-            onFullyClosed = { fullyClosed() },
-            onDismissed = { onSheetDismissedToBall() }
-        )
-        sheet = s
+        val onFullyClosed = { fullyClosed() }
+        val onDismissed = { onSheetDismissedToBall() }
+        val panel: Dialog = if (isLandscape(activity)) {
+            // 横屏：右侧滑出全高侧栏
+            SidePanelDialog(
+                activity = activity,
+                onFullyClosed = onFullyClosed,
+                onDismissed = onDismissed,
+                targetWidthPx = sidePanelWidthPx()
+            )
+        } else {
+            // 竖屏：底部 BottomSheet
+            ConsoleSheet(
+                activity = activity,
+                onFullyClosed = onFullyClosed,
+                onDismissed = onDismissed
+            )
+        }
+        sheet = panel
         sheetHost = activity
         StateMachine.transition(ConsoleState.PANEL)
-        s.show()
+        panel.show()
         // 浮窗与浮球互斥：面板打开 → 摘浮球，收起时重建
         removeBallView()
+    }
+
+    /** 横屏判定：宽>高即从右侧划出（不限平板）。 */
+    private fun isLandscape(activity: Activity): Boolean {
+        val bounds = activity.windowManager.currentWindowMetrics.bounds
+        return bounds.width() > bounds.height()
+    }
+
+    /** 右侧面板宽度：屏宽 65%，上限 640dp。 */
+    private fun sidePanelWidthPx(): Int {
+        val dm = appContext.resources.displayMetrics
+        val w = dm.widthPixels
+        val cap = dm.densityDpi.toFloat() / 160f * 640.0f
+        return minOf(w * 0.65f, cap).toInt().coerceAtLeast(1)
     }
 
     /** 面板收起但未完全关闭 → 回到浮球。无条件回 BALL + 重建浮球：面板打开时浮球已摘。 */

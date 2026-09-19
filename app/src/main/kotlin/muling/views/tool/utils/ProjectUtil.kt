@@ -514,13 +514,14 @@ object ProjectUtil {
      */
     fun copyIconToProject(
         context: Context,
-        iconUri: Uri,
+        sourceFile: File,
         projectDir: File
     ) {
         try {
+            if (!sourceFile.exists() || !sourceFile.isFile) return
             val iconFile = File(projectDir, "icon.png")
 
-            context.contentResolver.openInputStream(iconUri)?.use { inputStream ->
+            sourceFile.inputStream().use { inputStream ->
                 FileOutputStream(iconFile).use { outputStream ->
                     inputStream.copyTo(outputStream)
                 }

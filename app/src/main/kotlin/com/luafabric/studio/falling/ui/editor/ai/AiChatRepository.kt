@@ -81,13 +81,16 @@ object AiChatRepository {
         }
     }
 
-    // 规范化 API 基础地址：去空白/尾斜杠，剥离 /chat/completions 或 /models 端点后缀
-    private fun normalizeBaseUrl(raw: String): String {
+    // 规范化 API 基础地址：去空白/尾斜杠，剥离 /chat/completions 或 /models 端点后缀，裸域名补 https://
+    fun normalizeBaseUrl(raw: String): String {
         var base = raw.trim().trimEnd('/')
         if (base.endsWith("/chat/completions")) {
             base = base.removeSuffix("/chat/completions").trimEnd('/')
         } else if (base.endsWith("/models")) {
             base = base.removeSuffix("/models").trimEnd('/')
+        }
+        if (!base.startsWith("http://") && !base.startsWith("https://") && base.isNotEmpty()) {
+            base = "https://$base"
         }
         return base
     }

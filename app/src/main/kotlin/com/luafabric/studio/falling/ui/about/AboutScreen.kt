@@ -2,14 +2,8 @@ package com.luafabric.studio.falling.ui.about
 
 import android.content.Context
 import android.content.Intent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,31 +18,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -57,15 +41,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.luafabric.studio.falling.BuildConfig
 import com.luafabric.studio.falling.R
 import muling.views.tool.utils.AppInfoUtil
 import muling.views.tool.utils.LogCatcher
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 data class Developer(
     val nameResId: Int,
@@ -76,12 +56,6 @@ data class Developer(
     val url: String = ""
 )
 
-data class ChangelogEntry(
-    val date: String,
-    val version: String,
-    val items: List<String>
-)
-
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -89,90 +63,6 @@ fun AboutScreen(onBack: () -> Unit) {
     val packageInfo = AppInfoUtil.getPackageInfo()
     val appVersionName = packageInfo?.versionName ?: "1.0.0"
     val copyrightYear = BuildConfig.COPYRIGHT_YEAR
-
-    val buildTime = remember {
-        derivedStateOf {
-            try {
-                val timeMillis = BuildConfig.BUILD_TIME.toLongOrNull() ?: System.currentTimeMillis()
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                sdf.format(Date(timeMillis))
-            } catch (e: Exception) {
-                LogCatcher.e("AboutScreen", "获取构建时间失败", e)
-                context.getString(R.string.unknown)
-            }
-        }
-    }
-
-    val prefs = remember {
-        context.getSharedPreferences("LuaFabric_settings", Context.MODE_PRIVATE)
-    }
-
-    var showAuthorNote by remember {
-        mutableStateOf(prefs.getBoolean("show_author_note", true))
-    }
-
-    val changelogEntries = remember {
-        listOf(
-            ChangelogEntry(
-                date = "2026-08-22",
-                version = "26.08.22-alpha",
-                items = listOf(
-                    "修复旧配置缺失 providers 字段导致的闪退（反序列化空值兜底）",
-                    "API 添加供应商弹窗：获取模型需同时填写 API 请求地址与 API Key",
-                    "支持解析 /chat/completions 后缀 API 地址，自动处理末尾斜杠",
-                    "第三方 AI 中转站获取模型列表失败时增强日志输出",
-                    "删除 MaterialTextField 组件",
-                    "删除 native 层 smgr 模块（renamefile/getdatadir 等函数）",
-                    "版本号更新：versionCode 26082202 / versionName 26.08.22-alpha"
-                )
-            ),
-            ChangelogEntry(
-                date = "2026-08-21",
-                version = "26.08.21",
-                items = listOf(
-                    "修复 libsocket.so 无法加载问题",
-                    "修复返回键退出后重进项目进度条卡死",
-                    "侧边栏\"赞助\"与\"关于\"位置互换",
-                    "Licenses 替换为更新日志"
-                )
-            ),
-            ChangelogEntry(
-                date = "2026-08-19",
-                version = "26.08.19-gamma",
-                items = listOf(
-                    "新增 Maven 依赖下载进度显示",
-                    "优化代码补全性能",
-                    "修复若干崩溃问题"
-                )
-            ),
-            ChangelogEntry(
-                date = "2026-08-15",
-                version = "26.08.15",
-                items = listOf(
-                    "重构编辑器内核",
-                    "新增 Lua 语法高亮",
-                    "新增项目模板功能"
-                )
-            ),
-            ChangelogEntry(
-                date = "2026-08-10",
-                version = "26.08.10",
-                items = listOf(
-                    "初始版本发布",
-                    "基础代码编辑功能",
-                    "项目创建与管理",
-                    "APK 编译与安装"
-                )
-            )
-        ).sortedByDescending { entry ->
-            // 按版本号排序：解析 YY.MM.DD[-suffix] 格式
-            val parts = entry.version.split("-")[0].split(".")
-            val major = parts.getOrElse(0) { "0" }.padStart(4, '0')
-            val minor = parts.getOrElse(1) { "0" }.padStart(2, '0')
-            val patch = parts.getOrElse(2) { "0" }.padStart(2, '0')
-            "$major$minor$patch"
-        }
-    }
 
     val teamMembers = remember {
         listOf(
@@ -209,20 +99,6 @@ fun AboutScreen(onBack: () -> Unit) {
         }
 
         item {
-            AnimatedVisibility(
-                visible = showAuthorNote,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                AuthorNoteCard(
-                    buildTime = buildTime.value,
-                    onClose = {
-                        showAuthorNote = false
-                        prefs.edit { putBoolean("show_author_note", false) }
-                    }
-                )
-            }
-
             SectionTitle(stringResource(R.string.tech_stack_title))
             Column(
                 modifier = Modifier
@@ -310,79 +186,6 @@ fun AboutScreen(onBack: () -> Unit) {
         }
 
         item {
-            SectionTitle(stringResource(R.string.changelog_title))
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-            ) {
-                var expandedIndex by remember { mutableStateOf(0) }
-
-                changelogEntries.forEachIndexed { index, entry ->
-                    val isExpanded = index == expandedIndex
-
-                    val shape = when {
-                        changelogEntries.size == 1 -> MaterialTheme.shapes.large
-                        index == 0 -> MaterialTheme.shapes.large.copy(
-                            bottomEnd = CornerSize(0.dp),
-                            bottomStart = CornerSize(0.dp)
-                        )
-                        index == changelogEntries.lastIndex -> MaterialTheme.shapes.large.copy(
-                            topStart = CornerSize(0.dp),
-                            topEnd = CornerSize(0.dp)
-                        )
-                        else -> RectangleShape
-                    }
-
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 0.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        shape = shape
-                    ) {
-                        Column {
-                            ChangelogHeader(
-                                entry = entry,
-                                isExpanded = isExpanded,
-                                onClick = {
-                                    expandedIndex = if (expandedIndex == index) -1 else index
-                                }
-                            )
-
-                            AnimatedVisibility(visible = isExpanded) {
-                                Column {
-                                    entry.items.forEach { item ->
-                                        Text(
-                                            text = "•  $item",
-                                            modifier = Modifier.padding(
-                                                start = 20.dp, end = 20.dp,
-                                                top = 2.dp, bottom = 2.dp
-                                            ),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            lineHeight = 18.sp
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                }
-                            }
-
-                            if (index < changelogEntries.lastIndex) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 20.dp),
-                                    thickness = 0.5.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
             Spacer(modifier = Modifier.height(32.dp))
             Text(
                 text = stringResource(R.string.copyright, copyrightYear),
@@ -392,111 +195,6 @@ fun AboutScreen(onBack: () -> Unit) {
         }
     }
 
-}
-
-@Composable
-fun ChangelogHeader(entry: ChangelogEntry, isExpanded: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = entry.version,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Text(
-                        text = entry.date,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Icon(
-            imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-            contentDescription = if (isExpanded) "Collapse" else "Expand",
-            tint = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-            modifier = Modifier.size(18.dp)
-        )
-    }
-}
-
-@Composable
-fun AuthorNoteCard(
-    buildTime: String,
-    onClose: () -> Unit
-) {
-    Column {
-        Spacer(modifier = Modifier.height(20.dp))
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
-            shape = MaterialTheme.shapes.large
-        ) {
-            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .padding(top = 2.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.author_note),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = stringResource(R.string.build_time_label, buildTime),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .clickable { onClose() },
-                    color = Color.Transparent
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.close),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable

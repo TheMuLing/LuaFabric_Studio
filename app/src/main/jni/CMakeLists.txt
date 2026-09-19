@@ -118,12 +118,19 @@ function(add_and_optimize_library dir)
 
             # 所有模块都尝试导出 luaopen_xxx 函数
             if (ANDROID)
+                # socket 需导出 luaopen_socket_core（供 require("socket.core") 用），
+                # 刻意不导出 luaopen_socket：require("socket") 交由 LuaAssetLoader
+                # 从 assets/lua/socket.lua 加载 helper，以避免被 C 抢先拦截。
+                set(_EXPORT_FUNC "luaopen_${dir}")
+                if (dir STREQUAL "socket")
+                    set(_EXPORT_FUNC "luaopen_socket_core")
+                endif ()
                 target_link_options(${TARGET_NAME} PRIVATE
-                        "-Wl,--export-dynamic-symbol=luaopen_${dir}"
+                        "-Wl,--export-dynamic-symbol=${_EXPORT_FUNC}"
                 )
             endif ()
 
-            message(STATUS "  -> Module: ${TARGET_NAME}, exporting luaopen_${dir}")
+            message(STATUS "  -> Module: ${TARGET_NAME}, exporting ${_EXPORT_FUNC}")
 
             # 通用的优化选项（所有目标）
             target_compile_options(${TARGET_NAME} PRIVATE

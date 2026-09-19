@@ -976,6 +976,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_class_name_color),
                         subtitle = stringResource(R.string.settings_class_name_color_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.Code,
@@ -1021,6 +1022,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_local_variable_color),
                         subtitle = stringResource(R.string.settings_local_variable_color_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.DataArray,
@@ -1066,6 +1068,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_keyword_color),
                         subtitle = stringResource(R.string.settings_keyword_color_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.Keyboard,
@@ -1111,6 +1114,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_function_name_color),
                         subtitle = stringResource(R.string.settings_function_name_color_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.Functions,
@@ -1156,6 +1160,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_literal_color),
                         subtitle = stringResource(R.string.settings_literal_color_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.FormatQuote,
@@ -1201,6 +1206,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_comment_color),
                         subtitle = stringResource(R.string.settings_comment_color_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.AutoMirrored.Filled.Comment,
@@ -1246,6 +1252,7 @@ Column(
                     SettingsListItem(
                         title = stringResource(R.string.settings_selected_line_background),
                         subtitle = stringResource(R.string.settings_selected_line_background_desc),
+                        compact = true,
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.Highlight,

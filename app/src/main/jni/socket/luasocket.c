@@ -104,8 +104,8 @@ LUASOCKET_API int luaopen_socket_core(lua_State *L) {
     for (i = 0; mod[i].name; i++) mod[i].func(L);
     return 1;
 }
-
-/* Alias for luaopen_socket — Lua require("socket") looks for this symbol */
-LUASOCKET_API int luaopen_socket(lua_State *L) {
-    return luaopen_socket_core(L);
-}
+/* 注意：此处刻意不导出 luaopen_socket。
+ * require("socket") 交由 LuaAssetLoader 从 assets/lua/socket.lua 加载 helper，
+ * 以提供 connect/bind/http 等 Lua 层辅助；底层 C 核心由 require("socket.core")
+ * 经本文件的 luaopen_socket_core 提供。两者分工，避免 require("socket")
+ * 被 C searcher 抢先拦截返回裸核心表。 */

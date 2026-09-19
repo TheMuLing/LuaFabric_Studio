@@ -431,20 +431,21 @@ class ApkBuilder {
                 // 目标文件路径
                 val coreApkFile = File(cacheDir, "core.apk")
 
-                // 如果文件已存在且较新，直接使用
+                // 如果文件已存在且较新，直接使用（复用前必须校验完整性，防止被打断的半写文件污染后续构建）
                 if (coreApkFile.exists()) {
                     val lastModified = coreApkFile.lastModified()
                     val currentTime = System.currentTimeMillis()
                     // 如果文件在5分钟内创建过，直接使用
-                    if (currentTime - lastModified < 5 * 60 * 1000) {
+                    if (currentTime - lastModified < 5 * 60 * 1000 && isValidApk(coreApkFile)) {
                         return coreApkFile.absolutePath
                     }
                 }
 
-                // 从assets复制文件
+                // 原子写入：先写临时文件，完整写完后重命名覆盖，避免返回键打断构建留下截断的 core.apk
+                val tempCoreFile = File(cacheDir, "core.apk.tmp")
                 val assetManager = context.assets
                 assetManager.open("core.apk").use { input ->
-                    FileOutputStream(coreApkFile).use { output ->
+                    FileOutputStream(tempCoreFile).use { output ->
                         val buffer = ByteArray(8192)
                         var length: Int
                         while (input.read(buffer).also { length = it } > 0) {
@@ -454,12 +455,36 @@ class ApkBuilder {
                     }
                 }
 
+                // 覆盖旧的（含可能损坏的文件）；打断发生在重命名前则旧文件保持完整
+                coreApkFile.delete()
+                if (!tempCoreFile.renameTo(coreApkFile)) {
+                    tempCoreFile.delete()
+                    throw IOException("无法替换核心APK缓存: ${coreApkFile.absolutePath}")
+                }
+
                 LogCatcher.i("ApkBuilder", "核心APK已提取到: ${coreApkFile.absolutePath}")
                 return coreApkFile.absolutePath
 
             } catch (e: IOException) {
                 LogCatcher.e("ApkBuilder", "提取核心APK失败", e)
                 return null
+            }
+        }
+
+        // 校验缓存 APK 是否完整（含 AndroidManifest.xml），不完整视为损坏需重新提取
+        private fun isValidApk(apkFile: File): Boolean {
+            return try {
+                ZipFile(apkFile).use { zipFile ->
+                    val entries = zipFile.entries()
+                    while (entries.hasMoreElements()) {
+                        if (entries.nextElement().name.equals("AndroidManifest.xml", true)) {
+                            return true
+                        }
+                    }
+                    false
+                }
+            } catch (_: Exception) {
+                false
             }
         }
 
@@ -887,7 +912,18 @@ class ApkBuilder {
 
             for (file in files) {
                 when {
-                    file.isDirectory -> encryptDirectoryRecursive(L, baseDir, file, counters)
+                    file.isDirectory -> {
+                        // 跳过 assets 根下的 core 运行时 lua 网络库目录（socket/mime/ltn12 等），
+                        // 这些是 core.apk 自带、运行时按 /assets/lua 直接加载的，不应也无法用构建 LuaState 重编译
+                        if (dir == baseDir && file.name.equals("lua", ignoreCase = true)) {
+                            LogCatcher.i(
+                                "ApkBuilder",
+                                "跳过 core 运行时 lua 库目录，不加密: ${file.absolutePath}"
+                            )
+                        } else {
+                            encryptDirectoryRecursive(L, baseDir, file, counters)
+                        }
+                    }
                     file.isFile -> {
                         val fileName = file.name.lowercase(Locale.getDefault())
 

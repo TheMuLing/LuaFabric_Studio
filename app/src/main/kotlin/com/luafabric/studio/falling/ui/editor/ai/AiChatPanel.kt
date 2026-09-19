@@ -1829,8 +1829,6 @@ private fun AiSettingsPage(
                             onClick = {
                                 if (newBaseUrl.isBlank()) {
                                     Toast.makeText(addContext, "请先填写 API 请求地址", Toast.LENGTH_SHORT).show()
-                                } else if (newApiKey.isBlank()) {
-                                    Toast.makeText(addContext, "请先填写 API Key", Toast.LENGTH_SHORT).show()
                                 } else {
                                     kotlinx.coroutines.MainScope().launch {
                                         try {
@@ -1858,15 +1856,14 @@ private fun AiSettingsPage(
             confirmButton = {
                 TextButton(onClick = {
                     newNameError = newName.isBlank()
-                    newApiKeyError = newApiKey.isBlank()
                     newBaseUrlError = newBaseUrl.isBlank()
                     newModelError = newModel.isBlank()
-                    if (!newNameError && !newApiKeyError && !newBaseUrlError && !newModelError) {
+                    if (!newNameError && !newBaseUrlError && !newModelError) {
                         providers = (providers + ApiProvider(
                             name = newName.trim(),
                             protocol = newProtocol,
                             apiKey = newApiKey.trim(),
-                            baseUrl = newBaseUrl.trim(),
+                            baseUrl = AiChatRepository.normalizeBaseUrl(newBaseUrl.trim()),
                             model = newModel.trim(),
                             useDefaultKey = false
                         )).toMutableList()

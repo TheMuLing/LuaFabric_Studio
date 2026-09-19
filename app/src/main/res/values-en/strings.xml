@@ -32,6 +32,16 @@
     <string name="share">Share</string>
     <string name="pin">Pin</string>
     <string name="unpin">Unpin</string>
+
+    <!-- Project category tabs -->
+    <string name="favorite">Favorites</string>
+    <string name="category_all">All</string>
+    <string name="category">Category</string>
+    <string name="create_category">Create New Category</string>
+    <string name="category_char_limit">Up to 10 characters</string>
+    <string name="category_exists">This category already exists</string>
+    <string name="move_to_category">Move to category</string>
+    <string name="cd_add_category">New category</string>
     <string name="overwrite">Overwrite</string>
     <string name="clone">Clone</string>
     <string name="debug_mode">Debug Mode</string>
@@ -41,6 +51,7 @@
     <string name="share_failed_cannot_compress">Share failed, cannot compress project</string>
     <string name="preparing_share">Preparing to share project…</string>
     <string name="no_projects">No projects</string>
+    <string name="category_empty">No projects in this category</string>
     <string name="create_first_project">Tap the button below to create your first project</string>
     <string name="modified_time">Modified: %s</string>
     <string name="project_size">Size: %s</string>
@@ -100,8 +111,6 @@
     <string name="error_check_failed">Failed to check file: %s</string>
     <string name="unknown_error">Unknown error</string>
     <string name="file_label">File: %s</string>
-    <string name="author_note">LuaFabric Studio is dedicated to providing the best mobile development experience for Lua developers, with full support for the Lua 5.5 standard library and common extensions.</string>
-    <string name="build_time_label">Build time: %s</string>
     <string name="close">Close</string>
     <string name="copy">Copy</string>
     <string name="visit_website">Visit website</string>

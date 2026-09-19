@@ -2,9 +2,15 @@ package com.luafabric.console.ui
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.graphics.Typeface
+import android.hardware.display.DisplayManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.Display
 import android.view.Gravity
+import android.view.Surface
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -88,6 +94,9 @@ class ConsoleSheet(
             setSelectedTabIndicatorColor(ConsoleTheme.primary)
             setTabTextColors(ConsoleTheme.onSurfaceVariant, ConsoleTheme.primary)
             setBackgroundColor(ConsoleTheme.surfaceContainer)
+            // 标签始终固定等分父浮窗宽度并单行，杜绝「Logcat」超窄时换行/截断
+            tabMode = TabLayout.MODE_FIXED
+            tabGravity = TabLayout.GRAVITY_FILL
             // 子项点击波纹跟随主题：主色 13% 透明度
             setTabRippleColor(
                 android.content.res.ColorStateList.valueOf(
@@ -104,6 +113,11 @@ class ConsoleSheet(
         root.addView(tabs)
         root.addView(container)
         setContentView(root)
+
+        // Material ≥1.14 对宽屏/横屏 BottomSheet 施加 android:maxWidth(默认 640dp)，
+        // 使浮窗呈居中窄条、左右留边无法覆盖（平板横屏诊断取样 design_bottom_sheet=1116π/1600π）。
+        // 放开为容器宽，控制台即全宽铺满；maxWidth 单位为 px。
+        getBehavior()?.setMaxWidth(ctx.resources.displayMetrics.widthPixels)
 
         // 禁用 sheet 拖拽手势：页签内滚动（如环境页 ScrollView）与 BottomSheet 下拉关闭冲突，
         // 误触下划会错误收起浮窗；关闭仅通过头部最小化/完全关闭按钮。
@@ -123,7 +137,24 @@ class ConsoleSheet(
         tabs.getTabAt(restore)?.select()
         if (lastShownPos != restore) showTab(restore)
 
-        setOnDismissListener { onDismissed() }
+        // 旋转关闭：BottomSheetDialog 无配置回调，用 DisplayListener 监听；本面板仅竖屏创建，旋到横屏即收。
+        val displayManager = ctx.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val orientationCloser = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+            override fun onDisplayChanged(displayId: Int) {
+                val rotation = displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.rotation
+                    ?: return
+                val nowLandscape =
+                    rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270
+                if (nowLandscape) dismiss()
+            }
+        }
+        displayManager.registerDisplayListener(orientationCloser, Handler(Looper.getMainLooper()))
+        setOnDismissListener {
+            displayManager.unregisterDisplayListener(orientationCloser)
+            onDismissed()
+        }
     }
 
     @SuppressLint("Recycle")

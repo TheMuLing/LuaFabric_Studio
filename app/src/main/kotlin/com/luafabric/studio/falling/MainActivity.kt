@@ -19,6 +19,8 @@ import android.os.Bundle
 import android.os.Environment
 import android.app.LocaleManager
 import android.os.LocaleList
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.core.content.getSystemService
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -27,6 +29,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -34,6 +37,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
@@ -59,8 +66,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -90,6 +99,8 @@ import com.luafabric.studio.falling.ui.settings.SettingsManager
 import com.luafabric.studio.falling.ui.settings.SettingsScreen
 import com.luafabric.studio.falling.ui.settings.SortOrder
 import com.luafabric.studio.falling.ui.settings.ToastPosition
+import com.luafabric.studio.falling.ui.sponsor.Sponsorship
+import com.luafabric.studio.falling.ui.sponsor.SponsorshipDialog
 import com.luafabric.studio.falling.ui.theme.AppThemeWithObserver
 import com.luafabric.studio.falling.ui.welcome.TransparentSystemBars
 import com.luafabric.studio.falling.ui.welcome.WelcomeScreen
@@ -124,6 +135,10 @@ data class ProjectItem(
     val modifiedDate: Date = Date()
 ) : java.io.Serializable
 
+// 内置分类内部哨兵（\u0000 非用户可输入字符，杜绝与自定义分类名冲突）
+const val CATEGORY_FAVORITE = "\u0000favorite"
+const val CATEGORY_ALL = "\u0000all"
+
 // 主内容类型枚举
 enum class MainContentType {
     PROJECTS,
@@ -142,6 +157,7 @@ fun MainApp() {
     TransparentSystemBars()
 
     var currentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
+    var currentContentType by rememberSaveable { mutableStateOf(MainContentType.PROJECTS) }
     var selectedProject by rememberSaveable { mutableStateOf<ProjectItem?>(null) }
     var projectItems by remember { mutableStateOf(emptyList<ProjectItem>()) }
     val toast = rememberNonBlockingToastState()
@@ -196,6 +212,8 @@ fun MainApp() {
             ) {
                 when (targetScreen) {
                     AppScreen.MAIN -> MainScreen(
+                        currentContentType = currentContentType,
+                        onCurrentContentTypeChange = { currentContentType = it },
                         onNavigateToNewProject = { currentScreen = AppScreen.NEW_PROJECT },
                         onNavigateToEditor = { project ->
                             selectedProject = project
@@ -242,13 +260,30 @@ fun MainApp() {
                                             }
                                         }
                                     },
-                                    toast = toast
+                                    toast = toast,
+                                    onOpenSponsor = {
+                                        currentContentType = MainContentType.SPONSOR
+                                        currentScreen = AppScreen.MAIN
+                                    }
                                 )
                             }
                         } ?: run { SideEffect { currentScreen = AppScreen.MAIN } }
                     }
                 }
             }
+        }
+
+        SettingsManager.pendingSponsorPrompt?.let {
+            SponsorshipDialog(
+                onSponsor = {
+                    SettingsManager.pendingSponsorPrompt = null
+                    currentContentType = MainContentType.SPONSOR
+                    currentScreen = AppScreen.MAIN
+                },
+                onDismiss = {
+                    SettingsManager.pendingSponsorPrompt = null
+                }
+            )
         }
 
         ToastHost(
@@ -273,6 +308,8 @@ fun MainApp() {
 
 @Composable
 fun MainScreen(
+    currentContentType: MainContentType,
+    onCurrentContentTypeChange: (MainContentType) -> Unit,
     onNavigateToNewProject: () -> Unit,
     onNavigateToEditor: (ProjectItem) -> Unit,
     projectItems: List<ProjectItem>,
@@ -285,7 +322,6 @@ fun MainScreen(
     packageInfo?.versionCode ?: 1
     val copyrightYear = BuildConfig.COPYRIGHT_YEAR
 
-    var currentContentType by rememberSaveable { mutableStateOf(MainContentType.PROJECTS) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -310,6 +346,21 @@ fun MainScreen(
     // 更多菜单状态
     var moreMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
+
+    // ===== 项目分类 tabs =====
+    var selectedCategory by remember { mutableStateOf(CATEGORY_ALL) }
+    var showCreateCategory by remember { mutableStateOf(false) }
+    var tabMenuIndex by remember { mutableStateOf(-1) }
+    var moveProject by remember { mutableStateOf<ProjectItem?>(null) }
+
+    // 项目 → 分类 (缺省=所有)
+    val categoryOf: (String) -> String = { id ->
+        currentSettings.projectCategory[id] ?: CATEGORY_ALL
+    }
+    // 所有可显示分类（哨兵收藏/所有 + 自定义有序）
+    val categoryTabs by remember(currentSettings.categories) {
+        mutableStateOf(listOf(CATEGORY_FAVORITE, CATEGORY_ALL) + currentSettings.categories)
+    }
 
     // ---- 导入源码相关状态 ----
     var showFilePicker by remember { mutableStateOf(false) }
@@ -340,6 +391,7 @@ fun MainScreen(
     val onProjectBuild: (ProjectItem) -> Unit = { project ->
         scope.launch {
             buildingProject = project
+            Sponsorship.recordBuild(context)
             val result = try {
                 async<String>(Dispatchers.IO) { buildProject(context, project.path) }.await()
             } catch (e: Exception) {
@@ -367,7 +419,7 @@ fun MainScreen(
                 drawerState.close()
             }
             // 切换回项目页面
-            currentContentType = MainContentType.PROJECTS
+            onCurrentContentTypeChange(MainContentType.PROJECTS)
             shouldReturnToProjects = false
         }
     }
@@ -394,12 +446,20 @@ fun MainScreen(
         }
     }
 
-    // 分组并排序后的项目列表
-    val displayedProjects by remember(filteredProjects, sortOrder, pinnedSet) {
+    // 分组并排序后的项目列表（先按当前分类tab过滤，再置顶分组+排序）
+    val displayedProjects by remember(
+        filteredProjects, sortOrder, pinnedSet, selectedCategory, currentSettings.projectCategory
+    ) {
         derivedStateOf {
+            // "所有"标签显示全部项目；其余标签才按分类过滤
+            val inCat = if (selectedCategory == CATEGORY_ALL) {
+                filteredProjects
+            } else {
+                filteredProjects.filter { categoryOf(it.id) == selectedCategory }
+            }
             // 分为两组：置顶和未置顶
-            val pinned = filteredProjects.filter { it.id in pinnedSet }
-            val unpinned = filteredProjects.filter { it.id !in pinnedSet }
+            val pinned = inCat.filter { it.id in pinnedSet }
+            val unpinned = inCat.filter { it.id !in pinnedSet }
 
             // 定义排序比较器
             val comparator = when (sortOrder) {
@@ -563,7 +623,7 @@ fun MainScreen(
         sortMenuExpanded = false
     }
 
-    // 切换项目置顶状态
+    // 切换项目置顶状态（arrow，列表顶端分组）
     fun togglePinned(projectId: String) {
         val newPinnedSet = if (projectId in pinnedSet) {
             pinnedSet - projectId
@@ -573,6 +633,39 @@ fun MainScreen(
         val newSettings = currentSettings.copy(pinnedProjects = newPinnedSet)
         settingsManager.updateSettings(newSettings)
         settingsManager.saveSettings(context)
+    }
+
+    // 设置项目分类归属（CATEGORY_ALL 即移除记录=所有）
+    fun setProjectCategory(projectId: String, category: String) {
+        val map = currentSettings.projectCategory.toMutableMap()
+        if (category == CATEGORY_ALL) map.remove(projectId) else map[projectId] = category
+        settingsManager.updateSettings(currentSettings.copy(projectCategory = map))
+        settingsManager.saveSettings(context)
+    }
+
+    // 切换收藏（收藏分类成员）
+    fun toggleFavorite(projectId: String) {
+        setProjectCategory(
+            projectId,
+            if (categoryOf(projectId) == CATEGORY_FAVORITE) CATEGORY_ALL else CATEGORY_FAVORITE
+        )
+    }
+
+    // 新建分类
+    fun createCategory(name: String) {
+        val list = currentSettings.categories + name
+        settingsManager.updateSettings(currentSettings.copy(categories = list))
+        settingsManager.saveSettings(context)
+        selectedCategory = name
+    }
+
+    // 删除自定义分类；其成员项目回落"所有"
+    fun deleteCategory(name: String) {
+        val list = currentSettings.categories.filter { it != name }
+        val map = currentSettings.projectCategory.filterValues { it != name }
+        settingsManager.updateSettings(currentSettings.copy(categories = list, projectCategory = map))
+        settingsManager.saveSettings(context)
+        if (selectedCategory == name) selectedCategory = CATEGORY_ALL
     }
 
     // 当搜索激活时自动请求焦点
@@ -714,7 +807,7 @@ fun MainScreen(
                         },
                         selected = currentContentType == MainContentType.PROJECTS,
                         onClick = {
-                            currentContentType = MainContentType.PROJECTS
+                            onCurrentContentTypeChange(MainContentType.PROJECTS)
                             scope.launch { drawerState.close() }
                         },
                         icon = {
@@ -745,7 +838,7 @@ fun MainScreen(
                         },
                         selected = currentContentType == MainContentType.MANUAL,
                         onClick = {
-                            currentContentType = MainContentType.MANUAL
+                            onCurrentContentTypeChange(MainContentType.MANUAL)
                             scope.launch { drawerState.close() }
                         },
                         icon = {
@@ -776,7 +869,7 @@ fun MainScreen(
                         },
                         selected = currentContentType == MainContentType.SPONSOR,
                         onClick = {
-                            currentContentType = MainContentType.SPONSOR
+                            onCurrentContentTypeChange(MainContentType.SPONSOR)
                             scope.launch { drawerState.close() }
                         },
                         icon = {
@@ -807,7 +900,7 @@ fun MainScreen(
                         },
                         selected = currentContentType == MainContentType.SETTINGS,
                         onClick = {
-                            currentContentType = MainContentType.SETTINGS
+                            onCurrentContentTypeChange(MainContentType.SETTINGS)
                             scope.launch { drawerState.close() }
                         },
                         icon = {
@@ -838,7 +931,7 @@ fun MainScreen(
                         },
                         selected = currentContentType == MainContentType.ABOUT,
                         onClick = {
-                            currentContentType = MainContentType.ABOUT
+                            onCurrentContentTypeChange(MainContentType.ABOUT)
                             scope.launch { drawerState.close() }
                         },
                         icon = {
@@ -1107,63 +1200,81 @@ fun MainScreen(
                 ) { targetContentType ->
                     when (targetContentType) {
                         MainContentType.PROJECTS -> {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                if (displayedProjects.isEmpty()) {
-                                    SideEffect {
-                                        showExtendedFab = true
-                                    }
-                                    Column(
-                                        modifier = Modifier.fillMaxSize(),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Outlined.FolderOpen,
-                                            contentDescription = stringResource(R.string.cd_project_folder),
-                                            tint = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.size(64.dp)
-                                        )
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Text(
-                                            text = stringResource(R.string.no_projects),
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = stringResource(R.string.create_first_project),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.outline
-                                        )
-                                    }
-                                } else {
-                                    LazyColumn(
-                                        modifier = Modifier.fillMaxSize(),
-                                        state = lazyListState,
-                                        contentPadding = PaddingValues(16.dp),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        items(
-                                            items = displayedProjects,
-                                            key = { it.id } // 使用唯一ID作为key，确保动画正确
-                                        ) { project ->
-                                            ProjectCard(
-                                                project = project,
-                                                isPinned = project.id in pinnedSet,
-                                                isPendingDeletion = project.id in pendingDeletionIds, // 传递待删除状态
-                                                onTogglePinned = { togglePinned(project.id) },
-                                                onDeleteClick = {
-                                                    deleteProjectId = project.id
-                                                    deleteProjectName = project.name
-                                                    deleteProjectPath = project.path
-                                                    showDeleteDialog = true
-                                                },
-                                                onShareClick = { shareProject(project) },
-                                                onBuildClick = { onProjectBuild(project) },
-                                                onClick = { onNavigateToEditor(project) },
-                                                refreshTrigger = refreshNonce,
-                                                modifier = Modifier.animateItem() // 排序时的移动动画
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                // 标题下方、列表上方的分类 tabs（内置收藏/所有 + 自建，右侧固定 + 按钮）
+                                CategoryTabBar(
+                                    tabs = categoryTabs,
+                                    selected = selectedCategory,
+                                    onSelect = { selectedCategory = it },
+                                    tabMenuIndex = tabMenuIndex,
+                                    onTabMenuChange = { tabMenuIndex = it },
+                                    onDeleteCategory = { deleteCategory(it) },
+                                    onAddClick = { showCreateCategory = true }
+                                )
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    if (displayedProjects.isEmpty()) {
+                                        SideEffect {
+                                            showExtendedFab = true
+                                        }
+                                        Column(
+                                            modifier = Modifier.fillMaxSize(),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.FolderOpen,
+                                                contentDescription = stringResource(R.string.cd_project_folder),
+                                                tint = MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.size(64.dp)
                                             )
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Text(
+                                                text = stringResource(
+                                                    if (projectItems.isEmpty()) R.string.no_projects
+                                                    else R.string.category_empty
+                                                ),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = stringResource(R.string.create_first_project),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    } else {
+                                        LazyColumn(
+                                            modifier = Modifier.fillMaxSize(),
+                                            state = lazyListState,
+                                            contentPadding = PaddingValues(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            items(
+                                                items = displayedProjects,
+                                                key = { it.id } // 使用唯一ID作为key，确保动画正确
+                                            ) { project ->
+                                                ProjectCard(
+                                                    project = project,
+                                                    isFavorite = categoryOf(project.id) == CATEGORY_FAVORITE,
+                                                    isPinned = project.id in pinnedSet,
+                                                    isPendingDeletion = project.id in pendingDeletionIds, // 传递待删除状态
+                                                    onToggleFavorite = { toggleFavorite(project.id) },
+                                                    onTogglePinned = { togglePinned(project.id) },
+                                                    onMoveToCategory = { moveProject = project },
+                                                    onDeleteClick = {
+                                                        deleteProjectId = project.id
+                                                        deleteProjectName = project.name
+                                                        deleteProjectPath = project.path
+                                                        showDeleteDialog = true
+                                                    },
+                                                    onShareClick = { shareProject(project) },
+                                                    onBuildClick = { onProjectBuild(project) },
+                                                    onClick = { onNavigateToEditor(project) },
+                                                    refreshTrigger = refreshNonce,
+                                                    modifier = Modifier.animateItem() // 排序时的移动动画
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1207,6 +1318,35 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    // ---- 创建新分类弹窗 ----
+    if (showCreateCategory) {
+        CreateCategoryDialog(
+            existingNames = listOf(
+                stringResource(R.string.favorite),
+                stringResource(R.string.category_all)
+            ) + currentSettings.categories,
+            onDismiss = { showCreateCategory = false },
+            onCreate = { name ->
+                showCreateCategory = false
+                createCategory(name)
+            }
+        )
+    }
+
+    // ---- 移动到分类弹窗 ----
+    moveProject?.let { p ->
+        CategoryPickDialog(
+            options = categoryTabs,
+            selected = categoryOf(p.id),
+            subtitle = p.name,
+            onDismiss = { moveProject = null },
+            onPick = { cat ->
+                moveProject = null
+                setProjectCategory(p.id, cat)
+            }
+        )
     }
 
     if (showDeleteDialog) {
@@ -1417,9 +1557,12 @@ fun MainScreen(
 @Composable
 fun ProjectCard(
     project: ProjectItem,
+    isFavorite: Boolean,
     isPinned: Boolean,
     isPendingDeletion: Boolean,
+    onToggleFavorite: () -> Unit,
     onTogglePinned: () -> Unit,
+    onMoveToCategory: () -> Unit,
     onDeleteClick: () -> Unit,
     onShareClick: () -> Unit,
     onBuildClick: () -> Unit,
@@ -1620,7 +1763,7 @@ fun ProjectCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (isPinned) {
+                        if (isFavorite) {
                             Icon(
                                 imageVector = Icons.Filled.Star,
                                 contentDescription = stringResource(R.string.cd_pinned),
@@ -1647,14 +1790,43 @@ fun ProjectCard(
                                 onDismissRequest = { showMenu = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text(if (isPinned) stringResource(R.string.unpin) else stringResource(R.string.pin)) },
+                                    text = { Text(stringResource(R.string.favorite)) },
+                                    onClick = {
+                                        showMenu = false
+                                        onToggleFavorite()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.pin)) },
                                     onClick = {
                                         showMenu = false
                                         onTogglePinned()
                                     },
                                     leadingIcon = {
                                         Icon(
-                                            if (isPinned) Icons.Filled.Clear else Icons.Filled.Star,
+                                            Icons.Filled.ArrowUpward,
+                                            contentDescription = null,
+                                            tint = if (isPinned) colorScheme.primary else colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.move_to_category)) },
+                                    onClick = {
+                                        showMenu = false
+                                        onMoveToCategory()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Filled.MoveToInbox,
                                             contentDescription = null
                                         )
                                     }
@@ -1673,7 +1845,6 @@ fun ProjectCard(
                                         )
                                     }
                                 )
-
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.share)) },
                                     onClick = {
@@ -1790,6 +1961,219 @@ fun ProjectCard(
             }
         }
     }
+}
+
+@Composable
+private fun CategoryTabBar(
+    tabs: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    tabMenuIndex: Int,
+    onTabMenuChange: (Int) -> Unit,
+    onDeleteCategory: (String) -> Unit,
+    onAddClick: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 可横向滚动 tabs（左侧，weight 撑开）
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState())
+                .height(46.dp)
+                .padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            tabs.forEachIndexed { index, token ->
+                val isSel = token == selected
+                val isBuiltin = token == CATEGORY_FAVORITE || token == CATEGORY_ALL
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(if (isSel) cs.primaryContainer else cs.surfaceContainerHigh)
+                            .combinedClickable(
+                                onClick = { onSelect(token) },
+                                onLongClick = if (isBuiltin) null else ({ onTabMenuChange(index) })
+                            )
+                            .padding(horizontal = 16.dp, vertical = 9.dp)
+                    ) {
+                        Text(
+                            text = when (token) {
+                                CATEGORY_FAVORITE -> stringResource(R.string.favorite)
+                                CATEGORY_ALL -> stringResource(R.string.category_all)
+                                else -> token
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (isSel) cs.onPrimaryContainer else cs.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                    // 自定义分类长按删除菜单
+                    DropdownMenu(
+                        expanded = tabMenuIndex == index,
+                        onDismissRequest = { onTabMenuChange(-1) }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.delete), color = cs.error) },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Delete, contentDescription = null, tint = cs.error)
+                            },
+                            onClick = {
+                                onTabMenuChange(-1)
+                                onDeleteCategory(token)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        // 右侧固定 + 按钮：有圆角方形 primaryContainer 底，不随 tabs 滚动
+        Box(
+            modifier = Modifier
+                .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
+                .size(36.dp)
+                .clip(MaterialTheme.shapes.medium)
+                .background(cs.primaryContainer)
+                .clickable(onClick = onAddClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = stringResource(R.string.cd_add_category),
+                tint = cs.onPrimaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CreateCategoryDialog(
+    existingNames: List<String>,
+    onDismiss: () -> Unit,
+    onCreate: (String) -> Unit
+) {
+    var text by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+    val shake = remember { Animatable(0f) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    fun vibrate() {
+        val v = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
+        try {
+            v.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+        } catch (_: Exception) {
+        }
+    }
+    fun doShake() {
+        scope.launch {
+            repeat(3) {
+                shake.animateTo(10f, tween(50)); shake.animateTo(-10f, tween(50))
+            }
+            shake.animateTo(0f, tween(50))
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.create_category)) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { input -> if (input.length <= 10) { text = input; if (isError) isError = false } },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                isError = isError,
+                supportingText = {
+                    Text(
+                        if (isError) stringResource(R.string.category_exists)
+                        else "${text.length}/10"
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { translationX = shake.value }
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = text.isNotBlank(),
+                onClick = {
+                    val name = text.trim()
+                    if (name.isEmpty()) return@TextButton
+                    if (name in existingNames) {
+                        isError = true
+                        vibrate()
+                        doShake()
+                    } else {
+                        onCreate(name)
+                    }
+                }
+            ) { Text(stringResource(R.string.ok)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
+}
+
+@Composable
+private fun CategoryPickDialog(
+    options: List<String>,
+    selected: String,
+    subtitle: String,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.move_to_category)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(R.string.project_name_label, subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = cs.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                options.forEach { token ->
+                    val label = when (token) {
+                        CATEGORY_FAVORITE -> stringResource(R.string.favorite)
+                        CATEGORY_ALL -> stringResource(R.string.category_all)
+                        else -> token
+                    }
+                    val isSel = token == selected
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(if (isSel) cs.primaryContainer else Color.Transparent)
+                            .clickable { onPick(token) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            label,
+                            color = if (isSel) cs.onPrimaryContainer else cs.onSurface,
+                            fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
 }
 
 @Composable
@@ -1972,6 +2356,8 @@ private fun SponsorScreen(
             onClick = {
                 if (saving) return@Button
                 saving = true
+                // 只有点"投喂我"才算赞助，标记跳过下一轮；幂等，多次点击只记一次
+                Sponsorship.onFeed(context)
                 scope.launch {
                     val saved = withContext(Dispatchers.IO) {
                         try {

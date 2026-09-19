@@ -67,6 +67,10 @@ private object PreferencesKeys {
     val SORT_ORDER = stringPreferencesKey("sort_order")
     val PINNED_PROJECTS = stringPreferencesKey("pinned_projects")
 
+    // 项目分类：categories 为自定义分类(有序,不含内置"收藏/所有")；PROJECT_CATEGORY 为 项目id→分类(取值: 收藏/自定义名; 缺省=所有)
+    val CATEGORIES = stringPreferencesKey("project_categories")
+    val PROJECT_CATEGORY = stringPreferencesKey("project_category_map")
+
     // 智能排序开关
     val SMART_SORTING_ENABLED = booleanPreferencesKey("smart_sorting_enabled")
 
@@ -82,6 +86,11 @@ private object PreferencesKeys {
 
     // 【新增】十六进制颜色高亮开关
     val HEX_COLOR_HIGHLIGHT_ENABLED = booleanPreferencesKey("hex_color_highlight_enabled")
+
+    // 构建次数赞助提示
+    val SPONSOR_BUILD_COUNT = intPreferencesKey("sponsor_build_count")
+    val SPONSOR_ROUND = intPreferencesKey("sponsor_round")
+    val SPONSOR_SKIP_NEXT = booleanPreferencesKey("sponsor_skip_next")
 }
 
 // 排序方式枚举
@@ -101,6 +110,9 @@ object SettingsManager {
 
     // 当前设置状态
     var currentSettings by mutableStateOf(SettingsData())
+
+    // 临时的赞助弹窗提示的累计构建次数（瞬态，不持久化）
+    var pendingSponsorPrompt: Int? by mutableStateOf<Int?>(null)
 
     // 设置变化监听器列表
     private val listeners = mutableListOf<(SettingsData) -> Unit>()
@@ -199,6 +211,20 @@ object SettingsManager {
             emptySet()
         }
 
+        // 加载自定义分类(有序)与 项目→分类 映射
+        val categories: List<String> = try {
+            val type = object : TypeToken<List<String>>() {}.type
+            Gson().fromJson(preferences[PreferencesKeys.CATEGORIES] ?: "[]", type)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val projectCategory: Map<String, String> = try {
+            val type = object : TypeToken<Map<String, String>>() {}.type
+            Gson().fromJson(preferences[PreferencesKeys.PROJECT_CATEGORY] ?: "{}", type)
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
         // 加载智能排序开关
         val smartSortingEnabled = preferences[PreferencesKeys.SMART_SORTING_ENABLED] ?: true
 
@@ -220,6 +246,11 @@ object SettingsManager {
 
         // 【新增】加载十六进制颜色高亮开关
         val hexColorHighlightEnabled = preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] ?: true
+
+        // 加载构建次数赞助提示相关设置
+        val buildCount = preferences[PreferencesKeys.SPONSOR_BUILD_COUNT] ?: 0
+        val sponsorRound = preferences[PreferencesKeys.SPONSOR_ROUND] ?: 0
+        val skipNextSponsor = preferences[PreferencesKeys.SPONSOR_SKIP_NEXT] ?: false
 
         updateSettings(
             SettingsData(
@@ -246,11 +277,16 @@ object SettingsManager {
                 sortOrder = sortOrder,
                 pinnedProjects = pinnedProjects,
                 smartSortingEnabled = smartSortingEnabled,
+                categories = categories,
+                projectCategory = projectCategory,
                 toastPosition = toastPosition,
                 toastBorderEnabled = toastBorderEnabled,
                 editorWordWrap = editorWordWrap,
                 languageTag = languageTag,
-                hexColorHighlightEnabled = hexColorHighlightEnabled
+                hexColorHighlightEnabled = hexColorHighlightEnabled,
+                buildCount = buildCount,
+                sponsorRound = sponsorRound,
+                skipNextSponsor = skipNextSponsor
             )
         )
     }
@@ -291,6 +327,9 @@ object SettingsManager {
             val pinnedJson = Gson().toJson(currentSettings.pinnedProjects)
             preferences[PreferencesKeys.PINNED_PROJECTS] = pinnedJson
 
+            preferences[PreferencesKeys.CATEGORIES] = Gson().toJson(currentSettings.categories)
+            preferences[PreferencesKeys.PROJECT_CATEGORY] = Gson().toJson(currentSettings.projectCategory)
+
             preferences[PreferencesKeys.SMART_SORTING_ENABLED] = currentSettings.smartSortingEnabled
 
             preferences[PreferencesKeys.TOAST_POSITION] = currentSettings.toastPosition.name
@@ -304,6 +343,11 @@ object SettingsManager {
 
             // 【新增】保存十六进制颜色高亮开关
             preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] = currentSettings.hexColorHighlightEnabled
+
+            // 保存构建次数赞助提示相关设置
+            preferences[PreferencesKeys.SPONSOR_BUILD_COUNT] = currentSettings.buildCount
+            preferences[PreferencesKeys.SPONSOR_ROUND] = currentSettings.sponsorRound
+            preferences[PreferencesKeys.SPONSOR_SKIP_NEXT] = currentSettings.skipNextSponsor
         }
         notifyListeners()
     }
@@ -404,9 +448,16 @@ data class SettingsData(
     val sortOrder: SortOrder = SortOrder.NAME_ASC,
     val pinnedProjects: Set<String> = emptySet(),
     val smartSortingEnabled: Boolean = true,
+    /** 自定义分类（有序，不含内置"收藏/所有"）。 */
+    val categories: List<String> = emptyList(),
+    /** 项目 id→分类；取值"收藏"/自定义名，缺省视为"所有"。 */
+    val projectCategory: Map<String, String> = emptyMap(),
     val toastPosition: ToastPosition = ToastPosition.BOTTOM,
     val toastBorderEnabled: Boolean = false,
     val editorWordWrap: Boolean = false,
     val languageTag: String = "zh",
     val hexColorHighlightEnabled: Boolean = true,  // 【新增】十六进制颜色高亮开关
+    val buildCount: Int = 0,               // 全局累计构建次数
+    val sponsorRound: Int = 0,             // 当前待评估的赞助轮次指针 r（0 视为 1）
+    val skipNextSponsor: Boolean = false,  // 下一轮是否跳过（已赞助则跳过）
 )

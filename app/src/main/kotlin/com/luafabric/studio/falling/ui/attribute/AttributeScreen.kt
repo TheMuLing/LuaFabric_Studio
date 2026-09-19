@@ -3,6 +3,7 @@ package com.luafabric.studio.falling.ui.attribute
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Environment
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -180,6 +181,7 @@ fun AttributeScreen(
     var entryFile by remember { mutableStateOf("main.lua") }
     var showEntryPicker by remember { mutableStateOf(false) }
     var showIconPicker by remember { mutableStateOf(false) }
+    var showGalleryFilePicker by remember { mutableStateOf(false) }
     var iconRefreshTick by remember { mutableStateOf(0) }
 
     val allPermissions = remember { mutableStateListOf<PermissionItem>() }
@@ -324,27 +326,7 @@ fun AttributeScreen(
         }
     }
 
-    // 大图点击 → 系统相册（PhotoPicker）：选中即复制到项目根目录（保持原名+净化）
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri ->
-            val selected = uri ?: return@rememberLauncherForActivityResult
-            scope.launch {
-                val copiedName = withContext(Dispatchers.IO) {
-                    copyGalleryImageToProject(context, selected, projectPath)
-                }
-                if (copiedName != null) {
-                    iconPath = copiedName
-                    iconRefreshTick++ // 换缓存键刷新预览（亦触发重组重算 hasExistingIcon）
-                    persistSettings()
-                    toast.showToast(context.getString(R.string.attribute_icon_updated))
-                } else {
-                    toast.showToast(context.getString(R.string.attribute_icon_copy_failed))
-                }
-            }
-        }
-    )
-
+    // 已移除系统相册(PhotoPicker)：大图点击改走内置文件选择器，见下方 FilePickerDialog
     BackHandler {
         onBack()
     }
@@ -433,9 +415,7 @@ fun AttributeScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
                                 .clickable {
-                                    galleryLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
+                                    showGalleryFilePicker = true
                                 }
                                 .border(
                                     2.dp,
@@ -712,6 +692,33 @@ fun AttributeScreen(
         }
     }
 
+    // 大图点击 → 内置文件选择器，默认 /sdcard/DCIM，选中后复制到项目根目录（保持原名+净化）
+    if (showGalleryFilePicker) {
+        FilePickerDialog(
+            initialPath = File(Environment.getExternalStorageDirectory(), "DCIM").absolutePath,
+            selectionMode = SelectionMode.FILE,
+            title = stringResource(R.string.cd_project_icon),
+            allowedExtensions = listOf("jpg", "jpeg", "png", "webp", "gif", "bmp"),
+            onDismiss = { showGalleryFilePicker = false },
+            onFileSelected = { path ->
+                showGalleryFilePicker = false
+                scope.launch {
+                    val copiedName = withContext(Dispatchers.IO) {
+                        copyGalleryImageToProject(context, File(path), projectPath)
+                    }
+                    if (copiedName != null) {
+                        iconPath = copiedName
+                        iconRefreshTick++ // 换缓存键刷新预览（亦触发重组重算 hasExistingIcon）
+                        persistSettings()
+                        toast.showToast(context.getString(R.string.attribute_icon_updated))
+                    } else {
+                        toast.showToast(context.getString(R.string.attribute_icon_copy_failed))
+                    }
+                }
+            }
+        )
+    }
+
     if (showEntryPicker) {
         FilePickerDialog(
             initialPath = projectPath,
@@ -759,31 +766,24 @@ fun AttributeScreen(
     }
 }
 
-// 从相册 Uri 复制图片到项目根目录，保持原文件名与后缀（净化路径分隔符）；失败返回 null
+// 从本地文件复制图片到项目根目录，保持原文件名与后缀（净化路径分隔符）；失败返回 null
 private fun copyGalleryImageToProject(
     context: Context,
-    uri: Uri,
+    sourceFile: File,
     projectPath: String
 ): String? {
     return try {
-        val displayName = runCatching {
-            context.contentResolver
-                .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { c ->
-                    if (c.moveToFirst()) {
-                        c.getString(c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
-                    } else null
-                }
-        }.getOrNull()?.substringAfterLast('/')?.trim()
-            ?.takeIf { it.isNotBlank() && !it.contains("..") && !it.contains('\\') }
-        val safeName = displayName ?: "icon.png"
+        if (!sourceFile.exists() || !sourceFile.isFile) return null
+        val safeName = sourceFile.name
+            .takeIf { it.isNotBlank() && !it.contains("..") && !it.contains('\\') }
+            ?: "icon.png"
         val outputFile = File(projectPath, safeName)
-        context.contentResolver.openInputStream(uri)?.use { input ->
+        sourceFile.inputStream().use { input ->
             FileOutputStream(outputFile).use { output -> input.copyTo(output) }
-        } ?: return null
+        }
         safeName
     } catch (e: Exception) {
-        LogCatcher.e("AttributeScreen", "复制相册图标失败", e)
+        LogCatcher.e("AttributeScreen", "复制图标失败", e)
         null
     }
 }
