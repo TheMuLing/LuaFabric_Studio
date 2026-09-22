@@ -230,4 +230,5 @@ dependencies {
     api("com.android.tools:r8:8.2.42")
     api("io.github.kyant0:backdrop-android:2.0.0-alpha01")
 
+    testImplementation(libs.junit)
 }
