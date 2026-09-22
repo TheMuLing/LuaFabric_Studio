@@ -84,12 +84,8 @@ data class GlobalUtilItem(
 
 // 全局工具选项列表（使用资源 ID）
 val globalUtilsOptions = listOf(
-    GlobalUtilItem(R.string.global_util_bitmap, "doc/BitmapUtil.md"),
-    GlobalUtilItem(R.string.global_util_glide, "doc/GlideUtil.md"),
-    GlobalUtilItem(R.string.global_util_okhttp, "doc/OkHttpUtil.md"),
     GlobalUtilItem(R.string.global_util_ui, "doc/UiUtil.md"),
-    GlobalUtilItem(R.string.global_util_recycler, "doc/RecyclerAdapterUtil.md"),
-    GlobalUtilItem(R.string.global_util_theme, "doc/ThemeUtil.md")
+    GlobalUtilItem(R.string.global_util_recycler, "doc/RecyclerAdapterUtil.md")
 )
 
 data class TemplateItem(

@@ -15,6 +15,11 @@ import java.util.zip.ZipFile
 object ProjectUtil {
 
     /**
+     * 合法全局工具白名单（已删除/非法辅助库在读取时过滤并落盘）
+     */
+    private val VALID_GLOBAL_UTILS = setOf("UiUtil", "RecyclerAdapterUtil")
+
+    /**
      * 从目录加载项目
      */
     suspend fun loadProjectsFromDirectory(
@@ -553,9 +558,21 @@ object ProjectUtil {
                         val jsonMap = JsonUtil.parseObject(jsonString)
                         info["settings"] = jsonMap
 
-                        // 获取全局Utils信息
+                        // 获取全局Utils信息，过滤非法项（已删除的旧辅助库）并落盘
                         val globalUtils = (jsonMap["global_utils"] as? List<*>) ?: emptyList<Any>()
-                        info["global_utils"] = globalUtils
+                        val cleanedUtils =
+                            globalUtils.filterIsInstance<String>().filter { it in VALID_GLOBAL_UTILS }
+                        if (cleanedUtils.size != globalUtils.size) {
+                            try {
+                                val writeMap =
+                                    JsonUtil.parseObject(jsonString) as MutableMap<String, Any?>
+                                writeMap["global_utils"] = cleanedUtils
+                                settingsFile.writeText(JSONObject(writeMap).toString(4))
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                        info["global_utils"] = cleanedUtils
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }

@@ -495,12 +495,8 @@
     <string name="attribute_save_failed">Save failed: %s</string>
 
     <!-- Global util names -->
-    <string name="global_util_bitmap">BitmapUtil</string>
-    <string name="global_util_glide">GlideUtil</string>
-    <string name="global_util_okhttp">OkHttpUtil</string>
     <string name="global_util_ui">UiUtil</string>
     <string name="global_util_recycler">RecyclerAdapterUtil</string>
-    <string name="global_util_theme">ThemeUtil</string>
 
     <!-- SDK version descriptions -->
     <string name="sdk_21">API 21 (Lollipop, Android 5.0)</string>
