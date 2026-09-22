@@ -20,6 +20,58 @@ object ProjectUtil {
     private val VALID_GLOBAL_UTILS = setOf("UiUtil", "RecyclerAdapterUtil")
 
     /**
+     * 项目类型判定：存在 build.gradle.b85 → Compose 项目（无 settings.json）
+     */
+    fun isComposeProject(projectDir: File): Boolean =
+        File(projectDir, ComposeConfig.FILE_NAME).isFile
+
+    /**
+     * 统一读取项目配置：Compose 项目走 b85 解码，否则回退 settings.json。
+     * 返回 JSONMap 语义的 Map（b85 字段名与 gen_conf.py 一致：name/packageId/versionCode/...），
+     * 无效 b85 返回 null（调用方从而走兜底/重生语义）。
+     */
+    fun loadProjectConfig(projectDir: File): Map<String, Any?>? {
+        return if (isComposeProject(projectDir)) {
+            try {
+                val b85File = File(projectDir, ComposeConfig.FILE_NAME)
+                ComposeConfig.load(b85File.readText())
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            val settingsFile = File(projectDir, "settings.json")
+            if (settingsFile.isFile) {
+                try {
+                    JsonUtil.parseObject(settingsFile.readText())
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+        }
+    }
+
+    /** 主页图标路径（相对项目根）：Compose 项目读 b85 icon 字段（净化越界/绝对路径） */
+    fun projectIconPath(projectDir: File): String {
+        val raw = loadProjectConfigInfo(projectDir, "icon")
+            ?: loadProjectConfigInfo(projectDir, "iconPath")
+            ?: "icon.png"
+        return if (raw.isEmpty() || raw.startsWith("/") || raw.contains("..")) "icon.png" else raw
+    }
+
+    /** 配置文件里取单个字段（b85 或 settings.json），取不到返回 null */
+    private fun loadProjectConfigInfo(projectDir: File, key: String): String? {
+        val cfg = loadProjectConfig(projectDir) ?: return null
+        val v = when (key) {
+            "icon" -> cfg["icon"]
+            "iconPath" -> cfg["iconPath"]
+            else -> cfg[key]
+        }
+        return v as? String
+    }
+
+    /**
      * 从目录加载项目
      */
     suspend fun loadProjectsFromDirectory(
@@ -431,7 +483,6 @@ object ProjectUtil {
         template: String? = null
     ) {
         val settingsFile = File(projectDir, "settings.json")
-
         // 如果已经存在（从模板复制），则更新它
         if (settingsFile.exists()) {
             updateSettingsFile(
@@ -477,6 +528,40 @@ object ProjectUtil {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    /**
+     * Compose 项目：把创建表单参数编码为 build.gradle.b85（创建时 encode 落盘）。
+     * 结构/标志位与 gen_conf.py CONFIG 对齐（schema v1，header flags bit0 = debugmode）。
+     */
+    fun saveComposeConfigFile(
+        projectDir: File,
+        projectName: String,
+        packageName: String,
+        debugMode: Boolean
+    ) {
+        val config = linkedMapOf<String, Any?>(
+            "name" to projectName,
+            "packageId" to packageName,
+            "versionCode" to 1L,
+            "versionName" to "1.0.0",
+            "minSdk" to 29L,
+            "targetSdk" to 36L,
+            "uiMode" to "compose",
+            "entry" to "main.lua",
+            // 与 copyIconToProject 目标一致（项目根 icon.png）；无严格绝对/越界语义（创建时 encode 受表单约束）
+            "icon" to "icon.png",
+            "theme" to linkedMapOf(
+                "dark" to false,
+                "dynamic" to true,
+                "seed" to 0x3A6CC8L
+            ),
+            "deps" to listOf("coil", "material3"),
+            "global_utils" to emptyList<Any>()
+        )
+        val raw = ComposeConfig.pack(config, flags = if (debugMode) ComposeConfig.FLAG_DEBUG else 0)
+        val b85 = ComposeConfig.b85Encode(raw)
+        File(projectDir, ComposeConfig.FILE_NAME).writeText(b85 + "\n")
     }
 
     /**
@@ -575,6 +660,14 @@ object ProjectUtil {
                         info["global_utils"] = cleanedUtils
                     } catch (e: Exception) {
                         e.printStackTrace()
+                    }
+                } else if (isComposeProject(projectDir)) {
+                    // Compose 项目：配置在 build.gradle.b85。b85 项目不挂旧全局辅助库，
+                    // global_utils 恒为空数组（白名单对 b85 不适用——配置即生成物，无净化语义）
+                    val cfg = loadProjectConfig(projectDir)
+                    if (cfg != null) {
+                        info["settings"] = cfg
+                        info["global_utils"] = emptyList<String>()
                     }
                 }
 

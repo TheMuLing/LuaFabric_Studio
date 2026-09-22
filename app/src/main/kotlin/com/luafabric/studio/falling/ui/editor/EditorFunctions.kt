@@ -136,19 +136,45 @@ suspend fun buildProject(context: Context, projectPath: String): String =
         // 在构建前清理内存
         System.gc()
 
-        // 读取 settings.json 文件
-        val settingsFile = File(projectPath, "settings.json")
-        if (!settingsFile.exists()) {
-            return@withContext "error: ${context.getString(R.string.editor_build_settings_not_found)}"
-        }
-
-        // 使用JsonUtil解析settings.json
-        val settings = try {
-            val jsonString = settingsFile.readText()
-            JsonUtil.parseObject(jsonString)
-        } catch (e: Exception) {
-            LogCatcher.e("CodeEditScreen", "解析 settings.json 失败", e)
-            return@withContext "error: ${context.getString(R.string.editor_build_parse_settings_failed, e.message)}"
+        // 读取 settings.json 文件（Compose 项目无 settings.json → 从 build.gradle.b85 合成构建参数）
+        val projectDir = File(projectPath)
+        val settings: Map<String, Any?> = if (muling.views.tool.utils.ProjectUtil.isComposeProject(projectDir)) {
+            val cfg = muling.views.tool.utils.ProjectUtil.loadProjectConfig(projectDir)
+            if (cfg == null) {
+                return@withContext "error: ${context.getString(R.string.editor_build_settings_not_found)}"
+            }
+            // b85 字段 → 构建侧兼容 key（compose 项目无权限/maven 依赖，deps 是构建期元数据不参与此流程）
+            mapOf(
+                "package" to (cfg["packageId"] as? String ?: "com.example.myapp"),
+                "versionName" to (cfg["versionName"] as? String ?: "1.0.0"),
+                "versionCode" to (cfg["versionCode"]?.toString() ?: "1"),
+                "entryFile" to (cfg["entry"] as? String ?: "main.lua"),
+                "application" to mapOf(
+                    "label" to (cfg["name"] as? String ?: projectDir.name),
+                    "debugmode" to (muling.views.tool.utils.ComposeConfig.debugFlag(
+                        File(projectDir, muling.views.tool.utils.ComposeConfig.FILE_NAME).readBytes()
+                    ) ?: false)
+                ),
+                "user_permission" to emptyList<String>(),
+                "implementation" to emptyList<String>(),
+                "iconPath" to (cfg["icon"] as? String ?: "icon.png"),
+                "uses_sdk" to mapOf(
+                    "minSdkVersion" to (cfg["minSdk"]?.toString() ?: "29"),
+                    "targetSdkVersion" to (cfg["targetSdk"]?.toString() ?: "29")
+                )
+            )
+        } else {
+            val settingsFile = File(projectPath, "settings.json")
+            if (!settingsFile.exists()) {
+                return@withContext "error: ${context.getString(R.string.editor_build_settings_not_found)}"
+            }
+            try {
+                val jsonString = settingsFile.readText()
+                JsonUtil.parseObject(jsonString)
+            } catch (e: Exception) {
+                LogCatcher.e("CodeEditScreen", "解析 settings.json 失败", e)
+                return@withContext "error: ${context.getString(R.string.editor_build_parse_settings_failed, e.message)}"
+            }
         }
 
         // 提取构建所需参数

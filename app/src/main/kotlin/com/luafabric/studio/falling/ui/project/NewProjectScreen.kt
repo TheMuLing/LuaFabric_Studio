@@ -204,14 +204,24 @@ fun NewProjectScreen(
                     }
 
                     LogCatcher.i("NewProjectScreen", "保存设置文件")
-                    ProjectUtil.saveSettingsFile(
-                        projectDir = projectDir,
-                        projectName = projectName,
-                        packageName = packageName,
-                        debugMode = debugMode,
-                        globalUtils = selectedGlobalUtils.toList(),
-                        template = selectedTemplate?.zipFileName
-                    )
+                    // Compose 模板（壳，无 settings.json）→ 创建时 encode 落盘 build.gradle.b85
+                    if (selectedTemplate?.zipFileName == "Compose.zip") {
+                        ProjectUtil.saveComposeConfigFile(
+                            projectDir = projectDir,
+                            projectName = projectName,
+                            packageName = packageName,
+                            debugMode = debugMode
+                        )
+                    } else {
+                        ProjectUtil.saveSettingsFile(
+                            projectDir = projectDir,
+                            projectName = projectName,
+                            packageName = packageName,
+                            debugMode = debugMode,
+                            globalUtils = selectedGlobalUtils.toList(),
+                            template = selectedTemplate?.zipFileName
+                        )
+                    }
 
                     ProjectUtil.updateMainLuaFile(projectDir, projectName)
                 }

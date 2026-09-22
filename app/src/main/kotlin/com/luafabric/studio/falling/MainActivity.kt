@@ -1630,6 +1630,28 @@ fun ProjectCard(
                     } catch (e: Exception) {
                         LogCatcher.e("ProjectCard", "加载项目设置失败", e)
                     }
+                } else if (ProjectUtil.isComposeProject(projectDir)) {
+                    // Compose 项目：配置在 build.gradle.b85（创建时 encode），主页卡片读 b85 展示
+                    try {
+                        val cfg = ProjectUtil.loadProjectConfig(projectDir)
+                        val label = cfg?.get("name") as? String
+                        val packageName = cfg?.get("packageId") as? String
+                        val versionName = cfg?.get("versionName") as? String
+                        val b85Raw = File(projectDir, muling.views.tool.utils.ComposeConfig.FILE_NAME)
+                            .readBytes()
+                        val debugMode =
+                            muling.views.tool.utils.ComposeConfig.debugFlag(b85Raw)
+                        manifestInfo = ManifestInfo(
+                            label = label,
+                            packageName = packageName,
+                            versionName = versionName,
+                            debugMode = debugMode
+                        )
+                        template = null
+                        iconPathState = ProjectUtil.projectIconPath(projectDir)
+                    } catch (e: Exception) {
+                        LogCatcher.e("ProjectCard", "加载 Compose 项目配置失败", e)
+                    }
                 }
             }
         }

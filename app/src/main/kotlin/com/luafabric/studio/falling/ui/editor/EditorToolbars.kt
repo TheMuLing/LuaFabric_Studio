@@ -120,6 +120,11 @@ fun EditorTopBar(
                                 val entryFile = runCatching {
                                     if (settingsFile.exists()) {
                                         JsonUtil.parseObject(settingsFile.readText())["entryFile"] as? String
+                                    } else if (muling.views.tool.utils.ProjectUtil.isComposeProject(File(projectPath))) {
+                                        // Compose 项目：入口在 build.gradle.b85 的 entry 字段
+                                        muling.views.tool.utils.ProjectUtil.loadProjectConfig(
+                                            File(projectPath)
+                                        )?.get("entry") as? String
                                     } else null
                                 }.getOrNull() ?: "main.lua"
 
