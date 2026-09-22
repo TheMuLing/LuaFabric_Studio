@@ -1322,7 +1322,67 @@ public class LuaActivity extends AppCompatActivity
     mDebug = isDebug;
   }
 
+  // ---- Compose 配置（build.gradle.b85）预启动直读：RFC 1924 Base85 + header flags（与 gen_conf.py 同源） ----
+  private static final String B85_FILE_NAME = "build.gradle.b85";
+  private static final String B85_ALPHABET =
+      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~";
+  private static final int B85_SCHEMA_VER = 0x01;
+  private static final int B85_FLAG_DEBUG = 0x01;
+
+  /** 直读 debugmode：b85 解码 → magic/schema 校验 → flags bit0；无效返回 null */
+  private Boolean readB85DebugFlag(File b85File) {
+    try {
+      String text = com.androlua.util.FileUtil.read(b85File.getAbsolutePath()).trim();
+      byte[] raw = b85Decode(text);
+      if (raw.length < 4 || raw[0] != 'L' || raw[1] != 'C' || (raw[2] & 0xFF) != B85_SCHEMA_VER) {
+        return null;
+      }
+      return (raw[3] & B85_FLAG_DEBUG) != 0;
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  /** RFC 1924 Base85 解码（Python base64.b85decode 语义：末尾 ~ 补齐截尾） */
+  private byte[] b85Decode(String text) {
+    if (text.isEmpty()) return new byte[0];
+    int rem = text.length() % 5;
+    int padding = rem == 0 ? 0 : 5 - rem;
+    StringBuilder padded = new StringBuilder(text);
+    for (int i = 0; i < padding; i++) padded.append('~');
+    ByteArrayOutputStream out = new ByteArrayOutputStream((padded.length() / 5) * 4);
+    for (int i = 0; i < padded.length(); i += 5) {
+      long acc = 0;
+      for (int j = 0; j < 5; j++) {
+        int idx = B85_ALPHABET.indexOf(padded.charAt(i + j));
+        if (idx < 0) throw new IllegalArgumentException("bad base85 char");
+        acc = acc * 85 + idx;
+      }
+      if (acc >= (1L << 32)) throw new IllegalArgumentException("base85 overflow");
+      out.write((int) ((acc >> 24) & 0xFF));
+      out.write((int) ((acc >> 16) & 0xFF));
+      out.write((int) ((acc >> 8) & 0xFF));
+      out.write((int) (acc & 0xFF));
+    }
+    byte[] bytes = out.toByteArray();
+    if (padding != 0) {
+      byte[] trimmed = new byte[bytes.length - padding];
+      System.arraycopy(bytes, 0, trimmed, 0, trimmed.length);
+      return trimmed;
+    }
+    return bytes;
+  }
+
   private void initENV() throws LuaException {
+    // Compose 项目（build.gradle.b85，无 settings.json）：debugmode 预启动直读 b85 header flags bit0
+    File b85File = new File(luaDir + "/" + B85_FILE_NAME);
+    if (b85File.exists()) {
+      Boolean debug = readB85DebugFlag(b85File);
+      // 无效 b85（magic/schema 不过）→ 与打包产物同待遇：显式关闭调试
+      mDebug = debug != null && debug.booleanValue();
+      return;
+    }
+
     if (!new File(luaDir + "/settings.json").exists()) {
       // 打包产物不再携带 settings.json：显式关闭调试，避免 mDebug 默认 true 误开控制台/调试链路。
       mDebug = false;

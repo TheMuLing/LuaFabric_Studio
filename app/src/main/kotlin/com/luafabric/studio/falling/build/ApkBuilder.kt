@@ -1332,9 +1332,12 @@ class ApkBuilder {
                     throw IOException("项目目录不存在: $projectPath")
                 }
 
-                // 打包产物丢弃 settings.json：产物运行时不依赖它（LuaActivity.initENV 缺失即容错），
-                // 且避免把项目包名/权限/调试开关/global_utils 等元数据打进成品。
-                copyDirectory(projectDir, assetsDir) { name -> name == "settings.json" }
+                // 打包产物丢弃 settings.json 与 build.gradle.b85：产物运行时不依赖它们
+                // （LuaActivity.initENV 缺失即容错），且避免把项目包名/权限/调试开关/global_utils/版本
+                // 等元数据打进成品；compose 项目打包后调试开关随之消失（与旧项目行为一致）。
+                copyDirectory(projectDir, assetsDir) { name ->
+                    name == "settings.json" || name == muling.views.tool.utils.ComposeConfig.FILE_NAME
+                }
 
                 // 引导文件：记录产物启动入口（相对项目根，运行时 SplashWelcome 读取替代写死的 main.lua）
                 // 兜底防御：越界/绝对路径一律回落 main.lua，保证产物永不读取项目外文件

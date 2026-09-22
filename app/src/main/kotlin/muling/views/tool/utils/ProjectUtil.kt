@@ -565,6 +565,20 @@ object ProjectUtil {
     }
 
     /**
+     * Compose 项目：局部更新 b85 配置并落盘（属性页保存用）。
+     * 保留文件中其余字段（theme/deps 等），仅覆盖 [updates]；debugmode 写回 header flags bit0。
+     * 文件无效/不存在时以默认空档重建，避免属性页保存把脏 b85 覆盖成残缺配置。
+     */
+    fun updateComposeConfigFile(projectDir: File, updates: Map<String, Any?>, debugMode: Boolean) {
+        val existing = loadProjectConfig(projectDir) ?: linkedMapOf()
+        val config = linkedMapOf<String, Any?>()
+        config.putAll(existing)
+        config.putAll(updates)
+        val raw = ComposeConfig.pack(config, flags = if (debugMode) ComposeConfig.FLAG_DEBUG else 0)
+        File(projectDir, ComposeConfig.FILE_NAME).writeText(ComposeConfig.b85Encode(raw) + "\n")
+    }
+
+    /**
      * 创建默认的 main.lua 文件（备用）
      */
     fun createDefaultMainLuaFile(

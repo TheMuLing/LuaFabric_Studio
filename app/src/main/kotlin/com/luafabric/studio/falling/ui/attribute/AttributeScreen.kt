@@ -47,9 +47,11 @@ import com.luafabric.studio.falling.ui.components.SwitchBar
 import com.luafabric.studio.falling.ui.project.CompactUtilCard
 import com.luafabric.studio.falling.ui.project.GlobalUtilItem
 import com.luafabric.studio.falling.ui.project.globalUtilsOptions
+import muling.views.tool.utils.ComposeConfig
 import muling.views.tool.utils.JsonUtil
 import muling.views.tool.utils.LogCatcher
 import muling.views.tool.utils.NonBlockingToastState
+import muling.views.tool.utils.ProjectUtil
 import muling.views.tool.utils.TransitionUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -171,6 +173,9 @@ fun AttributeScreen(
     var isLoading by remember { mutableStateOf(true) }
     var isSaving by remember { mutableStateOf(false) }
 
+    // Compose 项目（build.gradle.b85）无 settings.json：权限/全局工具卡片隐藏，仅 b85 可表达字段可编辑
+    val isCompose = ProjectUtil.isComposeProject(File(projectPath))
+
     var label by remember { mutableStateOf("") }
     var packageName by remember { mutableStateOf("") }
     var versionName by remember { mutableStateOf("") }
@@ -251,6 +256,24 @@ fun AttributeScreen(
                 } catch (e: Exception) {
                     LogCatcher.e("AttributeScreen", "加载 settings.json 失败", e)
                 }
+            } else if (ProjectUtil.isComposeProject(File(projectPath))) {
+                // Compose 项目：配置在 build.gradle.b85（无 settings.json），仅读写 b85 可表达字段
+                val cfg = ProjectUtil.loadProjectConfig(File(projectPath))
+                if (cfg != null) {
+                    label = cfg["name"] as? String ?: File(projectPath).name
+                    packageName = cfg["packageId"] as? String ?: ""
+                    versionName = cfg["versionName"] as? String ?: "1.0"
+                    versionCode = cfg["versionCode"]?.toString() ?: "1"
+                    val rawEntry = cfg["entry"] as? String ?: "main.lua"
+                    entryFile =
+                        if (!rawEntry.startsWith("/") && !rawEntry.contains("..")) rawEntry else "main.lua"
+                    iconPath = ProjectUtil.projectIconPath(File(projectPath))
+                    minSdkVersion = (cfg["minSdk"] as? Number)?.toInt() ?: 29
+                    targetSdkVersion = (cfg["targetSdk"] as? Number)?.toInt() ?: 29
+                    debugMode = ComposeConfig.debugFlag(
+                        File(projectPath, ComposeConfig.FILE_NAME).readBytes()
+                    ) ?: false
+                }
             }
         }.also { isLoading = false }
 
@@ -267,6 +290,24 @@ fun AttributeScreen(
     // 仅落盘，无 UI 行为；供 FAB 保存与相册图标即时同步共用
     suspend fun persistSettings() {
         withContext(Dispatchers.IO) {
+            if (ProjectUtil.isComposeProject(File(projectPath))) {
+                // Compose 项目：写回 b85（可表达字段）；版本号转 Long 供编码器（int32 兼容），无效回落 1
+                ProjectUtil.updateComposeConfigFile(
+                    File(projectPath),
+                    linkedMapOf(
+                        "name" to label,
+                        "packageId" to packageName,
+                        "versionName" to versionName,
+                        "versionCode" to (versionCode.toLongOrNull() ?: 1L),
+                        "minSdk" to minSdkVersion.toLong(),
+                        "targetSdk" to targetSdkVersion.toLong(),
+                        "entry" to entryFile,
+                        "icon" to iconPath
+                    ),
+                    debugMode
+                )
+                return@withContext
+            }
             val settingsFile = File(projectPath, "settings.json")
             val jsonMap: MutableMap<String, Any?> = if (settingsFile.exists()) {
                 val parsed = JsonUtil.parseObject(settingsFile.readText())
@@ -609,7 +650,8 @@ fun AttributeScreen(
                     )
                 }
 
-                // 权限卡片
+                // 权限卡片（Compose 项目无 user_permission 字段 → 隐藏，避免勾选被静默丢弃）
+                if (!isCompose) {
                 SettingsCard(title = stringResource(R.string.attribute_permission_title), icon = Icons.Filled.Lock) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -642,8 +684,10 @@ fun AttributeScreen(
                         }
                     }
                 }
+                }
 
-                // 全局工具卡片
+                // 全局工具卡片（Compose 项目 global_utils 恒空 → 隐藏）
+                if (!isCompose) {
                 SettingsCard(title = stringResource(R.string.attribute_global_utils_title), icon = Icons.Filled.Edit) {
                     Text(
                         text = stringResource(R.string.attribute_global_utils_hint),
@@ -672,6 +716,7 @@ fun AttributeScreen(
                             )
                         }
                     }
+                }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
