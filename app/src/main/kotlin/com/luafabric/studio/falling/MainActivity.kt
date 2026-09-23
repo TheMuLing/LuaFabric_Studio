@@ -1647,7 +1647,8 @@ fun ProjectCard(
                             versionName = versionName,
                             debugMode = debugMode
                         )
-                        template = null
+                        // Compose 模板徽标：b85 无 template 字段（格式与 gen_conf.py 定稿对齐），主页展示固定模板名
+                        template = "Compose.zip"
                         iconPathState = ProjectUtil.projectIconPath(projectDir)
                     } catch (e: Exception) {
                         LogCatcher.e("ProjectCard", "加载 Compose 项目配置失败", e)

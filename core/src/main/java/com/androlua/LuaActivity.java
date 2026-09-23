@@ -100,6 +100,8 @@ public class LuaActivity extends AppCompatActivity
   private LinearLayout layout;
   private boolean isSetViewed;
   private long lastShow;
+  // Compose 运行时宿主（ui.*，所有项目常驻注册；打包产物无 b85，只能无条件注册）
+  private muling.views.tool.ui.ComposeUiHost composeHost;
   private Menu optionsMenu;
   private LuaObject mOnKeyDown;
   private LuaObject mOnKeyUp;
@@ -247,6 +249,10 @@ public class LuaActivity extends AppCompatActivity
       mLuaDexLoader = new LuaDexLoader(this);
       mLuaDexLoader.loadLibs();
       sLuaActivityMap.put(pageName, this);
+      if (composeHost != null) {
+        // Compose 主块执行前复位 state 序号（同调用点重跑复用同一代理，写即重组不丢值）
+        composeHost.beginRun();
+      }
       doFile(luaPath, arg);
       isCreate = true;
       if (!pageName.equals("main")) runFunc("main", arg);
@@ -1171,6 +1177,11 @@ public class LuaActivity extends AppCompatActivity
     setContentView(layout, null);
   }
 
+  /** Compose 宿主：标记内容视图已被宿主接管，跳过 onCreate 尾部默认 status/list 布局兜底 */
+  public void markComposeViewSet() {
+    isSetViewed = true;
+  }
+
   public void setContentView(String layout, LuaObject env) throws LuaException {
     LuaObject loadlayout = L.getLuaObject("loadlayout");
     View view = (View) loadlayout.call(layout, env);
@@ -1374,12 +1385,26 @@ public class LuaActivity extends AppCompatActivity
   }
 
   private void initENV() throws LuaException {
+    // ui.* 宿主：无条件注册。IDE 运行靠 b85 识别 compose，但打包产物按打包策略丢弃 b85，
+    // 无法在运行时区分 → 只能常驻注册；非 compose 项目从不调用 ui.*，行为零影响。
+    try {
+      composeHost = new muling.views.tool.ui.ComposeUiHost(this, L, luaPath, luaDir);
+      composeHost.register();
+    } catch (Exception e) {
+      Log.e("LuaActivity", "compose ui host register failed", e);
+      composeHost = null;
+    }
+
     // Compose 项目（build.gradle.b85，无 settings.json）：debugmode 预启动直读 b85 header flags bit0
     File b85File = new File(luaDir + "/" + B85_FILE_NAME);
     if (b85File.exists()) {
       Boolean debug = readB85DebugFlag(b85File);
       // 无效 b85（magic/schema 不过）→ 与打包产物同待遇：显式关闭调试
       mDebug = debug != null && debug.booleanValue();
+      if (composeHost != null) {
+        String name = composeHost.getProjectName();
+        if (name != null && !name.isEmpty()) setTitle(name);
+      }
       return;
     }
 

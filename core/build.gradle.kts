@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -49,6 +50,7 @@ android {
 
     buildFeatures {
         buildConfig = true
+        compose = true
     }
 
     packaging {
@@ -106,6 +108,11 @@ dependencies {
     api(libs.viewpager2)
     api(libs.cardview)
     api(libs.browser)
+
+    // Compose（ui 宿主：compose 运行时项目渲染）
+    api(libs.compose.ui)
+    api(libs.compose.foundation)
+    api(libs.compose.material3)
 
     // Networking & Parsing
     api(libs.gson)
