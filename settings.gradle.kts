@@ -25,7 +25,10 @@ rootProject.name = "LuaFabric Studio"
 include(
     ":editor",
     ":app",
-    ":core",
-    ":core-apk",
-    ":signer"
+    ":signer",
+    ":share",
+    ":view",
+    ":view-apk",
+    ":compose",
+    ":compose-apk"
 )

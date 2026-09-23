@@ -320,7 +320,8 @@ val mavenDependencies = try {
                 minSdkVersion,               // minSdkVersion
                 targetSdkVersion,             // targetSdkVersion
                 mavenDependencies,
-                entryFile
+                entryFile,
+                isCompose = muling.views.tool.utils.ProjectUtil.isComposeProject(File(projectPath))
             )
 
             // 构建后再次检查内存

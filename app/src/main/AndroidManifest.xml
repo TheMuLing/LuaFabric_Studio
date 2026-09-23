@@ -193,6 +193,13 @@
             android:configChanges="keyboardHidden|orientation|screenSize|uiMode"
             android:windowSoftInputMode="adjustResize|stateHidden" />
 
+        <!-- Compose 打包宿主（IDE 调试运行 / compose 项目 dev 宿主）。运行按钮按 isComposeProject 分流至此。 -->
+        <activity
+            android:name="com.luafabric.compose.LuaActivity"
+            android:exported="true"
+            android:configChanges="keyboardHidden|orientation|screenSize|uiMode"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+
         <activity
             android:name="com.androlua.LuaActivityX"
             android:exported="true"

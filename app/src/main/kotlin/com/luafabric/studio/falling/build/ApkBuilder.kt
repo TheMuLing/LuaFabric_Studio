@@ -90,7 +90,8 @@ class ApkBuilder {
             minSdkVersion: Int,
             targetSdkVersion: Int,
             mavenDependencies: List<String> = emptyList(),
-            entryFile: String = "main.lua"
+            entryFile: String = "main.lua",
+            isCompose: Boolean = false
         ): String {
             LogCatcher.i("ApkBuilder", "开始构建APK")
             LogCatcher.i("ApkBuilder", "项目路径: $projectPath")
@@ -113,8 +114,8 @@ class ApkBuilder {
                 val outputDir = outputFile.parentFile
                 outputDir?.takeIf { !it.exists() }?.mkdirs()
 
-                // 2. 获取核心APK路径（从assets复制到缓存）
-                val coreApkPath = extractCoreApkToCache(context)
+                // 2. 获取核心APK路径（从assets复制到缓存，compose 项目用精简基底）
+                val coreApkPath = extractCoreApkToCache(context, isCompose)
                 if (coreApkPath == null) {
                     return "error: 无法提取核心APK文件"
                 }
@@ -419,8 +420,8 @@ class ApkBuilder {
             }
         }
 
-        // 从assets提取核心APK到缓存
-        private fun extractCoreApkToCache(context: Context): String? {
+        // 从assets提取核心APK到缓存（isCompose=true 用 compose-core.apk 精简基底，否则用 core.apk 传统基底）
+        private fun extractCoreApkToCache(context: Context, isCompose: Boolean = false): String? {
             try {
                 // 创建缓存目录
                 val cacheDir = File(context.cacheDir, "apk_build")
@@ -428,8 +429,9 @@ class ApkBuilder {
                     cacheDir.mkdirs()
                 }
 
-                // 目标文件路径
-                val coreApkFile = File(cacheDir, "core.apk")
+                // 目标文件路径（双基底各自独立缓存，避免互相覆盖）
+                val assetName = if (isCompose) "compose-core.apk" else "core.apk"
+                val coreApkFile = File(cacheDir, assetName)
 
                 // 如果文件已存在且较新，直接使用（复用前必须校验完整性，防止被打断的半写文件污染后续构建）
                 if (coreApkFile.exists()) {
@@ -441,10 +443,10 @@ class ApkBuilder {
                     }
                 }
 
-                // 原子写入：先写临时文件，完整写完后重命名覆盖，避免返回键打断构建留下截断的 core.apk
-                val tempCoreFile = File(cacheDir, "core.apk.tmp")
+                // 原子写入：先写临时文件，完整写完后重命名覆盖，避免返回键打断构建留下截断的 apk
+                val tempCoreFile = File(cacheDir, "$assetName.tmp")
                 val assetManager = context.assets
-                assetManager.open("core.apk").use { input ->
+                assetManager.open(assetName).use { input ->
                     FileOutputStream(tempCoreFile).use { output ->
                         val buffer = ByteArray(8192)
                         var length: Int

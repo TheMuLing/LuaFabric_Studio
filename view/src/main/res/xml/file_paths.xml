@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 外部存储根目录 -->
+    <external-path
+        name="external_storage_root"
+        path="." />
+
+    <!-- 外部存储特定目录 -->
+    <external-path
+        name="external_downloads"
+        path="Download/" />
+    <external-path
+        name="external_dcim"
+        path="DCIM/" />
+    <external-path
+        name="external_pictures"
+        path="Pictures/" />
+    <external-path
+        name="external_movies"
+        path="Movies/" />
+    <external-path
+        name="external_music"
+        path="Music/" />
+    <external-path
+        name="external_documents"
+        path="Documents/" />
+
+    <!-- 应用的外部文件目录 -->
+    <external-files-path
+        name="external_app_files_root"
+        path="." />
+    <external-files-path
+        name="external_app_files_download"
+        path="Download/" />
+    <external-files-path
+        name="external_app_files_images"
+        path="Images/" />
+    <external-files-path
+        name="external_app_files_audio"
+        path="Audio/" />
+    <external-files-path
+        name="external_app_files_video"
+        path="Video/" />
+    <external-files-path
+        name="external_app_files_documents"
+        path="Documents/" />
+
+    <!-- 应用的外部缓存目录 -->
+    <external-cache-path
+        name="external_app_cache_root"
+        path="." />
+    <external-cache-path
+        name="external_app_cache_images"
+        path="Images/" />
+    <external-cache-path
+        name="external_app_cache_temp"
+        path="Temp/" />
+
+    <!-- 应用的内部文件目录 -->
+    <files-path
+        name="internal_app_files_root"
+        path="." />
+    <files-path
+        name="internal_app_files_config"
+        path="config/" />
+    <files-path
+        name="internal_app_files_databases"
+        path="databases/" />
+    <files-path
+        name="internal_app_files_shared_prefs"
+        path="shared_prefs/" />
+
+    <!-- 应用的内部缓存目录 -->
+    <cache-path
+        name="internal_app_cache_root"
+        path="." />
+    <cache-path
+        name="internal_app_cache_thumbs"
+        path="thumbnails/" />
+    <cache-path
+        name="internal_app_cache_temp"
+        path="temp/" />
+
+    <!-- Android 10+ 媒体文件专用目录（作用域存储） -->
+    <external-media-path
+        name="external_media"
+        path="." />
+
+    <!-- 应用特定的媒体目录（Android 10+ 推荐） -->
+    <external-files-path
+        name="external_app_media"
+        path="Media/" />
+
+    <!-- 应用的数据目录（通常用于存放私有数据） -->
+    <files-path
+        name="app_data"
+        path="data/" />
+
+    <!-- 用于共享应用内部生成的PDF、文档等 -->
+    <files-path
+        name="internal_app_exports"
+        path="exports/" />
+
+    <!-- 用于共享日志文件 -->
+    <external-files-path
+        name="external_app_logs"
+        path="Logs/" />
+
+    <!-- 用于共享备份文件 -->
+    <external-files-path
+        name="external_app_backups"
+        path="Backups/" />
+</paths>

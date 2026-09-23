@@ -1,0 +1,4 @@
+<resources>
+    <attr name="windowBackgroundColor" format="color" />
+    
+</resources>

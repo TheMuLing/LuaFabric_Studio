@@ -15,8 +15,8 @@ android {
         applicationId = "com.luafabric.studio.falling"
         minSdk = 29
         targetSdk = 36
-        versionCode = 260901901
-        versionName = "26.09.19-gamma"
+        versionCode = 260902301
+        versionName = "26.09.23-alpha"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -156,15 +156,25 @@ fun getCurrentYear(): String = LocalDate.now().year.toString()
 
 // 复制 core.apk 到 assets
 tasks.register<Copy>("copyCoreApkToAssets") {
-    dependsOn(":core-apk:assembleRelease")
+    dependsOn(":view-apk:assembleRelease")
 
-    from(project(":core-apk").layout.buildDirectory.file("outputs/apk/release/core-apk-release.apk"))
+    from(project(":view-apk").layout.buildDirectory.file("outputs/apk/release/view-apk-release.apk"))
     into(layout.projectDirectory.dir("src/main/assets"))
     rename { "core.apk" }
 }
 
+// 复制 compose-core.apk 到 assets
+tasks.register<Copy>("copyComposeApkToAssets") {
+    dependsOn(":compose-apk:assembleRelease")
+
+    from(project(":compose-apk").layout.buildDirectory.file("outputs/apk/release/compose-apk-release.apk"))
+    into(layout.projectDirectory.dir("src/main/assets"))
+    rename { "compose-core.apk" }
+}
+
 tasks.named("preBuild") {
     dependsOn("copyCoreApkToAssets")
+    dependsOn("copyComposeApkToAssets")
 }
 
 dependencies {
@@ -172,7 +182,8 @@ dependencies {
 
     // Module Dependencies
     api(project(":editor"))
-    api(project(":core"))
+    api(project(":view"))
+    api(project(":compose"))
     api(project(":signer"))
 
     // Compose Core

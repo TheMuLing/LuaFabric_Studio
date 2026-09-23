@@ -1,0 +1,1 @@
+# share 模块：纯净交集运行时，无 proguard 规则

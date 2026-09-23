@@ -136,7 +136,14 @@ fun EditorTopBar(
                                 }
 
                                 try {
-                                    val intent = Intent(context, com.androlua.LuaActivity::class.java)
+                                    val hostCls = if (muling.views.tool.utils.ProjectUtil.isComposeProject(
+                                            File(projectPath))) {
+                                        // Compose 项目：compose 宿主（无传统 view API，ui.* 数据树渲染）
+                                        com.luafabric.compose.LuaActivity::class.java
+                                    } else {
+                                        com.androlua.LuaActivity::class.java
+                                    }
+                                    val intent = Intent(context, hostCls)
                                     intent.data = Uri.fromFile(entryLuaFile)
                                     context.startActivity(intent)
 
@@ -189,7 +196,13 @@ fun EditorTopBar(
                             }
 
                             try {
-                                val intent = Intent(context, com.androlua.LuaActivity::class.java)
+                                val hostCls = if (muling.views.tool.utils.ProjectUtil.isComposeProject(
+                                        File(projectPath))) {
+                                    com.luafabric.compose.LuaActivity::class.java
+                                } else {
+                                    com.androlua.LuaActivity::class.java
+                                }
+                                val intent = Intent(context, hostCls)
                                 intent.data = Uri.fromFile(currentFile)
                                 context.startActivity(intent)
 
