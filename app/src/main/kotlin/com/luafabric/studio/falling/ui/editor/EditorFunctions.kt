@@ -153,7 +153,8 @@ suspend fun buildProject(context: Context, projectPath: String): String =
                     "label" to (cfg["name"] as? String ?: projectDir.name),
                     "debugmode" to (muling.views.tool.utils.ComposeConfig.debugFlag(
                         File(projectDir, muling.views.tool.utils.ComposeConfig.FILE_NAME).readBytes()
-                    ) ?: false)
+                    ) ?: false),
+                    "encrypt" to ((cfg["encrypt"] as? Boolean) ?: true)
                 ),
                 "user_permission" to emptyList<String>(),
                 "implementation" to emptyList<String>(),
@@ -197,6 +198,14 @@ suspend fun buildProject(context: Context, projectPath: String): String =
             (application?.get("debugmode") as? Boolean) ?: false
         } catch (e: Exception) {
             false
+        }
+
+        // 获取加密项目开关（默认开启）
+        val encryptProject = try {
+            val application = settings["application"] as? Map<String, Any?>
+            (application?.get("encrypt") as? Boolean) ?: true
+        } catch (e: Exception) {
+            true
         }
 
         // 获取权限列表
@@ -316,6 +325,7 @@ val mavenDependencies = try {
                 iconPath,                    // iconPath
                 permissions,                 // permissions
                 isDebug,                     // isDebug
+                encryptProject,              // encryptProject
                 externalApkPath,             // outputPath
                 minSdkVersion,               // minSdkVersion
                 targetSdkVersion,             // targetSdkVersion

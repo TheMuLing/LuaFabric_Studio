@@ -475,7 +475,17 @@
     <string name="analyse_more_items">+%d</string>
     <string name="editor_run_failed">运行失败</string>
 
+    <!-- 开源地址（关于页） -->
+    <string name="open_source_title">开源地址</string>
+    <string name="open_source_owner">TheMuLing/LuaFabric_Studio</string>
+
+    <!-- 编辑器设置：三方控件支持 -->
+    <string name="settings_third_party_widget_support">三方控件支持</string>
+    <string name="settings_third_party_widget_desc">分析 根目录/libs/*.dex 内控件，使布局助手支持预览携带三方控件的布局文件</string>
+
     <!-- 属性页面 -->
+    <string name="attribute_build_options">构建选项</string>
+    <string name="attribute_encrypt_build">让 %1$s 加密项目</string>
     <string name="attribute_icon_change_hint">点击更换项目图标</string>
     <string name="attribute_app_name">应用名称</string>
     <string name="attribute_package_name">包名</string>

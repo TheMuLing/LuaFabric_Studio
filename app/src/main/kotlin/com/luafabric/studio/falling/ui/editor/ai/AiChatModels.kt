@@ -313,6 +313,18 @@ data class AiConfig(
         memories = memories.orDefault(emptyList())
     )
 
+    /**
+     * 修复 release 环境 Gson + R8 泛型签名丢失导致的 LinkedTreeMap 类型错位崩溃：
+     * JsonReader 在 List<ApiProvider> 反序列化时若字段用 `as` 强转失败直接抛 CCE，
+     * 这里逐一清洗非 ApiProvider 元素。
+     */
+    fun sanitize(): AiConfig = normalized().copy(
+        providers = providers.filterIsInstance<ApiProvider>(),
+        customModels = customModels.filterIsInstance<CustomModel>(),
+        skills = skills.filterIsInstance<SkillConfig>(),
+        memories = memories.filterIsInstance<MemoryItem>()
+    )
+
     companion object {
         val DEFAULT_KEY = ""
         val DEFAULT_OPENAI_MODEL = "gpt-4o-mini"

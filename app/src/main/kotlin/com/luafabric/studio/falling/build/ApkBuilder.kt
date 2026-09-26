@@ -86,6 +86,7 @@ class ApkBuilder {
             iconPath: String?,
             permissions: Array<String>?,
             isDebug: Boolean,
+            encryptEnabled: Boolean = true,
             outputPath: String,
             minSdkVersion: Int,
             targetSdkVersion: Int,
@@ -163,7 +164,8 @@ class ApkBuilder {
                     projectPath,
                     unsignedApkPath,
                     mavenJars,
-                    entryFile
+                    entryFile,
+                    encryptEnabled
                 )
 
                 if (unsignedApkPath == null) {
@@ -744,7 +746,8 @@ class ApkBuilder {
             projectPath: String,
             outputPath: String,
             mavenJars: List<File> = emptyList(),
-            entryFile: String = "main.lua"
+            entryFile: String = "main.lua",
+            encryptFiles: Boolean = true
         ): String? {
             val L = getSharedLuaState()
 
@@ -768,8 +771,12 @@ class ApkBuilder {
                 // 4. 清理未引用的库文件
                 cleanUnusedLibraries(workDir, referencedModules, projectPath)
 
-                // 5. 加密core.apk中引用的库文件
-                encryptCoreLibraries(L, workDir, referencedModules)
+                // 5. 加密core.apk中引用的库文件（构建选项关闭时跳过）
+                if (encryptFiles) {
+                    encryptCoreLibraries(L, workDir, referencedModules)
+                } else {
+                    LogCatcher.i("ApkBuilder", "构建选项已关闭项目加密，跳过库文件加密")
+                }
 
                 // 6. 创建assets目录
                 val assetsDir = File(workDir, "assets")
@@ -780,8 +787,12 @@ class ApkBuilder {
                 // 7. 复制项目文件到assets
                 copyProjectToAssets(projectPath, assetsDir.absolutePath, entryFile)
 
-                // 8. 加密项目文件
-                encryptProjectFiles(L, assetsDir)
+                // 8. 加密项目文件（构建选项关闭时跳过）
+                if (encryptFiles) {
+                    encryptProjectFiles(L, assetsDir)
+                } else {
+                    LogCatcher.i("ApkBuilder", "构建选项已关闭项目加密，跳过项目文件加密")
+                }
 
                 // ------------------ Java 编译与 DEX 生成 ------------------
                 val androidJarPath = extractAndroidJarToCache(context)

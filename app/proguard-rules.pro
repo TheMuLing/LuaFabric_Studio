@@ -87,6 +87,20 @@
 # 保留 Gson 相关类
 -keep class com.google.gson.** { *; }
 
+# 保留 AI 设置 Gson 序列化模型（防 R8 剥离字段/泛型签名导致
+# List<ApiProvider> 反序列化为 LinkedTreeMap 而强转崩溃）
+-keep class com.luafabric.studio.falling.ui.editor.ai.AiConfig { *; }
+-keep class com.luafabric.studio.falling.ui.editor.ai.ApiProvider { *; }
+-keep class com.luafabric.studio.falling.ui.editor.ai.CustomModel { *; }
+-keep class com.luafabric.studio.falling.ui.editor.ai.SkillConfig { *; }
+-keep class com.luafabric.studio.falling.ui.editor.ai.MemoryItem { *; }
+-keep class com.luafabric.studio.falling.ui.editor.ai.ApiProtocol { *; }
+# 聊天记录、会话等 Gson 模型
+-keep class com.luafabric.studio.falling.ui.editor.ai.ChatMessage { *; }
+-keep class com.luafabric.studio.falling.ui.editor.ai.ConversationData { *; }
+-keep class com.luafabric.studio.falling.ui.editor.ai.CodeReference { *; }
+-keep class com.luafabric.studio.falling.ui.editor.ai.ToolCallInfo { *; }
+
 # OkHttp 3
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }

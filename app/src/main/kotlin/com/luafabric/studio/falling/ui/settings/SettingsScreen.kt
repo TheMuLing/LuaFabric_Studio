@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Code
+import com.luafabric.studio.falling.ui.icons.MicroscopeIcon
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DataArray
@@ -759,6 +760,38 @@ fun SettingsScreen(
                         },
                         onClick = {
                             updateSettingsWithSave(currentSettingsState.copy(indentGuideEnabled = !currentSettingsState.indentGuideEnabled))
+                        }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                    )
+
+                    SettingsListItem(
+                        title = stringResource(R.string.settings_third_party_widget_support),
+                        subtitle = stringResource(R.string.settings_third_party_widget_desc),
+                        compact = true,
+                        leadingIcon = {
+                            Icon(
+                                MicroscopeIcon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = currentSettingsState.thirdPartyWidgetSupport,
+                                onCheckedChange = {
+                                    updateSettingsWithSave(
+                                        currentSettingsState.copy(thirdPartyWidgetSupport = it)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = {
+                            updateSettingsWithSave(currentSettingsState.copy(thirdPartyWidgetSupport = !currentSettingsState.thirdPartyWidgetSupport))
                         }
                     )
 

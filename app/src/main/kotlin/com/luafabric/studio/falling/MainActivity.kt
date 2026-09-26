@@ -60,6 +60,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -747,9 +748,16 @@ fun MainScreen(
             ModalDrawerSheet(
                 modifier = Modifier.widthIn(max = 280.dp),
             ) {
+                // 抽屉顶部登录卡：波纹覆盖分割线以上整个头区
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clipToBounds()
+                ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clickable { /* 纯占位 */ }
                         .padding(horizontal = 24.dp, vertical = 24.dp)
                 ) {
                     Row(
@@ -784,6 +792,7 @@ fun MainScreen(
                             Text(stringResource(R.string.sign_in))
                         }
                     }
+                }
                 }
 
                 HorizontalDivider(

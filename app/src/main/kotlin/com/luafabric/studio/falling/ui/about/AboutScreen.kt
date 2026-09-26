@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import com.luafabric.studio.falling.BuildConfig
 import com.luafabric.studio.falling.R
+import com.luafabric.studio.falling.ui.icons.GithubIcon
 import muling.views.tool.utils.AppInfoUtil
 import muling.views.tool.utils.LogCatcher
 
@@ -168,6 +169,74 @@ fun AboutScreen(onBack: () -> Unit) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.qq_group_number),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outlineVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Surface(
+                onClick = {
+                    try {
+                        LogCatcher.i("AboutScreen", "打开开源地址")
+                        val intent = Intent(
+                            Intent.ACTION_VIEW,
+                            "https://github.com/TheMuLing/LuaFabric_Studio".toUri()
+                        )
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        LogCatcher.e("AboutScreen", "打开开源地址失败", e)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = MaterialTheme.shapes.large
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF24292E),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = GithubIcon,
+                                contentDescription = stringResource(R.string.open_source_title),
+                                modifier = Modifier.size(24.dp),
+                                tint = Color.White
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.open_source_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.open_source_owner),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

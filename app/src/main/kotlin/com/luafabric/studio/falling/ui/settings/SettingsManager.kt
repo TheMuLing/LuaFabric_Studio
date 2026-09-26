@@ -43,6 +43,7 @@ private object PreferencesKeys {
     val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
     val ENABLE_TAB_HISTORY = booleanPreferencesKey("enable_tab_history")
     val INDENT_GUIDE_ENABLED = booleanPreferencesKey("indentGuideEnabled")
+    val THIRD_PARTY_WIDGET_SUPPORT = booleanPreferencesKey("thirdPartyWidgetSupport")
     val PROJECT_STORAGE_PATH = stringPreferencesKey("project_storage_path")
 
     // 语法高亮颜色
@@ -163,6 +164,8 @@ object SettingsManager {
         val customFontPath = preferences[PreferencesKeys.CUSTOM_FONT_PATH] ?: ""
         val enableTabHistory = preferences[PreferencesKeys.ENABLE_TAB_HISTORY] ?: true
         val indentGuideEnabled = preferences[PreferencesKeys.INDENT_GUIDE_ENABLED] ?: true
+        val thirdPartyWidgetSupport =
+            preferences[PreferencesKeys.THIRD_PARTY_WIDGET_SUPPORT] ?: true
 
         val fixedPath = getFixedProjectStoragePath()
 
@@ -262,6 +265,7 @@ object SettingsManager {
                 commentColor = Color(commentColor),
                 selectedLineColor = Color(selectedLineColor),
                 indentGuideEnabled = indentGuideEnabled,
+                thirdPartyWidgetSupport = thirdPartyWidgetSupport,
                 selectedAppIcon = selectedAppIcon,
                 completionCaseSensitive = completionCaseSensitive,
                 sortOrder = sortOrder,
@@ -293,6 +297,8 @@ object SettingsManager {
             preferences[PreferencesKeys.CUSTOM_FONT_PATH] = currentSettings.customFontPath
             preferences[PreferencesKeys.ENABLE_TAB_HISTORY] = currentSettings.enableTabHistory
             preferences[PreferencesKeys.INDENT_GUIDE_ENABLED] = currentSettings.indentGuideEnabled
+            preferences[PreferencesKeys.THIRD_PARTY_WIDGET_SUPPORT] =
+                currentSettings.thirdPartyWidgetSupport
             preferences[PreferencesKeys.PROJECT_STORAGE_PATH] = currentSettings.projectStoragePath
 
             preferences[PreferencesKeys.CLASS_NAME_COLOR] = currentSettings.classNameColor.toArgb()
@@ -390,6 +396,7 @@ data class SettingsData(
     val commentColor: Color = Color(0xFFA7A8A8),
     val selectedLineColor: Color = Color(0x1A000000),
     val indentGuideEnabled: Boolean = true,
+    val thirdPartyWidgetSupport: Boolean = true,
     val selectedAppIcon: IconManager.AppIcon = IconManager.AppIcon.PLAY_STORE,
     val completionCaseSensitive: Boolean = false,
     val sortOrder: SortOrder = SortOrder.NAME_ASC,

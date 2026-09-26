@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import com.luafabric.studio.falling.ui.icons.AndroidStudioIcon
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -183,6 +184,7 @@ fun AttributeScreen(
     var minSdkVersion by remember { mutableStateOf(29) }
     var targetSdkVersion by remember { mutableStateOf(29) }
     var debugMode by remember { mutableStateOf(false) }
+    var encryptEnabled by remember { mutableStateOf(true) }
     var entryFile by remember { mutableStateOf("main.lua") }
     var showEntryPicker by remember { mutableStateOf(false) }
     var showIconPicker by remember { mutableStateOf(false) }
@@ -243,6 +245,9 @@ fun AttributeScreen(
                     debugMode =
                         ((jsonMap["application"] as? Map<*, *>)?.get("debugmode") as? Boolean)
                             ?: false
+                    encryptEnabled =
+                        ((jsonMap["application"] as? Map<*, *>)?.get("encrypt") as? Boolean)
+                            ?: true
 
                     val usesSdk = jsonMap["uses_sdk"] as? Map<*, *>
                     minSdkVersion = (usesSdk?.get("minSdkVersion") as? String)?.toIntOrNull() ?: 29
@@ -273,6 +278,7 @@ fun AttributeScreen(
                     debugMode = ComposeConfig.debugFlag(
                         File(projectPath, ComposeConfig.FILE_NAME).readBytes()
                     ) ?: false
+                    encryptEnabled = (cfg["encrypt"] as? Boolean) ?: true
                 }
             }
         }.also { isLoading = false }
@@ -302,7 +308,8 @@ fun AttributeScreen(
                         "minSdk" to minSdkVersion.toLong(),
                         "targetSdk" to targetSdkVersion.toLong(),
                         "entry" to entryFile,
-                        "icon" to iconPath
+                        "icon" to iconPath,
+                        "encrypt" to encryptEnabled
                     ),
                     debugMode
                 )
@@ -320,6 +327,7 @@ fun AttributeScreen(
                 ?: mutableMapOf<String, Any?>()
             application["label"] = label
             application["debugmode"] = debugMode
+            application["encrypt"] = encryptEnabled
             jsonMap["application"] = application
 
             jsonMap["package"] = packageName
@@ -646,6 +654,19 @@ fun AttributeScreen(
                         checked = debugMode,
                         onCheckedChange = { debugMode = it },
                         text = stringResource(R.string.attribute_debug_enable),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // 构建选项卡片
+                SettingsCard(
+                    title = stringResource(R.string.attribute_build_options),
+                    icon = AndroidStudioIcon
+                ) {
+                    SwitchBar(
+                        checked = encryptEnabled,
+                        onCheckedChange = { encryptEnabled = it },
+                        text = stringResource(R.string.attribute_encrypt_build, label),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

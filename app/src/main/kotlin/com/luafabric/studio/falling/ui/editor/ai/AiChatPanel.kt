@@ -1726,7 +1726,10 @@ private fun AiSettingsPage(
             onDismissRequest = { showAddProvider = false },
             title = { Text("添加 API 提供商") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     OutlinedTextField(
                         value = newName,
                         onValueChange = { newName = it; newNameError = false },
@@ -1736,6 +1739,7 @@ private fun AiSettingsPage(
                         isError = newNameError,
                         supportingText = { if (newNameError) Text("请输入提供商名称") },
                         shape = RoundedCornerShape(shapeSize),
+                        modifier = Modifier.fillMaxWidth(),
                         trailingIcon = {
                             if (newName.isNotEmpty()) {
                                 IconButton(onClick = { newName = ""; newNameError = false }) {
@@ -1765,6 +1769,7 @@ private fun AiSettingsPage(
                         isError = newApiKeyError,
                         supportingText = { if (newApiKeyError) Text("请输入 API Key") },
                         shape = RoundedCornerShape(shapeSize),
+                        modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (newApiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
@@ -1786,6 +1791,7 @@ private fun AiSettingsPage(
                         isError = newBaseUrlError,
                         supportingText = { if (newBaseUrlError) Text("请输入请求地址") },
                         shape = RoundedCornerShape(shapeSize),
+                        modifier = Modifier.fillMaxWidth(),
                         trailingIcon = {
                             if (newBaseUrl.isNotEmpty()) {
                                 IconButton(onClick = { newBaseUrl = ""; newBaseUrlError = false }) {
@@ -1795,7 +1801,10 @@ private fun AiSettingsPage(
                         }
                     )
                     // Model ID with dropdown + cloud-search
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(modifier = Modifier.weight(1f)) {
                             OutlinedTextField(
                                 value = newModel,
@@ -1806,6 +1815,7 @@ private fun AiSettingsPage(
                                 isError = newModelError,
                                 supportingText = { if (newModelError) Text("请输入模型 ID") },
                                 shape = RoundedCornerShape(shapeSize),
+                                modifier = Modifier.fillMaxWidth(),
                                 trailingIcon = {
                                     IconButton(onClick = { newModelDropdown = !newModelDropdown }) {
                                         Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
@@ -1904,7 +1914,10 @@ private fun AiSettingsPage(
             onDismissRequest = { showEditProvider = null },
             title = { Text("编辑 API 提供商") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     OutlinedTextField(
                         value = editName,
                         onValueChange = { editName = it },
@@ -1912,6 +1925,7 @@ private fun AiSettingsPage(
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodySmall,
                         shape = RoundedCornerShape(shapeSize),
+                        modifier = Modifier.fillMaxWidth(),
                         trailingIcon = {
                             if (editName.isNotEmpty()) {
                                 IconButton(onClick = { editName = "" }) {
@@ -1939,6 +1953,7 @@ private fun AiSettingsPage(
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodySmall,
                         shape = RoundedCornerShape(shapeSize),
+                        modifier = Modifier.fillMaxWidth(),
                         visualTransformation = if (editApiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
@@ -1958,6 +1973,7 @@ private fun AiSettingsPage(
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodySmall,
                         shape = RoundedCornerShape(shapeSize),
+                        modifier = Modifier.fillMaxWidth(),
                         trailingIcon = {
                             if (editBaseUrl.isNotEmpty()) {
                                 IconButton(onClick = { editBaseUrl = "" }) {
@@ -1966,7 +1982,10 @@ private fun AiSettingsPage(
                             }
                         }
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(modifier = Modifier.weight(1f)) {
                             OutlinedTextField(
                                 value = editModel,
@@ -1975,6 +1994,7 @@ private fun AiSettingsPage(
                                 singleLine = true,
                                 textStyle = MaterialTheme.typography.bodySmall,
                                 shape = RoundedCornerShape(shapeSize),
+                                modifier = Modifier.fillMaxWidth(),
                                 trailingIcon = {
                                     IconButton(onClick = { editModelDropdown = !editModelDropdown }) {
                                         Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
