@@ -113,7 +113,7 @@ public class EditorTextActionWindow extends EditorPopupWindow implements TextAct
         buttons.add(new TextActionButton(BTN_PASTE, R.drawable.round_content_paste_20, android.R.string.paste));
         buttons.add(new TextActionButton(BTN_LONG_SELECT, R.drawable.editor_text_select_start, R.string.sora_editor_long_select));
         buttons.add(new TextActionButton(BTN_CUT, R.drawable.round_content_cut_20, android.R.string.cut));
-        buttons.add(new TextActionButton(BTN_AI_REFERENCE, R.drawable.round_flare_20, R.string.sora_editor_ai_reference));
+        buttons.add(new TextActionButton(BTN_AI_REFERENCE, R.drawable.round_format_quote_close_20, R.string.sora_editor_ai_reference));
 
         // Inflate layout
         @SuppressLint("InflateParams")

@@ -256,7 +256,9 @@ data class AiConfig(
     // Skills
     val skills: List<SkillConfig> = emptyList(),
     // Memories
-    val memories: List<MemoryItem> = emptyList()
+    val memories: List<MemoryItem> = emptyList(),
+    // AI 设置页折叠菜单：已折叠的标题列表（缺省时 API 提供商默认展开）
+    val collapsedSections: List<String> = emptyList()
 ) {
     val activeProvider: ApiProvider?
         get() = if (selectedProviderIndex in providers.indices) providers[selectedProviderIndex]
@@ -310,7 +312,8 @@ data class AiConfig(
         customModels = customModels.orDefault(emptyList()),
         providers = providers.orDefault(emptyList()),
         skills = skills.orDefault(emptyList()),
-        memories = memories.orDefault(emptyList())
+        memories = memories.orDefault(emptyList()),
+        collapsedSections = collapsedSections.orDefault(emptyList())
     )
 
     /**

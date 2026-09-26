@@ -84,6 +84,7 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import coil.compose.SubcomposeAsyncImage
 import com.luafabric.studio.falling.ui.editor.persistence.EditorStateUtil
+import com.luafabric.studio.falling.ui.editor.ai.AiChatHistoryStore
 import com.luafabric.studio.falling.ui.about.AboutScreen
 import com.luafabric.studio.falling.ui.components.FilePickerDialog
 import com.luafabric.studio.falling.ui.components.SelectionMode
@@ -532,6 +533,8 @@ fun MainScreen(
                     if (projectDir.exists() && projectDir.isDirectory) {
                         projectDir.deleteRecursively()
                         EditorStateUtil.cleanProjectState(context, it.path)
+                        // 连带删除该项目独立的 AI 对话记录
+                        AiChatHistoryStore.deleteAllForProject(context, it.path)
 
                         // 从置顶集合中移除该项目
                         if (projectId in pinnedSet) {

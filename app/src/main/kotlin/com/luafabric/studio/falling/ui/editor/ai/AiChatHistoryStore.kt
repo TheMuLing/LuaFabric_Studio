@@ -12,22 +12,27 @@ object AiChatHistoryStore {
     private const val HISTORY_DIR = "ai_chat_history"
     private val gson = Gson()
 
-    private fun getHistoryDir(context: Context): File {
-        val dir = File(context.filesDir, HISTORY_DIR)
+    /**
+     * 每个项目的对话记录独立存放：ai_chat_history/<项目目录名>/
+     * projectPath 为项目目录绝对路径，取最后一段目录名作为隔离 key。
+     */
+    private fun getHistoryDir(context: Context, projectPath: String): File {
+        val key = File(projectPath).name.ifBlank { "default" }
+        val dir = File(File(context.filesDir, HISTORY_DIR), key)
         if (!dir.exists()) dir.mkdirs()
         return dir
     }
 
-    suspend fun saveConversation(context: Context, data: ConversationData) = withContext(Dispatchers.IO) {
+    suspend fun saveConversation(context: Context, projectPath: String, data: ConversationData) = withContext(Dispatchers.IO) {
         try {
-            val file = File(getHistoryDir(context), "${data.id}.json")
+            val file = File(getHistoryDir(context, projectPath), "${data.id}.json")
             file.writeText(gson.toJson(data))
         } catch (_: Exception) { }
     }
 
-    suspend fun loadConversation(context: Context, id: String): ConversationData? = withContext(Dispatchers.IO) {
+    suspend fun loadConversation(context: Context, projectPath: String, id: String): ConversationData? = withContext(Dispatchers.IO) {
         try {
-            val file = File(getHistoryDir(context), "$id.json")
+            val file = File(getHistoryDir(context, projectPath), "$id.json")
             if (!file.exists()) return@withContext null
             val data = gson.fromJson(file.readText(), ConversationData::class.java)
             // 旧版本保存的 JSON 可能缺少 summary/messages 字段（Gson 会注入 null），
@@ -39,9 +44,9 @@ object AiChatHistoryStore {
         } catch (_: Exception) { null }
     }
 
-    suspend fun listConversations(context: Context): List<Conversation> = withContext(Dispatchers.IO) {
+    suspend fun listConversations(context: Context, projectPath: String): List<Conversation> = withContext(Dispatchers.IO) {
         try {
-            val dir = getHistoryDir(context)
+            val dir = getHistoryDir(context, projectPath)
             dir.listFiles()?.filter { it.extension == "json" }?.mapNotNull { file ->
                 try {
                     val data = gson.fromJson(file.readText(), ConversationData::class.java)
@@ -57,16 +62,25 @@ object AiChatHistoryStore {
         } catch (_: Exception) { emptyList() }
     }
 
-    suspend fun deleteConversation(context: Context, id: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteConversation(context: Context, projectPath: String, id: String) = withContext(Dispatchers.IO) {
         try {
-            val file = File(getHistoryDir(context), "$id.json")
+            val file = File(getHistoryDir(context, projectPath), "$id.json")
             file.delete()
         } catch (_: Exception) { }
     }
 
-    suspend fun deleteAllConversations(context: Context) = withContext(Dispatchers.IO) {
+    suspend fun deleteAllConversations(context: Context, projectPath: String) = withContext(Dispatchers.IO) {
         try {
-            getHistoryDir(context).listFiles()?.forEach { it.delete() }
+            getHistoryDir(context, projectPath).listFiles()?.forEach { it.delete() }
+        } catch (_: Exception) { }
+    }
+
+    /** 删除指定项目的整个对话记录目录（删除项目时连带调用）。 */
+    suspend fun deleteAllForProject(context: Context, projectPath: String) = withContext(Dispatchers.IO) {
+        try {
+            val key = File(projectPath).name.ifBlank { "default" }
+            val dir = File(File(context.filesDir, HISTORY_DIR), key)
+            if (dir.exists()) dir.deleteRecursively()
         } catch (_: Exception) { }
     }
 

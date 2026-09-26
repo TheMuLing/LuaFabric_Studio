@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -36,10 +37,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.gson.Gson
 import com.luafabric.studio.falling.ui.editor.ai.tools.*
+import com.luafabric.studio.falling.ui.settings.SettingsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,6 +66,48 @@ import java.io.File
 import java.util.UUID
 
 private enum class AiPage { CHAT, SETTINGS, HISTORY }
+
+// ========== 自定义 md3 引号图标 ==========
+// 基于 Google Material Icons 官方 format_quote 24px path 数据：
+//   "M6,17h3l2-4V6H4v7h4L6,17z M15,17h3l2-4V6h-7v7h4L15,17z"
+// 开引号（format-quote-open）取第一段左引号原样；
+// 关引号（format-quote-close）取第二段右引号并做水平镜像（x' = 24 - x），
+// 使开口方向相反成对。
+private val FormatQuoteOpenIcon: ImageVector = ImageVector.Builder(
+    name = "FormatQuoteOpen",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).path(fill = SolidColor(Color.Black)) {
+    moveTo(6f, 17f)
+    horizontalLineToRelative(3f)
+    lineToRelative(2f, -4f)
+    verticalLineTo(6f)
+    horizontalLineTo(4f)
+    verticalLineToRelative(7f)
+    horizontalLineToRelative(4f)
+    lineTo(6f, 17f)
+    close()
+}.build()
+
+private val FormatQuoteCloseIcon: ImageVector = ImageVector.Builder(
+    name = "FormatQuoteClose",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).path(fill = SolidColor(Color.Black)) {
+    moveTo(9f, 17f)
+    horizontalLineToRelative(-3f)
+    lineToRelative(-2f, -4f)
+    verticalLineTo(6f)
+    horizontalLineToRelative(7f)
+    verticalLineToRelative(7f)
+    horizontalLineToRelative(-4f)
+    lineTo(9f, 17f)
+    close()
+}.build()
 
 private val gson = Gson()
 
@@ -187,7 +234,7 @@ fun AiChatPanel(
                 messages = messages,
                 summary = summary
             )
-            AiChatHistoryStore.saveConversation(context, data)
+            AiChatHistoryStore.saveConversation(context, projectPath, data)
         }
     }
 
@@ -396,6 +443,7 @@ fun AiChatPanel(
                 AiPage.HISTORY -> {
                     AiHistoryPage(
                         context = context,
+                        projectPath = projectPath,
                         currentId = currentConversationId,
                         onSelectConversation = { data ->
                             messages = data.messages
@@ -569,7 +617,7 @@ private fun AiTitleBar(
                 Text(
                     text = when (page) {
                         AiPage.SETTINGS -> "AI 设置"
-                        AiPage.HISTORY -> "历史记录"
+                        AiPage.HISTORY -> "对话记录"
                         else -> ""
                     },
                     style = MaterialTheme.typography.titleSmall,
@@ -582,7 +630,7 @@ private fun AiTitleBar(
             if (page == AiPage.CHAT) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     IconButton(onClick = onHistoryClick, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Filled.History, contentDescription = "历史记录", modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.History, contentDescription = "对话记录", modifier = Modifier.size(20.dp))
                     }
                     IconButton(onClick = onSettingsClick, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.Settings, contentDescription = "设置", modifier = Modifier.size(20.dp))
@@ -662,17 +710,18 @@ private fun ChatContent(
                         onRegenerate = onRegenerate,
                         onEnterShareMode = onEnterShareMode,
                         showResendIcon = isLastUser && wasInterrupted && !isStreaming,
-                        onResend = onResend
+                        onResend = onResend,
+                        projectPath = projectPath
                     )
                 }
             }
 
-            // Scroll-to-top / scroll-to-bottom buttons (bottom-right)
+            // Scroll-to-top / scroll-to-bottom buttons (right-center)
             if (messages.isNotEmpty()) {
                 Column(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 10.dp, bottom = 10.dp),
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilledTonalIconButton(
@@ -1058,11 +1107,21 @@ private fun ChatMessageBubble(
     onRegenerate: () -> Unit,
     onEnterShareMode: () -> Unit,
     showResendIcon: Boolean = false,
-    onResend: () -> Unit = {}
+    onResend: () -> Unit = {},
+    projectPath: String = ""
 ) {
     val isUser = message.role == ChatRole.USER
     val isTool = message.role == ChatRole.TOOL
     var showResendConfirm by remember { mutableStateOf(false) }
+
+    // 圆角跟随 LuaFabric 主题配置（形状圆角）
+    val baseSize = when (SettingsManager.currentSettings.shapeSizeIndex) {
+        0 -> 4f  // 小
+        1 -> 8f  // 中小
+        2 -> 12f // 中（默认）
+        3 -> 16f // 大
+        else -> 12f
+    }.dp
 
     // Resend confirmation dialog
     if (showResendConfirm) {
@@ -1122,29 +1181,72 @@ private fun ChatMessageBubble(
         ) {
             Surface(
                 shape = RoundedCornerShape(
-                    topStart = 12.dp,
-                    topEnd = 12.dp,
-                    bottomStart = if (isUser) 12.dp else 4.dp,
-                    bottomEnd = if (isUser) 4.dp else 12.dp
+                    topStart = baseSize,
+                    topEnd = baseSize,
+                    bottomStart = if (isUser) baseSize else 4.dp,
+                    bottomEnd = if (isUser) 4.dp else baseSize
                 ),
                 color = if (isUser) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.surfaceVariant,
                 tonalElevation = 0.dp
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    // Code reference in message
+                    // Code reference in message（两行：引用头 + 可折叠的选区节选）
                     message.codeReference?.let { ref ->
+                        var refExpanded by remember { mutableStateOf(false) }
+                        val relativePath = run {
+                            val p = projectPath.trimEnd('/', '\\')
+                            val fp = ref.filePath.replace('\\', '/')
+                            val rel = fp.removePrefix(p.trimEnd('/', '\\').replace('\\', '/') + "/")
+                            if (rel.isNotBlank() && rel != fp) rel else ref.fileName
+                        }
+                        val lineText = if (ref.startLine == ref.endLine) "第${ref.startLine}行"
+                        else "第${ref.startLine}~${ref.endLine}行"
+                        val cleaned = ref.content
+                            .replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+                            .replace(Regex("""\s+"""), " ")
+                            .trim()
+                        val excerpt = if (cleaned.length > 200) cleaned.take(200).trimEnd() + "..." else cleaned
                         Surface(
                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
                             shape = RoundedCornerShape(4.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { refExpanded = !refExpanded }
                         ) {
-                            Text(
-                                text = ref.preview,
-                                style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(6.dp),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
+                            Column(modifier = Modifier.padding(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        FormatQuoteOpenIcon,
+                                        contentDescription = "代码引用",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "$relativePath：$lineText",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(
+                                        if (refExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
+                                        contentDescription = if (refExpanded) "收起" else "展开",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                                AnimatedVisibility(visible = refExpanded) {
+                                    Text(
+                                        text = excerpt,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                     }
@@ -1162,12 +1264,20 @@ private fun ChatMessageBubble(
                     // Content with SelectionContainer for system long-press copy
                     if (message.content.isNotBlank()) {
                         if (isUser) {
-                            SelectionContainer {
-                                Text(
-                                    text = message.content + if (isStreaming) " ▌" else "",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
+                            // 用户气泡背景为 primary 色，默认选择手柄同为 primary 导致同色不可见，
+                            // 覆盖为 onPrimary 使手柄在长按选中时可辨识。
+                            val userSelectionColors = TextSelectionColors(
+                                handleColor = MaterialTheme.colorScheme.onPrimary,
+                                backgroundColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f)
+                            )
+                            CompositionLocalProvider(LocalTextSelectionColors provides userSelectionColors) {
+                                SelectionContainer {
+                                    Text(
+                                        text = message.content + if (isStreaming) " ▌" else "",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
                             }
                         } else {
                             AiMessageContent(
@@ -1284,13 +1394,13 @@ private fun CollapsibleSection(title: String, content: String) {
 private fun SettingsCollapsibleEntry(
     title: String,
     icon: ImageVector,
-    defaultExpanded: Boolean = false,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     content: @Composable () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(defaultExpanded) }
     Column {
         Surface(
-            onClick = { expanded = !expanded },
+            onClick = { onExpandedChange(!expanded) },
             shape = RoundedCornerShape(8.dp),
             tonalElevation = 0.dp,
             modifier = Modifier.fillMaxWidth()
@@ -1368,7 +1478,9 @@ private fun AiSettingsPage(
         if (config.providers.isNotEmpty() && config.selectedProviderIndex in config.providers.indices) config.selectedProviderIndex
         else -1
     )}
-    var skills by remember { mutableStateOf(config.skills.ifEmpty {
+    // 默认技能列表：首次使用或持久化配置缺失默认技能时兜底。
+    // 持久化过旧版本配置（仅含 luafabric-studio）时，缺失的默认技能按 title 补齐合并。
+    val defaultSkills = {
         val bundledSkillPath = File(context.filesDir, ".agent/skills/luafabric-studio/SKILL.md").absolutePath
         listOf(
             SkillConfig(
@@ -1408,8 +1520,17 @@ private fun AiSettingsPage(
                 readme = "LuaFabric Studio、AndroLua、LuaFabric 项目开发专用 skill。"
             )
         )
-    })}
+    }
+    var skills by remember { mutableStateOf(
+        if (config.skills.isEmpty()) defaultSkills()
+        else {
+            val existingTitles = config.skills.mapTo(mutableSetOf()) { it.title }
+            config.skills + defaultSkills().filter { it.title !in existingTitles }
+        }
+    ) }
     var memories by remember { mutableStateOf(config.memories.toMutableList()) }
+    // 折叠菜单状态：已折叠的标题集合，变化时随配置持久化
+    var collapsedSections by remember { mutableStateOf(config.collapsedSections.toMutableSet()) }
     var showAddProvider by remember { mutableStateOf(false) }
     var showEditProvider by remember { mutableStateOf<Int?>(null) }
     var showDeleteSkill by remember { mutableStateOf<Int?>(null) }
@@ -1425,8 +1546,15 @@ private fun AiSettingsPage(
             skills = skills,
             memories = memories,
             maxTokens = config.maxTokens,
-            temperature = config.temperature
+            temperature = config.temperature,
+            collapsedSections = collapsedSections.toList()
         ))
+    }
+
+    // 切换某菜单的折叠状态并持久化
+    fun toggleSection(title: String) {
+        if (!collapsedSections.remove(title)) collapsedSections.add(title)
+        save()
     }
 
     // SKILL.md front matter parser
@@ -1483,7 +1611,12 @@ private fun AiSettingsPage(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         // ===== API 提供商列表 =====
-        SettingsCollapsibleEntry(title = "API 提供商", icon = Icons.Filled.Cloud, defaultExpanded = true) {
+        SettingsCollapsibleEntry(
+            title = "API 提供商",
+            icon = Icons.Filled.Cloud,
+            expanded = "API 提供商" !in collapsedSections,
+            onExpandedChange = { toggleSection("API 提供商") }
+        ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 // Add provider + delete mode button row
                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -1585,7 +1718,12 @@ private fun AiSettingsPage(
         }
 
         // ===== 技能列表 =====
-        SettingsCollapsibleEntry(title = "技能", icon = Icons.Filled.Extension, defaultExpanded = false) {
+        SettingsCollapsibleEntry(
+            title = "技能",
+            icon = Icons.Filled.Extension,
+            expanded = "技能" !in collapsedSections,
+            onExpandedChange = { toggleSection("技能") }
+        ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 // Add skill + delete mode button row
                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -1672,7 +1810,12 @@ private fun AiSettingsPage(
         }
 
         // ===== 记忆列表 =====
-        SettingsCollapsibleEntry(title = "记忆", icon = Icons.Filled.Psychology, defaultExpanded = false) {
+        SettingsCollapsibleEntry(
+            title = "记忆",
+            icon = Icons.Filled.Psychology,
+            expanded = "记忆" !in collapsedSections,
+            onExpandedChange = { toggleSection("记忆") }
+        ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 if (memories.isEmpty()) {
                     Text(
@@ -2156,6 +2299,7 @@ private fun AiSettingsPage(
 @Composable
 private fun AiHistoryPage(
     context: Context,
+    projectPath: String,
     currentId: String,
     onSelectConversation: (ConversationData) -> Unit,
     onNewChat: () -> Unit
@@ -2164,8 +2308,8 @@ private fun AiHistoryPage(
     var isLoading by remember { mutableStateOf(true) }
     var showDeleteConfirm by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        conversations = AiChatHistoryStore.listConversations(context)
+    LaunchedEffect(projectPath) {
+        conversations = AiChatHistoryStore.listConversations(context, projectPath)
         isLoading = false
     }
 
@@ -2196,7 +2340,7 @@ private fun AiHistoryPage(
             }
         } else if (conversations.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("暂无历史对话", style = MaterialTheme.typography.bodyMedium,
+                Text("暂无对话记录", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
@@ -2235,7 +2379,7 @@ private fun AiHistoryPage(
                         Surface(
                             onClick = {
                                 kotlinx.coroutines.MainScope().launch {
-                                    AiChatHistoryStore.loadConversation(context, conv.id)?.let { data ->
+                                    AiChatHistoryStore.loadConversation(context, projectPath, conv.id)?.let { data ->
                                         onSelectConversation(data)
                                     }
                                 }
@@ -2273,8 +2417,8 @@ private fun AiHistoryPage(
             confirmButton = {
                 TextButton(onClick = {
                     kotlinx.coroutines.MainScope().launch {
-                        AiChatHistoryStore.deleteConversation(context, id)
-                        conversations = AiChatHistoryStore.listConversations(context)
+                        AiChatHistoryStore.deleteConversation(context, projectPath, id)
+                        conversations = AiChatHistoryStore.listConversations(context, projectPath)
                     }
                     showDeleteConfirm = null
                 }) { Text("删除", color = Color(0xFFE53935)) }

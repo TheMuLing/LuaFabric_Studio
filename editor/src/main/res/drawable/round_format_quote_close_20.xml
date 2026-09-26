@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- md3 format-quote-close（右引号）：基于 Google Material Icons 官方 format_quote 24px path
+     第二段右引号做水平镜像（x' = 24 - x），使开口方向与 format-quote-open 相反。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="@android:color/tertiary_text_light">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M9,17h-3l-2,-4V6h7v7h-4L9,17z" />
+</vector>
