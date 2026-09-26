@@ -87,6 +87,7 @@ class ApkBuilder {
             permissions: Array<String>?,
             isDebug: Boolean,
             encryptEnabled: Boolean = true,
+            mergeDexEnabled: Boolean = true,
             outputPath: String,
             minSdkVersion: Int,
             targetSdkVersion: Int,
@@ -104,6 +105,7 @@ class ApkBuilder {
             LogCatcher.i("ApkBuilder", "minSdkVersion: $minSdkVersion")
             LogCatcher.i("ApkBuilder", "targetSdkVersion: $targetSdkVersion")
             LogCatcher.i("ApkBuilder", "调试模式: $isDebug")
+            LogCatcher.i("ApkBuilder", "合并libs dex: $mergeDexEnabled")
             LogCatcher.i("ApkBuilder", "权限数量: ${permissions?.size ?: 0}")
             LogCatcher.i("ApkBuilder", "Maven依赖数量: ${mavenDependencies.size}")
 
@@ -165,7 +167,8 @@ class ApkBuilder {
                     unsignedApkPath,
                     mavenJars,
                     entryFile,
-                    encryptEnabled
+                    encryptEnabled,
+                    mergeDexEnabled
                 )
 
                 if (unsignedApkPath == null) {
@@ -747,7 +750,8 @@ class ApkBuilder {
             outputPath: String,
             mavenJars: List<File> = emptyList(),
             entryFile: String = "main.lua",
-            encryptFiles: Boolean = true
+            encryptFiles: Boolean = true,
+            mergeDexEnabled: Boolean = true
         ): String? {
             val L = getSharedLuaState()
 
@@ -822,6 +826,14 @@ class ApkBuilder {
                     LogCatcher.w("ApkBuilder", "缺少 android.jar，跳过 Java 编译")
                 }
                 // ---------------------------------------------------------
+
+                // 8.5 合并 libs/*.dex 至 APK 根 classes*.dex（构建选项关闭时跳过）
+                // 从 assets/libs 移出项目 dex，按根目录现有 classes*.dex 最大索引续号重命名
+                if (mergeDexEnabled) {
+                    mergeLibsDexToApkRoot(assetsDir, workDir)
+                } else {
+                    LogCatcher.i("ApkBuilder", "构建选项已关闭合并 libs dex，保留 assets/libs/*.dex")
+                }
 
                 // 9. 删除已存在的输出文件
                 val outputFile = File(outputPath)
@@ -1896,6 +1908,37 @@ class ApkBuilder {
                 LogCatcher.e("ApkBuilder", "D8 DEX 生成失败", e)
                 throw RuntimeException("D8 DEX 生成失败: ${e.message}", e)
             }
+        }
+
+        // 合并 assets/libs/*.dex 至 APK 根 classes*.dex
+        // 将项目 libs/ 下的 dex 从 assets/libs 移出，按 workDir 根现有 classes*.dex
+        // 最大索引续号重命名（classes.dex 索引 1，classes2.dex 索引 2...），源文件移除
+        private fun mergeLibsDexToApkRoot(assetsDir: File, workDir: File) {
+            val libsDir = File(assetsDir, "libs")
+            if (!libsDir.exists() || !libsDir.isDirectory) return
+            val dexFiles = libsDir.listFiles { _, name ->
+                name.endsWith(".dex", ignoreCase = true)
+            } ?: return
+            if (dexFiles.isEmpty()) return
+
+            // 计算根目录现有 classes*.dex 的最大索引（classes.dex 索引为 1）
+            val existingDex = workDir.listFiles { _, name ->
+                name.matches(Regex("classes(\\d*)\\.dex", RegexOption.IGNORE_CASE))
+            } ?: emptyArray()
+            val maxIndex = existingDex.mapNotNull { file ->
+                val match = Regex("classes(\\d*)\\.dex", RegexOption.IGNORE_CASE).find(file.name)
+                match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+            }.maxOrNull() ?: 0
+
+            var nextIndex = maxIndex + 1
+            for (dexFile in dexFiles.sortedBy { it.name }) {
+                val targetName = if (nextIndex == 1) "classes.dex" else "classes${nextIndex}.dex"
+                val targetFile = File(workDir, targetName)
+                dexFile.copyTo(targetFile, overwrite = true)
+                dexFile.delete()
+                nextIndex++
+            }
+            LogCatcher.i("ApkBuilder", "已合并 ${dexFiles.size} 个 libs/*.dex 至 APK 根")
         }
 
         // 将目录中的所有 DEX 文件复制到目标目录，并自动重命名避免覆盖

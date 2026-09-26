@@ -143,7 +143,7 @@ suspend fun buildProject(context: Context, projectPath: String): String =
             if (cfg == null) {
                 return@withContext "error: ${context.getString(R.string.editor_build_settings_not_found)}"
             }
-            // b85 字段 → 构建侧兼容 key（compose 项目无权限/maven 依赖，deps 是构建期元数据不参与此流程）
+            // b85 字段 → 构建侧兼容 key（compose 项目无 maven 依赖，deps 是构建期元数据不参与此流程）
             mapOf(
                 "package" to (cfg["packageId"] as? String ?: "com.example.myapp"),
                 "versionName" to (cfg["versionName"] as? String ?: "1.0.0"),
@@ -154,9 +154,11 @@ suspend fun buildProject(context: Context, projectPath: String): String =
                     "debugmode" to (muling.views.tool.utils.ComposeConfig.debugFlag(
                         File(projectDir, muling.views.tool.utils.ComposeConfig.FILE_NAME).readBytes()
                     ) ?: false),
-                    "encrypt" to ((cfg["encrypt"] as? Boolean) ?: true)
+                    "encrypt" to ((cfg["encrypt"] as? Boolean) ?: true),
+                    "mergeDex" to ((cfg["mergeDex"] as? Boolean) ?: true)
                 ),
-                "user_permission" to emptyList<String>(),
+                "user_permission" to ((cfg["user_permission"] as? List<*>)
+                    ?.filterIsInstance<String>() ?: emptyList<String>()),
                 "implementation" to emptyList<String>(),
                 "iconPath" to (cfg["icon"] as? String ?: "icon.png"),
                 "uses_sdk" to mapOf(
@@ -204,6 +206,14 @@ suspend fun buildProject(context: Context, projectPath: String): String =
         val encryptProject = try {
             val application = settings["application"] as? Map<String, Any?>
             (application?.get("encrypt") as? Boolean) ?: true
+        } catch (e: Exception) {
+            true
+        }
+
+        // 获取合并 libs dex 开关（默认开启）
+        val mergeDexEnabled = try {
+            val application = settings["application"] as? Map<String, Any?>
+            (application?.get("mergeDex") as? Boolean) ?: true
         } catch (e: Exception) {
             true
         }
@@ -326,6 +336,7 @@ val mavenDependencies = try {
                 permissions,                 // permissions
                 isDebug,                     // isDebug
                 encryptProject,              // encryptProject
+                mergeDexEnabled,             // mergeDexEnabled
                 externalApkPath,             // outputPath
                 minSdkVersion,               // minSdkVersion
                 targetSdkVersion,             // targetSdkVersion

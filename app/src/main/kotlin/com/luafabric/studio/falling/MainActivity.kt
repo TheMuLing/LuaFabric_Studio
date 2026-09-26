@@ -1093,7 +1093,7 @@ fun MainScreen(
                         } else {
                             Text(
                                 text = when (currentContentType) {
-                                    MainContentType.PROJECTS -> stringResource(R.string.app_name)
+                                    MainContentType.PROJECTS -> AppInfoUtil.getAppName(LocalContext.current)
                                     MainContentType.FORUM -> stringResource(R.string.forum)
                                     MainContentType.MANUAL -> stringResource(R.string.manual)
                                     MainContentType.SETTINGS -> stringResource(R.string.settings)

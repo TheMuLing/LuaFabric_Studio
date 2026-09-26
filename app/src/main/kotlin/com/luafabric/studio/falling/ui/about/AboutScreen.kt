@@ -270,6 +270,7 @@ fun AboutScreen(onBack: () -> Unit) {
 fun AppHeaderSection(
     appVersionName: String
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -294,7 +295,7 @@ fun AppHeaderSection(
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(
-            text = stringResource(R.string.app_name),
+            text = AppInfoUtil.getAppName(context),
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface

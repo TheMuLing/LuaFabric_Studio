@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.settings.SettingsManager
+import muling.views.tool.utils.AppInfoUtil
 
 /**
  * 构建次数赞助提示的业务逻辑与弹窗。
@@ -102,7 +103,7 @@ fun SponsorshipDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val appName = stringResource(R.string.app_name)
+    val appName = AppInfoUtil.getAppName(context)
     val buildCountText = (SettingsManager.pendingSponsorPrompt ?: 0).toString()
     var showDialog by remember { mutableStateOf(true) }
 

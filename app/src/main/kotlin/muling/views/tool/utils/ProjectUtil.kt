@@ -557,7 +557,13 @@ object ProjectUtil {
                 "seed" to 0x3A6CC8L
             ),
             "deps" to listOf("coil", "material3"),
-            "global_utils" to emptyList<Any>()
+            "global_utils" to emptyList<Any>(),
+            "user_permission" to listOf(
+                "WRITE_EXTERNAL_STORAGE",
+                "READ_EXTERNAL_STORAGE",
+                "INTERNET"
+            ),
+            "mergeDex" to true
         )
         val raw = ComposeConfig.pack(config, flags = if (debugMode) ComposeConfig.FLAG_DEBUG else 0)
         val b85 = ComposeConfig.b85Encode(raw)

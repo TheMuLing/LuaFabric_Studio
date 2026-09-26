@@ -5,6 +5,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+import com.luafabric.studio.falling.R
 
 object AppInfoUtil {
 
@@ -53,7 +54,7 @@ object AppInfoUtil {
             val applicationInfo = context.packageManager.getApplicationInfo(context.packageName, 0)
             context.packageManager.getApplicationLabel(applicationInfo).toString()
         } catch (e: PackageManager.NameNotFoundException) {
-            "LuaFabric Studio"
+            context.getString(R.string.app_name)
         }
     }
 

@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.luafabric.studio.falling.R
+import muling.views.tool.utils.AppInfoUtil
 import muling.views.tool.utils.LogCatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -439,7 +440,7 @@ fun WelcomePage1() {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            stringResource(R.string.app_name),
+            AppInfoUtil.getAppName(LocalContext.current),
             style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,

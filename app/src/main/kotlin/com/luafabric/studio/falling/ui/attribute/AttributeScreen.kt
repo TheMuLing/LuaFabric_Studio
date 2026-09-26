@@ -48,6 +48,7 @@ import com.luafabric.studio.falling.ui.components.SwitchBar
 import com.luafabric.studio.falling.ui.project.CompactUtilCard
 import com.luafabric.studio.falling.ui.project.GlobalUtilItem
 import com.luafabric.studio.falling.ui.project.globalUtilsOptions
+import muling.views.tool.utils.AppInfoUtil
 import muling.views.tool.utils.ComposeConfig
 import muling.views.tool.utils.JsonUtil
 import muling.views.tool.utils.LogCatcher
@@ -94,20 +95,26 @@ private val sdkDisplayMap = mapOf(
 )
 
 /**
- * 从 settings.json 读取已选权限，返回短名称集合（兼容新旧格式）
+ * 从项目配置读取已选权限，返回短名称集合（兼容新旧格式；view 读 settings.json，compose 读 b85）
  */
 private fun getSelectedPermissionsFromSettings(projectPath: String): Set<String> {
     return try {
-        val file = File(projectPath, "settings.json")
-        if (file.exists()) {
-            val json = JsonUtil.parseObject(file.readText())
-            val perms =
+        val projectDir = File(projectPath)
+        val perms: List<String> = if (ProjectUtil.isComposeProject(projectDir)) {
+            val cfg = ProjectUtil.loadProjectConfig(projectDir)
+            (cfg?.get("user_permission") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+        } else {
+            val file = File(projectPath, "settings.json")
+            if (!file.exists()) emptyList()
+            else {
+                val json = JsonUtil.parseObject(file.readText())
                 (json["user_permission"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
-            perms.map { perm ->
-                // 如果包含点，取最后一段；否则原样返回
-                if (perm.contains('.')) perm.substringAfterLast('.') else perm
-            }.toSet()
-        } else emptySet()
+            }
+        }
+        perms.map { perm ->
+            // 如果包含点，取最后一段；否则原样返回
+            if (perm.contains('.')) perm.substringAfterLast('.') else perm
+        }.toSet()
     } catch (e: Exception) {
         emptySet()
     }
@@ -185,6 +192,7 @@ fun AttributeScreen(
     var targetSdkVersion by remember { mutableStateOf(29) }
     var debugMode by remember { mutableStateOf(false) }
     var encryptEnabled by remember { mutableStateOf(true) }
+    var mergeDexEnabled by remember { mutableStateOf(true) }
     var entryFile by remember { mutableStateOf("main.lua") }
     var showEntryPicker by remember { mutableStateOf(false) }
     var showIconPicker by remember { mutableStateOf(false) }
@@ -248,6 +256,9 @@ fun AttributeScreen(
                     encryptEnabled =
                         ((jsonMap["application"] as? Map<*, *>)?.get("encrypt") as? Boolean)
                             ?: true
+                    mergeDexEnabled =
+                        ((jsonMap["application"] as? Map<*, *>)?.get("mergeDex") as? Boolean)
+                            ?: true
 
                     val usesSdk = jsonMap["uses_sdk"] as? Map<*, *>
                     minSdkVersion = (usesSdk?.get("minSdkVersion") as? String)?.toIntOrNull() ?: 29
@@ -279,6 +290,7 @@ fun AttributeScreen(
                         File(projectPath, ComposeConfig.FILE_NAME).readBytes()
                     ) ?: false
                     encryptEnabled = (cfg["encrypt"] as? Boolean) ?: true
+                    mergeDexEnabled = (cfg["mergeDex"] as? Boolean) ?: true
                 }
             }
         }.also { isLoading = false }
@@ -309,7 +321,9 @@ fun AttributeScreen(
                         "targetSdk" to targetSdkVersion.toLong(),
                         "entry" to entryFile,
                         "icon" to iconPath,
-                        "encrypt" to encryptEnabled
+                        "encrypt" to encryptEnabled,
+                        "mergeDex" to mergeDexEnabled,
+                        "user_permission" to allPermissions.filter { it.isChecked }.map { it.shortName }
                     ),
                     debugMode
                 )
@@ -328,6 +342,7 @@ fun AttributeScreen(
             application["label"] = label
             application["debugmode"] = debugMode
             application["encrypt"] = encryptEnabled
+            application["mergeDex"] = mergeDexEnabled
             jsonMap["application"] = application
 
             jsonMap["package"] = packageName
@@ -666,13 +681,21 @@ fun AttributeScreen(
                     SwitchBar(
                         checked = encryptEnabled,
                         onCheckedChange = { encryptEnabled = it },
-                        text = stringResource(R.string.attribute_encrypt_build, label),
+                        text = stringResource(
+                            R.string.attribute_encrypt_build,
+                            AppInfoUtil.getAppName(context)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    SwitchBar(
+                        checked = mergeDexEnabled,
+                        onCheckedChange = { mergeDexEnabled = it },
+                        text = stringResource(R.string.attribute_merge_dex),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
 
-                // 权限卡片（Compose 项目无 user_permission 字段 → 隐藏，避免勾选被静默丢弃）
-                if (!isCompose) {
+                // 权限卡片（view 读 settings.json，compose 读 b85 user_permission）
                 SettingsCard(title = stringResource(R.string.attribute_permission_title), icon = Icons.Filled.Lock) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -704,7 +727,6 @@ fun AttributeScreen(
                             }
                         }
                     }
-                }
                 }
 
                 // 全局工具卡片（Compose 项目 global_utils 恒空 → 隐藏）

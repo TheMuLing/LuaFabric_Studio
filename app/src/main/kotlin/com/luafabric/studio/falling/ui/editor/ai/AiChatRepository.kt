@@ -26,7 +26,7 @@ object AiChatRepository {
     suspend fun fetchModels(config: AiConfig): List<String> = withContext(Dispatchers.IO) {
         try {
             val protocol = config.resolvedProtocol
-            val url = buildModelsUrl(normalizeBaseUrl(config.resolvedBaseUrl))
+            val url = buildModelsUrl(normalizeBaseUrl(config.resolvedBaseUrl), protocol)
             android.util.Log.d(logTag, "fetchModels input=${config.resolvedBaseUrl} url=$url protocol=$protocol apiKey=${if (config.resolvedApiKey.isNotBlank()) "***" else "EMPTY"}")
 
             val request = Request.Builder().url(url).apply {
@@ -57,7 +57,7 @@ object AiChatRepository {
     suspend fun fetchModels(baseUrl: String, apiKey: String, protocol: ApiProtocol): List<String> = withContext(Dispatchers.IO) {
         try {
             val base = normalizeBaseUrl(baseUrl)
-            val url = buildModelsUrl(base)
+            val url = buildModelsUrl(base, protocol)
             android.util.Log.d(logTag, "fetchModels2 input=$baseUrl normalized=$base url=$url protocol=$protocol apiKey=${if (apiKey.isNotBlank()) "***" else "EMPTY"}")
             val request = Request.Builder().url(url).apply {
                 when (protocol) {
@@ -81,13 +81,22 @@ object AiChatRepository {
         }
     }
 
-    // 规范化 API 基础地址：去空白/尾斜杠，剥离 /chat/completions 或 /models 端点后缀，裸域名补 https://
+    // 规范化 API 基础地址：去空白/尾斜杠，剥离 chat/models/messages 端点后缀（含 /v1 前缀），裸域名补 https://
+    // 注意：仅剥离端点后缀，路径中用户主动填写的 /v1（如 https://api.siliconflow.cn/v1）予以保留
     fun normalizeBaseUrl(raw: String): String {
         var base = raw.trim().trimEnd('/')
-        if (base.endsWith("/chat/completions")) {
-            base = base.removeSuffix("/chat/completions").trimEnd('/')
-        } else if (base.endsWith("/models")) {
-            base = base.removeSuffix("/models").trimEnd('/')
+        val suffixes = listOf(
+            "/v1/chat/completions",
+            "/chat/completions",
+            "/v1/models",
+            "/models",
+            "/v1/messages"
+        )
+        for (suffix in suffixes) {
+            if (base.endsWith(suffix)) {
+                base = base.removeSuffix(suffix).trimEnd('/')
+                break
+            }
         }
         if (!base.startsWith("http://") && !base.startsWith("https://") && base.isNotEmpty()) {
             base = "https://$base"
@@ -95,9 +104,12 @@ object AiChatRepository {
         return base
     }
 
-    // 构建 /models 接口地址，避免重复 /v1
-    private fun buildModelsUrl(base: String): String =
-        if (base.endsWith("/v1")) "$base/models" else "$base/v1/models"
+    // 构建模型列表地址：与 chat 端点同规则（官方文档），保留 base 中已填的 /v1；
+    // Anthropic 官方 models 端点在 /v1 下，base 已含 /v1 时去重
+    private fun buildModelsUrl(base: String, protocol: ApiProtocol): String = when (protocol) {
+        ApiProtocol.OPENAI -> "$base/models"
+        ApiProtocol.ANTHROPIC -> if (base.endsWith("/v1")) "$base/models" else "$base/v1/models"
+    }
 
     private fun parseModelsResponse(body: String, protocol: ApiProtocol): List<String> {
         // Try OpenAI format first (most common, covers many Anthropic-compatible endpoints)
@@ -408,16 +420,20 @@ object AiChatRepository {
     }
 
     private fun buildHttpRequest(config: AiConfig, body: String, protocol: ApiProtocol = config.resolvedProtocol): Request {
+        // 端点按官方文档构造：bare 剥离端点后缀并保留用户填写的 /v1；
+        // OPENAI 兼容 = base + /chat/completions（SiliconFlow/Kimi base 已含 /v1，DeepSeek 无 /v1）
+        val base = normalizeBaseUrl(config.resolvedBaseUrl)
         return when (protocol) {
             ApiProtocol.OPENAI -> Request.Builder()
-                .url("${config.resolvedBaseUrl}/v1/chat/completions")
+                .url("$base/chat/completions")
                 .addHeader("Authorization", "Bearer ${config.resolvedApiKey}")
                 .addHeader("Content-Type", "application/json")
                 .post(body.toRequestBody(jsonMediaType))
                 .build()
 
+            // Anthropic 官方端点 /v1/messages，base 已含 /v1 时去重
             ApiProtocol.ANTHROPIC -> Request.Builder()
-                .url("${config.resolvedBaseUrl}/v1/messages")
+                .url(if (base.endsWith("/v1")) "$base/messages" else "$base/v1/messages")
                 .addHeader("x-api-key", config.resolvedApiKey)
                 .addHeader("anthropic-version", "2023-06-01")
                 .addHeader("Content-Type", "application/json")

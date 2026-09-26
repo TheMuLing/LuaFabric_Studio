@@ -274,13 +274,13 @@ data class AiConfig(
             activeProvider?.let {
                 return when {
                     it.baseUrl.isNotBlank() -> it.baseUrl.trimEnd('/')
-                    it.protocol == ApiProtocol.OPENAI -> "https://api.openai.com"
+                    it.protocol == ApiProtocol.OPENAI -> "https://api.openai.com/v1"
                     else -> "https://api.anthropic.com"
                 }
             }
             return when {
                 baseUrl.isNotBlank() -> baseUrl.trimEnd('/')
-                protocol == ApiProtocol.OPENAI -> "https://api.openai.com"
+                protocol == ApiProtocol.OPENAI -> "https://api.openai.com/v1"
                 else -> "https://api.anthropic.com"
             }
         }

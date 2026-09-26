@@ -1372,10 +1372,34 @@ private fun AiSettingsPage(
         val bundledSkillPath = File(context.filesDir, ".agent/skills/luafabric-studio/SKILL.md").absolutePath
         listOf(
             SkillConfig(
-                path = "C:\\Users\\mingm\\.agents\\skills\\caveman",
+                path = "C:\\Users\\WuLiang\\.agents\\skills\\caveman",
                 enabled = true,
                 title = "caveman",
                 readme = "Ultra-compressed communication mode. Cuts token usage ~75%."
+            ),
+            SkillConfig(
+                path = "C:\\Users\\WuLiang\\.agents\\skills\\caveman-commit",
+                enabled = true,
+                title = "caveman-commit",
+                readme = "Ultra-compressed commit message generator. Cuts noise from commit messages while preserving intent."
+            ),
+            SkillConfig(
+                path = "C:\\Users\\WuLiang\\.agents\\skills\\grilling",
+                enabled = true,
+                title = "grilling",
+                readme = "Interview the user relentlessly about a plan or design. Use when the user wants to stress-test a plan before building."
+            ),
+            SkillConfig(
+                path = "C:\\Users\\WuLiang\\.agents\\skills\\ponytail-audit",
+                enabled = true,
+                title = "ponytail-audit",
+                readme = "Whole-repo audit for over-engineering: a ranked list of what to delete, simplify, or replace."
+            ),
+            SkillConfig(
+                path = "C:\\Users\\WuLiang\\.agents\\skills\\no-negative-echo",
+                enabled = true,
+                title = "no-negative-echo",
+                readme = "Reduce negative-constraint and session-history leakage when a discarded proposal or user correction is echoed into final artifacts."
             ),
             SkillConfig(
                 path = bundledSkillPath,
