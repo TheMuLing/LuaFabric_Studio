@@ -17,8 +17,6 @@ import android.provider.MediaStore
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.app.LocaleManager
-import android.os.LocaleList
 import android.os.VibrationEffect
 import android.os.Vibrator
 import androidx.core.content.getSystemService
@@ -27,7 +25,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresApi
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -81,7 +78,6 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
-import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.lifecycleScope
 import coil.compose.SubcomposeAsyncImage
 import com.luafabric.studio.falling.ui.editor.persistence.EditorStateUtil

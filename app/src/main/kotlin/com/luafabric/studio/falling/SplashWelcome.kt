@@ -10,7 +10,6 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -89,19 +88,12 @@ class SplashWelcome : ComponentActivity() {
     private suspend fun handleSplashLogic() {
         SettingsManager.loadSavedSettings(this@SplashWelcome)
 
-        // 语言分支可能提前 return，必须先把 lua 运行库解包落盘，
+        // 必须先把 lua 运行库解包落盘，
         // 否则 require "import" 永不解包到 app_lua 导致调试运行/构建加密都失败
         try {
             withContext(Dispatchers.IO) { ensureLuaResources() }
         } catch (_: Exception) {
             // 解包失败不阻塞启动
-        }
-
-        val savedLanguageTag = SettingsManager.currentSettings.languageTag
-        val currentLanguageTag = getCurrentAppLanguageTag()
-        if (savedLanguageTag != currentLanguageTag) {
-            SettingsManager.setAppLanguage(this@SplashWelcome, savedLanguageTag)
-            return
         }
 
         val shouldUpdate = checkInfo()
@@ -122,18 +114,6 @@ class SplashWelcome : ComponentActivity() {
         }
 
         setupSplashUI(shouldUpdate)
-    }
-
-    /**
-     * Returns the current application language tag
-     */
-    private fun getCurrentAppLanguageTag(): String {
-        val locales = AppCompatDelegate.getApplicationLocales()
-        return if (locales.isEmpty) {
-            Locale.getDefault().toLanguageTag()
-        } else {
-            locales[0]?.toLanguageTag() ?: Locale.getDefault().toLanguageTag()
-        }
     }
 
     /**

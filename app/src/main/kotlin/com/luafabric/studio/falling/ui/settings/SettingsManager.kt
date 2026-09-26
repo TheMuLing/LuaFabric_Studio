@@ -1,19 +1,15 @@
 package com.luafabric.studio.falling.ui.settings
 
 import android.app.Activity
-import android.app.LocaleManager
 import android.content.Context
 import android.os.Build
 import android.os.Environment
-import android.os.LocaleList
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.getSystemService
-import androidx.core.os.LocaleListCompat
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -80,9 +76,6 @@ private object PreferencesKeys {
     val TOAST_BORDER_ENABLED = booleanPreferencesKey("toast_border_enabled")
 
     val EDITOR_WORD_WRAP = booleanPreferencesKey("editor_word_wrap")
-
-    // 语言设置（使用 DataStore，不再用 SharedPreferences）
-    val LANGUAGE_TAG = stringPreferencesKey("language_tag")
 
     // 【新增】十六进制颜色高亮开关
     val HEX_COLOR_HIGHLIGHT_ENABLED = booleanPreferencesKey("hex_color_highlight_enabled")
@@ -241,9 +234,6 @@ object SettingsManager {
 
         val editorWordWrap = preferences[PreferencesKeys.EDITOR_WORD_WRAP] ?: false
 
-        // 从 DataStore 加载语言设置
-        val languageTag = preferences[PreferencesKeys.LANGUAGE_TAG] ?: "zh"
-
         // 【新增】加载十六进制颜色高亮开关
         val hexColorHighlightEnabled = preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] ?: true
 
@@ -282,7 +272,6 @@ object SettingsManager {
                 toastPosition = toastPosition,
                 toastBorderEnabled = toastBorderEnabled,
                 editorWordWrap = editorWordWrap,
-                languageTag = languageTag,
                 hexColorHighlightEnabled = hexColorHighlightEnabled,
                 buildCount = buildCount,
                 sponsorRound = sponsorRound,
@@ -338,9 +327,6 @@ object SettingsManager {
 
             preferences[PreferencesKeys.EDITOR_WORD_WRAP] = currentSettings.editorWordWrap
 
-            // 保存语言设置到 DataStore
-            preferences[PreferencesKeys.LANGUAGE_TAG] = currentSettings.languageTag
-
             // 【新增】保存十六进制颜色高亮开关
             preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] = currentSettings.hexColorHighlightEnabled
 
@@ -383,45 +369,6 @@ object SettingsManager {
         }
     }
 
-    /**
-     * 设置应用语言（兼容 Android 13+ 和旧版本）
-     * 会自动重启 Activity 使语言生效
-     */
-    fun setAppLanguage(context: Context, languageTag: String) {
-        // 更新内存中的设置
-        val newSettings = currentSettings.copy(languageTag = languageTag)
-        updateSettings(newSettings)
-
-        // 异步保存到 DataStore
-        CoroutineScope(Dispatchers.IO).launch {
-            context.dataStore.edit { preferences ->
-                preferences[PreferencesKeys.LANGUAGE_TAG] = languageTag
-            }
-        }
-
-        // 设置系统语言
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val localeManager = context.getSystemService<LocaleManager>()
-            localeManager?.applicationLocales = LocaleList.forLanguageTags(languageTag)
-        } else {
-            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(languageTag))
-        }
-
-    }
-
-    /**
-     * 同步加载语言设置（用于启动时）
-     * 从 DataStore 读取，如果失败返回默认值
-     */
-    fun loadLanguageSync(context: Context): String {
-        return try {
-            // 尝试从 DataStore 同步读取（使用 runBlocking 或直接访问）
-            // 但由于 DataStore 是异步的，这里用 currentSettings 作为回退
-            currentSettings.languageTag
-        } catch (_: Exception) {
-            "zh"
-        }
-    }
 }
 
 data class SettingsData(
@@ -455,7 +402,6 @@ data class SettingsData(
     val toastPosition: ToastPosition = ToastPosition.BOTTOM,
     val toastBorderEnabled: Boolean = false,
     val editorWordWrap: Boolean = false,
-    val languageTag: String = "zh",
     val hexColorHighlightEnabled: Boolean = true,  // 【新增】十六进制颜色高亮开关
     val buildCount: Int = 0,               // 全局累计构建次数
     val sponsorRound: Int = 0,             // 当前待评估的赞助轮次指针 r（0 视为 1）

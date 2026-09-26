@@ -3,7 +3,6 @@ package com.luafabric.studio.falling.ui.settings
 import android.content.Context
 import android.graphics.Typeface
 import android.os.Build
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -88,7 +87,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
-import androidx.core.os.LocaleListCompat
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.components.AppIconGrid
 import com.luafabric.studio.falling.ui.components.ColorPickerDialog
@@ -453,46 +451,6 @@ fun SettingsScreen(
                             }
                         )
                     }
-                    
-HorizontalDivider(
-    modifier = Modifier.padding(vertical = 4.dp),
-    thickness = 0.5.dp,
-    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-)
-
-Column(
-    modifier = Modifier.fillMaxWidth(),
-    verticalArrangement = Arrangement.spacedBy(12.dp)
-) {
-    Text(
-        text = stringResource(R.string.settings_app_language),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Medium,
-        color = MaterialTheme.colorScheme.onSurface
-    )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FilterChip(
-        selected = currentSettingsState.languageTag == "zh",
-        onClick = {
-            SettingsManager.setAppLanguage(context, "zh")
-        },
-        label = { Text(stringResource(R.string.language_chinese)) }
-    )
-    
-    FilterChip(
-        selected = currentSettingsState.languageTag == "en",
-        onClick = {
-            SettingsManager.setAppLanguage(context, "en")
-        },
-        label = { Text(stringResource(R.string.language_english)) }
-    )
-    }
-}
-
                     HorizontalDivider(
                         modifier = Modifier.padding(vertical = 4.dp),
                         thickness = 0.5.dp,

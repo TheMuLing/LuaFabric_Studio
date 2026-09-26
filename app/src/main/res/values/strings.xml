@@ -177,9 +177,6 @@
     <string name="settings_icon_default">默认</string>
     <string name="settings_icon_adaptive">Adaptive</string>
     <string name="settings_icon_restart_to_effect">重新启动则生效</string>
-    <string name="settings_app_language">应用语言</string>
-    <string name="language_chinese">中文</string>
-    <string name="language_english">English</string>
 
     <!-- 编辑器配置 -->
     <string name="settings_editor_font">编辑器字体</string>
