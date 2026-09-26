@@ -12,7 +12,6 @@ import androidx.compose.foundation.MarqueeAnimationMode
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,12 +35,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.luafabric.studio.falling.ui.editor.ai.preprocessLatex
+import com.luafabric.studio.falling.ui.settings.SettingsManager
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
@@ -157,6 +158,30 @@ private fun ManualHomeScreen(
     onPostClick: (ManualPost) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        // 分类 tabs：TabLayout 同款样式（文字 + primary 下划线指示器），置于搜索框上方
+        val categoryIndex = categories.indexOf(selectedCategory).coerceAtLeast(0)
+        ScrollableTabRow(
+            selectedTabIndex = categoryIndex,
+            edgePadding = 16.dp,
+            divider = {}
+        ) {
+            categories.forEach { category ->
+                Tab(
+                    selected = category == selectedCategory,
+                    onClick = { onCategorySelect(category) },
+                    text = { Text(category) }
+                )
+            }
+        }
+
+        // 搜索框：圆角跟随 LuaFabric 主题配置（形状圆角）
+        val radius = when (SettingsManager.currentSettings.shapeSizeIndex) {
+            0 -> 4.dp
+            1 -> 8.dp
+            2 -> 12.dp
+            3 -> 16.dp
+            else -> 12.dp
+        }
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
@@ -169,26 +194,11 @@ private fun ManualHomeScreen(
                 )
             },
             singleLine = true,
+            shape = RoundedCornerShape(radius),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            categories.forEach { category ->
-                FilterChip(
-                    selected = category == selectedCategory,
-                    onClick = { onCategorySelect(category) },
-                    label = { Text(category) }
-                )
-            }
-        }
 
         Spacer(modifier = Modifier.height(4.dp))
 

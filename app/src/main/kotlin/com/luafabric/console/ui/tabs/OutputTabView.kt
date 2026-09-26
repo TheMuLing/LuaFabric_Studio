@@ -318,6 +318,8 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
                         typeface = Typeface.MONOSPACE
                         setTextColor(ConsoleTheme.onSurfaceVariant)
                         setPadding(0, context.dp(4), 0, context.dp(4))
+                        // 预览区支持长按选区复制
+                        setTextIsSelectable(true)
                     }
                 )
             }
