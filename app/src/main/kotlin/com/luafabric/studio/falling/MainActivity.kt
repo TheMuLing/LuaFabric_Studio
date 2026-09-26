@@ -89,6 +89,7 @@ import com.luafabric.studio.falling.ui.editor.CodeEditScreen
 import com.luafabric.studio.falling.ui.editor.InstallApkDialog
 import com.luafabric.studio.falling.ui.editor.buildProject
 import com.luafabric.studio.falling.ui.editor.installApk
+import com.luafabric.studio.falling.ui.manual.ManualScreen
 import com.luafabric.studio.falling.ui.project.NewProjectScreen
 import com.luafabric.studio.falling.ui.settings.DarkMode
 import com.luafabric.studio.falling.ui.settings.SettingsManager
@@ -1278,7 +1279,7 @@ fun MainScreen(
                         }
 
                         MainContentType.MANUAL -> {
-                            ManualScreen()
+                            ManualScreen(toast = toast)
                         }
 
                         MainContentType.SETTINGS -> {
@@ -2308,11 +2309,7 @@ private const val SPONSOR_QR_SUB_DIR = "LuaFabric_Studio"
 private const val SPONSOR_QR_RELATIVE_PATH = "Pictures/LuaFabric_Studio/sponsor_qr.png"
 private const val WECHAT_PACKAGE = "com.tencent.mm"
 
-@Composable
-private fun ManualScreen() {
-    // 手册页暂空置，后续填充内容
-    Box(modifier = Modifier.fillMaxSize())
-}
+
 
 @Composable
 private fun SponsorScreen(
