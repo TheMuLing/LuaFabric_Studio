@@ -13,6 +13,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.provider.MediaStore
 import android.os.Build
 import android.os.Bundle
@@ -46,6 +47,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -101,6 +103,8 @@ import com.luafabric.studio.falling.ui.sponsor.SponsorshipDialog
 import com.luafabric.studio.falling.ui.theme.AppThemeWithObserver
 import com.luafabric.studio.falling.ui.welcome.TransparentSystemBars
 import com.luafabric.studio.falling.ui.welcome.WelcomeScreen
+import com.luafabric.studio.falling.ui.welcome.hasShownJoinGroupDialog
+import com.luafabric.studio.falling.ui.welcome.markJoinGroupDialogShown
 import com.luafabric.studio.falling.ui.welcome.saveWelcomeCompleted
 import com.luafabric.studio.falling.ui.welcome.shouldShowWelcomeScreen
 import muling.views.tool.utils.*
@@ -139,6 +143,7 @@ const val CATEGORY_ALL = "\u0000all"
 // 主内容类型枚举
 enum class MainContentType {
     PROJECTS,
+    FORUM,
     MANUAL,
     SETTINGS,
     ABOUT,
@@ -491,6 +496,7 @@ fun MainScreen(
     val pageOrder =
         listOf(
             MainContentType.PROJECTS,
+            MainContentType.FORUM,
             MainContentType.MANUAL,
             MainContentType.SPONSOR,
             MainContentType.SETTINGS,
@@ -744,44 +750,38 @@ fun MainScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 32.dp)
+                        .padding(horizontal = 24.dp, vertical = 24.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Code,
-                            contentDescription = stringResource(R.string.cd_logo),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (isDebuggableBuild(context)) {
+                        // 圆形头像占位（暂无用户体系）
                         Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.CenterEnd
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(MaterialTheme.shapes.extraSmall)
-                                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.debug_build_chip),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                            Icon(
+                                Icons.Filled.Person,
+                                contentDescription = stringResource(R.string.sign_in_now),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.sign_in_now),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Button(onClick = { /* 纯占位 */ }) {
+                            Text(stringResource(R.string.sign_in))
                         }
                     }
                 }
@@ -812,6 +812,37 @@ fun MainScreen(
                                 Icons.Filled.Folder,
                                 contentDescription = stringResource(R.string.cd_project_folder),
                                 tint = if (currentContentType == MainContentType.PROJECTS)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedContainerColor = Color.Transparent,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        label = {
+                            Text(stringResource(R.string.forum), fontWeight = FontWeight.Medium)
+                        },
+                        selected = currentContentType == MainContentType.FORUM,
+                        onClick = {
+                            onCurrentContentTypeChange(MainContentType.FORUM)
+                            scope.launch { drawerState.close() }
+                        },
+                        icon = {
+                            Icon(
+                                Icons.Filled.Forum,
+                                contentDescription = stringResource(R.string.forum),
+                                tint = if (currentContentType == MainContentType.FORUM)
                                     MaterialTheme.colorScheme.primary
                                 else
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -963,11 +994,32 @@ fun MainScreen(
                 Column(
                     modifier = Modifier.padding(24.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.copyright, copyrightYear),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.copyright, copyrightYear),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        if (isDebuggableBuild(context)) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.extraSmall)
+                                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.debug_build_chip),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = stringResource(R.string.version, appVersionName),
                         style = MaterialTheme.typography.labelSmall,
@@ -1033,6 +1085,7 @@ fun MainScreen(
                             Text(
                                 text = when (currentContentType) {
                                     MainContentType.PROJECTS -> stringResource(R.string.app_name)
+                                    MainContentType.FORUM -> stringResource(R.string.forum)
                                     MainContentType.MANUAL -> stringResource(R.string.manual)
                                     MainContentType.SETTINGS -> stringResource(R.string.settings)
                                     MainContentType.ABOUT -> stringResource(R.string.about)
@@ -1137,7 +1190,7 @@ fun MainScreen(
                                 }
                             }
 
-                            MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR -> {
+                            MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.FORUM -> {
                             }
                         }
                     },
@@ -1170,7 +1223,7 @@ fun MainScreen(
                         )
                     }
 
-                    MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR -> {
+                    MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.FORUM -> {
                     }
                 }
             },
@@ -1276,6 +1329,11 @@ fun MainScreen(
                                     }
                                 }
                             }
+                        }
+
+                        MainContentType.FORUM -> {
+                            // 源码论坛页，先行置空
+                            Box(modifier = Modifier.fillMaxSize())
                         }
 
                         MainContentType.MANUAL -> {
@@ -2264,12 +2322,18 @@ class MainActivity : ComponentActivity() {
             }
 
             var shouldShowWelcome by remember { mutableStateOf(shouldShowWelcomeScreen(this@MainActivity)) }
+            var showJoinGroupDialog by remember { mutableStateOf(false) }
 
             Crossfade(targetState = shouldShowWelcome, animationSpec = tween(500)) { showWelcome ->
                 if (showWelcome) {
                     WelcomeScreen(
                         onComplete = {
                             saveWelcomeCompleted(this@MainActivity)
+                            // 首次完成向导进入主页时，弹出一次「加入官方交流群」
+                            if (!hasShownJoinGroupDialog(this@MainActivity)) {
+                                markJoinGroupDialogShown(this@MainActivity)
+                                showJoinGroupDialog = true
+                            }
                             shouldShowWelcome = false
                         }
                     )
@@ -2283,6 +2347,47 @@ class MainActivity : ComponentActivity() {
                         MainApp()
                     }
                 }
+            }
+
+            // ---- 首次进入「加入官方交流群」弹窗（一次性） ----
+            if (showJoinGroupDialog) {
+                AlertDialog(
+                    onDismissRequest = { showJoinGroupDialog = false },
+                    title = { Text(stringResource(R.string.join_group_title)) },
+                    text = {
+                        Image(
+                            painter = painterResource(R.drawable.join_group_qr),
+                            contentDescription = stringResource(R.string.join_group_title),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 220.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showJoinGroupDialog = false
+                                val intent = Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse(
+                                        "http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=A0zdKeRglFVLbmhTgmqLN4xAHbaPI67F" +
+                                            "&authKey=lvRArDVBtTWnxOzPK%2F8d4MBrTb8LxbNZkWN0J3oZmehAnJVGRVUjXwzBRcB0as8J" +
+                                            "&noverify=0&group_code=1106643491"
+                                    )
+                                )
+                                this@MainActivity.startActivity(intent)
+                            }
+                        ) {
+                            Text(stringResource(R.string.join))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showJoinGroupDialog = false }) {
+                            Text(stringResource(R.string.no_thanks))
+                        }
+                    }
+                )
             }
         }
     }

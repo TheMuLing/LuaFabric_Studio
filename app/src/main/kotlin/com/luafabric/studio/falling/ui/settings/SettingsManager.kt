@@ -156,7 +156,7 @@ object SettingsManager {
         val fontFamilyType = FontFamilyType.valueOf(
             preferences[PreferencesKeys.FONT_FAMILY_TYPE] ?: "DEFAULT"
         )
-        val dynamicColor = preferences[PreferencesKeys.DYNAMIC_COLOR] ?: false
+        val dynamicColor = preferences[PreferencesKeys.DYNAMIC_COLOR] ?: true
         val editorFontType = EditorFontType.valueOf(
             preferences[PreferencesKeys.EDITOR_FONT_TYPE] ?: "JETBRAINS_MONO"
         )
@@ -378,7 +378,7 @@ data class SettingsData(
     val fontSizeScale: Float = 1.0f,
     val shapeSizeIndex: Int = 2,
     val fontFamilyType: FontFamilyType = FontFamilyType.DEFAULT,
-    val dynamicColor: Boolean = false,
+    val dynamicColor: Boolean = true,
     val editorFontType: EditorFontType = EditorFontType.JETBRAINS_MONO,
     val customFontPath: String = "",
     val enableTabHistory: Boolean = true,

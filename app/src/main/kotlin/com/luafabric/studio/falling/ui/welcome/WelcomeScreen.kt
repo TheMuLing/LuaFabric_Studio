@@ -115,6 +115,18 @@ fun saveWelcomeCompleted(context: Context) {
     sharedPrefs.edit().putBoolean("welcome_completed", true).apply()
 }
 
+/** 「加入官方交流群」弹窗是否已展示（一次性）。 */
+fun hasShownJoinGroupDialog(context: Context): Boolean {
+    val sharedPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+    return sharedPrefs.getBoolean("join_group_dialog_shown", false)
+}
+
+/** 标记「加入官方交流群」弹窗已展示（一次性）。 */
+fun markJoinGroupDialogShown(context: Context) {
+    val sharedPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+    sharedPrefs.edit().putBoolean("join_group_dialog_shown", true).apply()
+}
+
 @Composable
 fun TransparentSystemBars() {
     val view = LocalView.current

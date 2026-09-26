@@ -108,7 +108,7 @@ fun SponsorshipDialog(
 
     if (showDialog) {
         AlertDialog(
-            onDismissRequest = { showDialog = false },
+            onDismissRequest = { /* 点击空白区域不关闭，仅能通过按钮关闭 */ },
             shape = MaterialTheme.shapes.medium,
             title = {
                 Text("求赞助啦......")

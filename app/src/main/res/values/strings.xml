@@ -21,6 +21,12 @@
     <string name="sponsor_save_failed">赞赏码保存失败，请重试</string>
     <string name="wechat_not_installed">微信未安装，请先安装微信</string>
     <string name="debug_build_chip">DEBUG</string>
+    <string name="forum">源码论坛</string>
+    <string name="sign_in_now">立即登录</string>
+    <string name="sign_in">签到</string>
+    <string name="join_group_title">加入 LuaFabric 官方交流群</string>
+    <string name="join">加入</string>
+    <string name="no_thanks">不了</string>
     <string name="refresh">刷新</string>
     <string name="projects">项目</string>
     <string name="search">搜索</string>
