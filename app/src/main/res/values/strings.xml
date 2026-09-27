@@ -516,6 +516,18 @@
     <string name="login_find_pass_button">找回密码</string>
     <string name="login_find_pass_success">密码已发送至您的邮箱</string>
     <string name="login_find_pass_failed">找回失败</string>
+    <string name="login_welcome">欢迎您，%1$s</string>
+    <string name="login_nickname_too_long">昵称不能超过10个字</string>
+    <string name="login_nickname_count">%1$d/10</string>
+
+    <!-- 个人主页 -->
+    <string name="profile_title">个人主页</string>
+    <string name="profile_qq">QQ：%1$s</string>
+    <string name="profile_email">邮箱：%1$s</string>
+    <string name="profile_coin">金币：%1$s</string>
+    <string name="profile_autograph">签名：%1$s</string>
+    <string name="profile_logout">退出登录</string>
+    <string name="profile_logout_success">已退出登录</string>
 
     <!-- 属性页面 -->
     <string name="attribute_build_options">构建选项</string>

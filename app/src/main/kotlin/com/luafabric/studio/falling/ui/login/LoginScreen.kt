@@ -80,6 +80,7 @@ import muling.views.tool.utils.NonBlockingToastState
 fun LoginScreen(
     onBack: () -> Unit,
     onLoginSuccess: (YunJuResponse) -> Unit,
+    onWelcome: (String) -> Unit,
     toast: NonBlockingToastState
 ) {
     val context = LocalContext.current
@@ -120,6 +121,9 @@ fun LoginScreen(
     val nicknameLabel = stringResource(R.string.login_nickname_label)
     val codeLabel = stringResource(R.string.login_code_label)
     val passMismatch = stringResource(R.string.login_pass_mismatch)
+    val nicknameTooLong = stringResource(R.string.login_nickname_too_long)
+    // 昵称超 10 字时 supportText 变红（不限制输入，仅注册按钮提交时拦截）
+    val nicknameOverLimit = nickname.length > 10
 
     // 每秒刷新两个独立冷却剩余秒数（DataStore 持久化，重启依旧生效）
     LaunchedEffect(Unit) {
@@ -216,6 +220,12 @@ fun LoginScreen(
             scope.launch { shake(nicknameShake) }
             return@registerAction
         }
+        if (nickname.length > 10) {
+            nicknameError = nicknameTooLong
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            scope.launch { shake(nicknameShake) }
+            return@registerAction
+        }
         if (code.isBlank()) {
             codeError = codeLabel
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -242,6 +252,7 @@ fun LoginScreen(
                             context, trimmedQq, pass,
                             keepLoggedIn, rememberAccount, login.user
                         )
+                        onWelcome(login.user.name)
                         onLoginSuccess(login.user)
                     } else {
                         toast.showToast(login.message.ifBlank { context.getString(R.string.login_failed_default) })
@@ -617,8 +628,23 @@ fun LoginScreen(
                                 }
                             },
                             singleLine = true,
-                            isError = nicknameError != null,
-                            supportingText = { nicknameError?.let { Text(it) } },
+                            isError = nicknameError != null || nicknameOverLimit,
+                            supportingText = {
+                                if (nicknameError != null) {
+                                    Text(nicknameError!!)
+                                } else {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.login_nickname_count, nickname.length
+                                        ),
+                                        color = if (nicknameOverLimit) {
+                                            MaterialTheme.colorScheme.error
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
+                            },
                             shape = MaterialTheme.shapes.medium,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Text,

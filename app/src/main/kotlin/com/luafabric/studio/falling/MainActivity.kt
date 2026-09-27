@@ -50,6 +50,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Folder
@@ -118,6 +119,7 @@ import com.luafabric.studio.falling.native.YunJuBridge
 import com.luafabric.studio.falling.ui.login.LoginRepository
 import com.luafabric.studio.falling.ui.login.LoginScreen
 import com.luafabric.studio.falling.ui.login.LoginStore
+import com.luafabric.studio.falling.ui.login.ProfileScreen
 import com.luafabric.studio.falling.ui.login.YunJuApi
 import com.luafabric.studio.falling.ui.login.YunJuResponse
 import coil.compose.AsyncImage
@@ -135,7 +137,8 @@ enum class AppScreen {
     MAIN,
     NEW_PROJECT,
     EDITOR,
-    LOGIN
+    LOGIN,
+    PROFILE
 }
 
 // 项目数据类
@@ -174,6 +177,8 @@ fun MainApp() {
     var selectedProject by rememberSaveable { mutableStateOf<ProjectItem?>(null) }
     var projectItems by remember { mutableStateOf(emptyList<ProjectItem>()) }
     var loggedInUser by remember { mutableStateOf<YunJuResponse?>(null) }
+    // 启动后台重校验期间 true：侧滑栏显示未登录外观但禁止点击，校验返回后放开
+    var loginChecking by remember { mutableStateOf(false) }
     val toast = rememberNonBlockingToastState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -185,6 +190,7 @@ fun MainApp() {
     LaunchedEffect(Unit) {
         val saved = LoginStore.read(context)
         if (saved.keepLoggedIn && saved.qq.isNotBlank() && saved.pass.isNotBlank()) {
+            loginChecking = true
             try {
                 val result = LoginRepository.login(saved.qq, saved.pass)
                 if (result.success && result.user != null) {
@@ -195,6 +201,8 @@ fun MainApp() {
                 }
             } catch (e: Exception) {
                 // 网络异常：静默保持本地登录态，不因离线清空
+            } finally {
+                loginChecking = false
             }
         }
     }
@@ -224,6 +232,9 @@ fun MainApp() {
                 }
             }
             AppScreen.LOGIN -> {
+                currentScreen = AppScreen.MAIN
+            }
+            AppScreen.PROFILE -> {
                 currentScreen = AppScreen.MAIN
             }
             else -> {}
@@ -258,7 +269,9 @@ fun MainApp() {
                         onProjectItemsChanged = { newItems -> projectItems = newItems },
                         toast = toast,
                         loggedInUser = loggedInUser,
+                        loginChecking = loginChecking,
                         onOpenLogin = { currentScreen = AppScreen.LOGIN },
+                        onOpenProfile = { currentScreen = AppScreen.PROFILE },
                         onUserUpdated = { loggedInUser = it }
                     )
                     AppScreen.NEW_PROJECT -> {
@@ -314,7 +327,24 @@ fun MainApp() {
                                 loggedInUser = user
                                 currentScreen = AppScreen.MAIN
                             },
+                            onWelcome = { name ->
+                                toast.showToast(context.getString(R.string.login_welcome, name))
+                            },
                             toast = toast
+                        )
+                    }
+                    AppScreen.PROFILE -> {
+                        ProfileScreen(
+                            user = loggedInUser,
+                            onBack = { currentScreen = AppScreen.MAIN },
+                            onLogout = {
+                                scope.launch {
+                                    LoginStore.clear(context)
+                                    loggedInUser = null
+                                    currentScreen = AppScreen.MAIN
+                                }
+                                toast.showToast(context.getString(R.string.profile_logout_success))
+                            }
                         )
                     }
                 }
@@ -364,7 +394,9 @@ fun MainScreen(
     onProjectItemsChanged: (List<ProjectItem>) -> Unit,
     toast: NonBlockingToastState,
     loggedInUser: YunJuResponse?,
+    loginChecking: Boolean,
     onOpenLogin: () -> Unit,
+    onOpenProfile: () -> Unit,
     onUserUpdated: (YunJuResponse) -> Unit
 ) {
 
@@ -828,12 +860,14 @@ fun MainScreen(
             ModalDrawerSheet(
                 modifier = Modifier.widthIn(max = 280.dp),
             ) {
-                // 抽屉顶部登录/用户卡：整区点击。未登录→跳登录界面；已登录→昵称+头像+签到按钮（仅登录后显示）
+                // 抽屉顶部登录/用户卡：整区可点击（校验期间禁点）。未登录→跳登录界面；已登录→个人主页
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clipToBounds()
-                        .clickable(enabled = loggedInUser == null) { onOpenLogin() }
+                        .clickable(enabled = !loginChecking) {
+                            if (loggedInUser == null) onOpenLogin() else onOpenProfile()
+                        }
                 ) {
                     Column(
                         modifier = Modifier
@@ -845,7 +879,7 @@ fun MainScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             if (loggedInUser == null) {
-                                // 未登录：头像占位
+                                // 未登录：头像占位（后台重校验期间同款外观但禁点）
                                 Box(
                                     modifier = Modifier
                                         .size(40.dp)
@@ -899,9 +933,20 @@ fun MainScreen(
                                 }
                             }
                             if (loggedInUser != null) {
-                                // 签到按钮：仅登录后显示
-                                Button(onClick = onSignInClick) {
-                                    Text(stringResource(R.string.sign_in))
+                                // 签到图标按钮：已签到(sign="true")→EventAvailable 且禁用；未签到→CalendarMonth
+                                IconButton(
+                                    onClick = onSignInClick,
+                                    enabled = loggedInUser.sign != "true"
+                                ) {
+                                    Icon(
+                                        imageVector = if (loggedInUser.sign == "true") {
+                                            Icons.Filled.EventAvailable
+                                        } else {
+                                            Icons.Filled.CalendarMonth
+                                        },
+                                        contentDescription = stringResource(R.string.sign_in),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
                         }
