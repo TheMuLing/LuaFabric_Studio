@@ -166,3 +166,7 @@ add_and_optimize_library(tcc)
 add_and_optimize_library(decrypt)
 add_and_optimize_library(lanes_core)
 add_and_optimize_library(yyjson)
+
+# 云居 DAU 上报（mbedTLS 静态库 + yunju 专用客户端，非 Lua 模块不导出 luaopen）
+add_subdirectory(mbedtls)
+add_subdirectory(yunju)

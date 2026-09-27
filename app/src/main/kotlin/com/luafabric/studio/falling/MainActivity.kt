@@ -113,6 +113,8 @@ import muling.views.tool.utils.*
 import io.github.tarifchakder.ktoast.ToastData
 import io.github.tarifchakder.ktoast.ToastHost
 import kotlinx.coroutines.*
+
+import com.luafabric.studio.falling.native.YunJuBridge
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -434,6 +436,18 @@ fun MainScreen(
 
     LaunchedEffect(Unit) {
         ProjectUtil.loadProjectsFromDirectory(projectsPath, onProjectItemsChanged)
+    }
+
+    // 云居 DAU 上报：每次进入项目列表触发一次（一天可多次）。
+    // native 层做 VPN/WLAN 门控 + HTTPS POST，任何失败静默仅记 LogCat(tag=YunJu)
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                YunJuBridge.nativeTjAdd(context.applicationContext)
+            } catch (e: Exception) {
+                LogCatcher.e("YunJu", "nativeTjAdd 异常", e)
+            }
+        }
     }
 
     // 搜索过滤后的项目列表
