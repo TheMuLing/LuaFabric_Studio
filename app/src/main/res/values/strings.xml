@@ -102,6 +102,7 @@
     <!-- 内容描述 (Content Description) -->
     <string name="cd_logo">Logo</string>
     <string name="cd_menu">打开菜单</string>
+    <string name="back">返回</string>
     <string name="cd_add">添加</string>
     <string name="cd_project_folder">项目文件夹</string>
     <string name="cd_project_icon">项目图标</string>

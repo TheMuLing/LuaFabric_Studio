@@ -512,6 +512,8 @@ fun CodeEditScreen(
             data = Uri.fromFile(layoutHelperFile)
             putExtra("layout_content", content)
             putExtra("luapath", currentFile.absolutePath)
+            // 三方控件支持：设置关闭时 Lua 侧仅允许内置白名单控件
+            putExtra("third_party_widget_support", settingsManager.currentSettings.thirdPartyWidgetSupport)
             // 布局助手为工具型 LuaActivity，不进调试控制台会话
             putExtra("console_disable", true)
         }

@@ -10,6 +10,8 @@ method = require "method"
 local intent = activity.getIntent()
 local layoutContent = intent.getStringExtra("layout_content")
 local luapath = intent.getStringExtra("luapath")
+-- 三方控件支持：Kotlin 侧设置经 extra 传入，未传则保持默认放行
+_G.THIRD_PARTY_WIDGET_SUPPORT = intent.getBooleanExtra("third_party_widget_support", true)
 
 luadir = luapath:gsub("/[^/]+$", "")
 

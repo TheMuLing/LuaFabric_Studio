@@ -929,12 +929,40 @@ local function createView(layout, views, parentViewClass)
     assert(style ~= 0, "Unknown style " .. layout.style)
   end
 
+  -- 三方控件支持门控：仅当显式关闭(_G.THIRD_PARTY_WIDGET_SUPPORT == false)时启用白名单
+  -- 白名单 = 系统/官方常见控件前缀，其余视为三方控件禁用
+  local builtinWidgetPrefixes = {
+    "android.widget.", "android.view.", "android.text.", "android.graphics.",
+    "android.app.", "androidx.appcompat.widget.", "androidx.recyclerview.widget.",
+    "androidx.coordinatorlayout.widget.", "androidx.viewpager.widget.",
+    "androidx.viewpager2.widget.", "androidx.cardview.widget.",
+    "androidx.constraintlayout.widget.", "androidx.drawerlayout.widget.",
+    "androidx.swiperefreshlayout.widget.", "androidx.core.widget.",
+    "androidx.fragment.app.", "androidx.preference.",
+    "com.google.android.material.", "com.androlua."
+  }
+  local function widgetClassAllowed(cls)
+    if _G.THIRD_PARTY_WIDGET_SUPPORT ~= false then
+      return true
+    end
+    local lower = string.lower(cls or "")
+    for _, prefix in ipairs(builtinWidgetPrefixes) do
+      if string.find(lower, prefix, 1, true) == 1 then
+        return true
+      end
+    end
+    return false
+  end
+
   -- Check if view is a valid view class or instance
   local viewClass
   if instanceof(view, View) then
     viewClass = view.class
   elseif type(view) == "string" then
     -- If string, try to bind class
+    if not widgetClassAllowed(view) then
+      error("三方控件：" .. view .. " 未启用（可在 设置-编辑器配置-三方控件支持 开启）", 2)
+    end
     local success, result = pcall(bindClass, view)
     if success then
       viewClass = result

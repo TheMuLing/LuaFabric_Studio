@@ -81,6 +81,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -166,6 +167,10 @@ enum class MainContentType {
     ABOUT,
     SPONSOR
 }
+
+// 侧滑栏 4 个功能页：进入后左上角三条线切换为左箭头，点击关闭当前界面返回项目页
+private val CLOSEABLE_FUNCTION_PAGES =
+    setOf(MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR)
 
 enum class ConflictAction {
     OVERWRITE, CLONE,
@@ -576,23 +581,47 @@ fun MainScreen(
     // ---- 底部导航栏滚动隐藏/显示 ----
     // 上滑(内容向下滚)隐藏，下滑(内容向上滚)显示；项目/论坛列表都联动
     val forumListState = rememberLazyListState()
+    val densityPx = LocalDensity.current.density
     var navBarVisible by remember { mutableStateOf(true) }
     var navBarPrevIndex by remember { mutableIntStateOf(0) }
     var navBarPrevOffset by remember { mutableIntStateOf(0) }
+    var navBarBackAccum by remember { mutableIntStateOf(0) }
     LaunchedEffect(currentContentType) {
         navBarVisible = true
+        navBarBackAccum = 0
         val listState = when (currentContentType) {
             MainContentType.PROJECTS -> lazyListState
             MainContentType.FORUM -> forumListState
             else -> return@LaunchedEffect
         }
+        val backThresholdPx = (48 * densityPx).toInt()
         snapshotFlow {
-            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-        }.collect { (idx, off) ->
+            listState.firstVisibleItemIndex to
+                (listState.firstVisibleItemScrollOffset to listState.canScrollForward)
+        }.collect { (idx, pair) ->
+            val (off, canScrollDown) = pair
             if (idx != navBarPrevIndex || off != navBarPrevOffset) {
-                val scrollingDown =
-                    idx > navBarPrevIndex || (idx == navBarPrevIndex && off > navBarPrevOffset)
-                navBarVisible = !scrollingDown
+                if (!canScrollDown) {
+                    // 已滚到底：保持隐藏，忽略 overscroll 回弹，避免导航栏闪烁
+                    navBarVisible = false
+                    navBarBackAccum = 0
+                } else if (idx < navBarPrevIndex ||
+                    (idx == navBarPrevIndex && off < navBarPrevOffset)
+                ) {
+                    // 回滚方向：累积回滚距离，超过阈值才重新显示（抑制到底后的回弹抖动）
+                    val backPx = if (idx < navBarPrevIndex) Int.MAX_VALUE
+                    else (navBarPrevOffset - off).coerceAtLeast(0)
+                    if (backPx >= backThresholdPx || navBarBackAccum >= backThresholdPx) {
+                        navBarVisible = true
+                        navBarBackAccum = 0
+                    } else {
+                        navBarBackAccum += backPx
+                    }
+                } else {
+                    // 下滑方向：隐藏
+                    navBarVisible = false
+                    navBarBackAccum = 0
+                }
             }
             navBarPrevIndex = idx
             navBarPrevOffset = off
@@ -1281,14 +1310,27 @@ fun MainScreen(
                         }
                     },
                     navigationIcon = {
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    if (drawerState.isClosed) drawerState.open() else drawerState.close()
+                        if (currentContentType in CLOSEABLE_FUNCTION_PAGES) {
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        if (drawerState.isOpen) drawerState.close()
+                                        onCurrentContentTypeChange(MainContentType.PROJECTS)
+                                    }
                                 }
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                             }
-                        ) {
-                            Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.cd_menu))
+                        } else {
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        if (drawerState.isClosed) drawerState.open() else drawerState.close()
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.cd_menu))
+                            }
                         }
                     },
                     actions = {
@@ -2337,15 +2379,21 @@ private fun CategoryTabBar(
                             .background(if (isSel) cs.primaryContainer else cs.surfaceContainerHigh)
                             .combinedClickable(
                                 onClick = { onSelect(token) },
-                                onLongClick = if (isBuiltin) null else ({ onTabMenuChange(index) })
+                                onLongClick = if (isBuiltin) {
+                                    null
+                                } else {
+                                    { onTabMenuChange(index) }
+                                }
                             )
                             .padding(horizontal = 16.dp, vertical = 9.dp)
                     ) {
                         Text(
-                            text = when (token) {
-                                CATEGORY_FAVORITE -> stringResource(R.string.favorite)
-                                CATEGORY_ALL -> stringResource(R.string.category_all)
-                                else -> token
+                            text = if (isBuiltin) {
+                                stringResource(
+                                    if (token == CATEGORY_FAVORITE) R.string.favorite else R.string.category_all
+                                )
+                            } else {
+                                token
                             },
                             style = MaterialTheme.typography.labelLarge,
                             color = if (isSel) cs.onPrimaryContainer else cs.onSurfaceVariant,
@@ -2353,20 +2401,22 @@ private fun CategoryTabBar(
                         )
                     }
                     // 自定义分类长按删除菜单
-                    DropdownMenu(
-                        expanded = tabMenuIndex == index,
-                        onDismissRequest = { onTabMenuChange(-1) }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.delete), color = cs.error) },
-                            leadingIcon = {
-                                Icon(Icons.Filled.Delete, contentDescription = null, tint = cs.error)
-                            },
-                            onClick = {
-                                onTabMenuChange(-1)
-                                onDeleteCategory(token)
-                            }
-                        )
+                    if (!isBuiltin) {
+                        DropdownMenu(
+                            expanded = tabMenuIndex == index,
+                            onDismissRequest = { onTabMenuChange(-1) }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.delete), color = cs.error) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Delete, contentDescription = null, tint = cs.error)
+                                },
+                                onClick = {
+                                    onTabMenuChange(-1)
+                                    onDeleteCategory(token)
+                                }
+                            )
+                        }
                     }
                 }
             }
