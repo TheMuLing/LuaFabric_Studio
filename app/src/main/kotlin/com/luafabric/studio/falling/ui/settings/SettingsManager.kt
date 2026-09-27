@@ -85,6 +85,9 @@ private object PreferencesKeys {
     val SPONSOR_BUILD_COUNT = intPreferencesKey("sponsor_build_count")
     val SPONSOR_ROUND = intPreferencesKey("sponsor_round")
     val SPONSOR_SKIP_NEXT = booleanPreferencesKey("sponsor_skip_next")
+
+    // 【新增】快捷功能栏无字模式（文本功能替换为图标）
+    val QUICK_BAR_ICON_ONLY = booleanPreferencesKey("quick_bar_icon_only")
 }
 
 // 排序方式枚举
@@ -245,6 +248,9 @@ object SettingsManager {
         val sponsorRound = preferences[PreferencesKeys.SPONSOR_ROUND] ?: 0
         val skipNextSponsor = preferences[PreferencesKeys.SPONSOR_SKIP_NEXT] ?: false
 
+        // 【新增】快捷功能栏无字模式
+        val quickBarIconOnly = preferences[PreferencesKeys.QUICK_BAR_ICON_ONLY] ?: false
+
         updateSettings(
             SettingsData(
                 themeType = themeType,
@@ -279,7 +285,8 @@ object SettingsManager {
                 hexColorHighlightEnabled = hexColorHighlightEnabled,
                 buildCount = buildCount,
                 sponsorRound = sponsorRound,
-                skipNextSponsor = skipNextSponsor
+                skipNextSponsor = skipNextSponsor,
+                quickBarIconOnly = quickBarIconOnly
             )
         )
     }
@@ -340,6 +347,9 @@ object SettingsManager {
             preferences[PreferencesKeys.SPONSOR_BUILD_COUNT] = currentSettings.buildCount
             preferences[PreferencesKeys.SPONSOR_ROUND] = currentSettings.sponsorRound
             preferences[PreferencesKeys.SPONSOR_SKIP_NEXT] = currentSettings.skipNextSponsor
+
+            // 【新增】快捷功能栏无字模式
+            preferences[PreferencesKeys.QUICK_BAR_ICON_ONLY] = currentSettings.quickBarIconOnly
         }
         notifyListeners()
     }
@@ -413,4 +423,5 @@ data class SettingsData(
     val buildCount: Int = 0,               // 全局累计构建次数
     val sponsorRound: Int = 0,             // 当前待评估的赞助轮次指针 r（0 视为 1）
     val skipNextSponsor: Boolean = false,  // 下一轮是否跳过（已赞助则跳过）
+    val quickBarIconOnly: Boolean = false, // 【新增】快捷功能栏无字模式（默认关闭）
 )

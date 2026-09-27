@@ -359,9 +359,11 @@ private fun ManualDetailScreen(
 @Composable
 private fun MarqueeTitle(text: String, modifier: Modifier = Modifier) {
     val focusRequester = remember { FocusRequester() }
+    val titleColor = MaterialTheme.colorScheme.onSurface
     BasicText(
         text = text,
         maxLines = 1,
+        color = { titleColor },
         style = MaterialTheme.typography.titleMedium,
         modifier = modifier
             .basicMarquee(

@@ -575,11 +575,11 @@ fun SettingsScreen(
                     icon = Icons.Filled.Edit,
                     initiallyExpanded = editorConfigExpanded,
                     onExpandedChange = { editorConfigExpanded = it },
-                    contentSpacing = 4.dp
+                    contentSpacing = 2.dp
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.settings_editor_font),
@@ -856,6 +856,38 @@ fun SettingsScreen(
                         },
                         onClick = {
                             updateSettingsWithSave(currentSettingsState.copy(hexColorHighlightEnabled = !currentSettingsState.hexColorHighlightEnabled))
+                        }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                    )
+
+                    SettingsListItem(
+                        title = stringResource(R.string.settings_quick_bar_icon_only),
+                        subtitle = stringResource(R.string.settings_quick_bar_icon_only_desc),
+                        compact = true,
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Apps,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = currentSettingsState.quickBarIconOnly,
+                                onCheckedChange = {
+                                    updateSettingsWithSave(
+                                        currentSettingsState.copy(quickBarIconOnly = it)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = {
+                            updateSettingsWithSave(currentSettingsState.copy(quickBarIconOnly = !currentSettingsState.quickBarIconOnly))
                         }
                     )
 

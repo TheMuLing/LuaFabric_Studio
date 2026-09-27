@@ -53,6 +53,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.*
@@ -68,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
@@ -77,6 +79,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -96,6 +99,7 @@ import com.luafabric.studio.falling.ui.editor.buildProject
 import com.luafabric.studio.falling.ui.editor.installApk
 import com.luafabric.studio.falling.ui.manual.ManualScreen
 import com.luafabric.studio.falling.ui.project.NewProjectScreen
+import com.luafabric.studio.falling.ui.forum.ForumScreen
 import com.luafabric.studio.falling.ui.settings.DarkMode
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import com.luafabric.studio.falling.ui.settings.SettingsScreen
@@ -410,6 +414,9 @@ fun MainScreen(
     val context = LocalContext.current
     val settingsManager = SettingsManager
     val currentSettings = settingsManager.currentSettings
+
+    // 签到请求进行中：点击后立即禁用，后端返回后无论成败恢复可用
+    var signingIn by remember { mutableStateOf(false) }
 
     // 搜索相关状态
     var isSearchActive by remember { mutableStateOf(false) }
@@ -839,7 +846,9 @@ fun MainScreen(
     // 签到：侧边栏顶部签到按钮（仅登录后显示），POST user_qiandao，成功刷新 sign 状态
     val onSignInClick: () -> Unit = {
         val user = loggedInUser
-        if (user != null) {
+        if (user != null && !signingIn) {
+            // 点击后立即禁用，直到后端返回（无论成功与否都恢复可用）
+            signingIn = true
             scope.launch {
                 try {
                     val (ok, msg) = LoginRepository.signIn(user.qq)
@@ -849,6 +858,8 @@ fun MainScreen(
                     if (ok) onUserUpdated(user.copy(sign = "true"))
                 } catch (e: Exception) {
                     toast.showToast(context.getString(R.string.login_network_error))
+                } finally {
+                    signingIn = false
                 }
             }
         }
@@ -904,7 +915,7 @@ fun MainScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                             } else {
-                                // 已登录：qlogo 头像 + 昵称
+                                // 已登录：qlogo 头像 + 左(昵称/等级) + 右(金币数/金币)
                                 AsyncImage(
                                     model = YunJuApi.avatarUrl(loggedInUser.qq),
                                     contentDescription = loggedInUser.name,
@@ -914,6 +925,7 @@ fun MainScreen(
                                         .background(MaterialTheme.colorScheme.surfaceVariant),
                                     contentScale = ContentScale.Crop
                                 )
+                                // 左列：昵称 + 等级，居左贴头像
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = loggedInUser.name.ifBlank { loggedInUser.qq },
@@ -921,7 +933,8 @@ fun MainScreen(
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.fillMaxWidth()
                                     )
                                     if (loggedInUser.level.isNotBlank()) {
                                         Text(
@@ -931,23 +944,87 @@ fun MainScreen(
                                         )
                                     }
                                 }
-                            }
-                            if (loggedInUser != null) {
-                                // 签到图标按钮：已签到(sign="true")→EventAvailable 且禁用；未签到→CalendarMonth
-                                IconButton(
-                                    onClick = onSignInClick,
-                                    enabled = loggedInUser.sign != "true"
-                                ) {
-                                    Icon(
-                                        imageVector = if (loggedInUser.sign == "true") {
-                                            Icons.Filled.EventAvailable
-                                        } else {
-                                            Icons.Filled.CalendarMonth
-                                        },
-                                        contentDescription = stringResource(R.string.sign_in),
-                                        tint = MaterialTheme.colorScheme.primary
+                                // 右列：金币数（高亮色区分）+ 金币
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = loggedInUser.coin,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.drawer_coin_label),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // 签到卡片：仅登录后显示（位于分割线上方，另起一行）
+                if (loggedInUser != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // 左侧容器色圆形容器 + calender 图标 + 文字「签到」
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.sign_in),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            // 左侧内容与右侧签到按钮之间撑开
+                            Spacer(modifier = Modifier.weight(1f))
+                            // 右侧签到按钮：已签到或请求中禁用，文本切为「已签到」
+                            Button(
+                                onClick = onSignInClick,
+                                enabled = loggedInUser.sign != "true" && !signingIn,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    disabledContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        if (loggedInUser.sign == "true") {
+                                            R.string.drawer_sign_card_signed
+                                        } else {
+                                            R.string.sign_in
+                                        }
+                                    )
+                                )
                             }
                         }
                     }
@@ -975,13 +1052,10 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                         },
                         icon = {
-                            Icon(
-                                Icons.Filled.Folder,
-                                contentDescription = stringResource(R.string.cd_project_folder),
-                                tint = if (currentContentType == MainContentType.PROJECTS)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            DrawerItemIcon(
+                                icon = Icons.Filled.Folder,
+                                selected = currentContentType == MainContentType.PROJECTS,
+                                contentDescription = stringResource(R.string.cd_project_folder)
                             )
                         },
                         colors = NavigationDrawerItemDefaults.colors(
@@ -1006,13 +1080,10 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                         },
                         icon = {
-                            Icon(
-                                Icons.Filled.Forum,
-                                contentDescription = stringResource(R.string.forum),
-                                tint = if (currentContentType == MainContentType.FORUM)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            DrawerItemIcon(
+                                icon = Icons.Filled.Forum,
+                                selected = currentContentType == MainContentType.FORUM,
+                                contentDescription = stringResource(R.string.forum)
                             )
                         },
                         colors = NavigationDrawerItemDefaults.colors(
@@ -1037,13 +1108,10 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                         },
                         icon = {
-                            Icon(
-                                Icons.Filled.MenuBook,
-                                contentDescription = stringResource(R.string.manual),
-                                tint = if (currentContentType == MainContentType.MANUAL)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            DrawerItemIcon(
+                                icon = Icons.Filled.MenuBook,
+                                selected = currentContentType == MainContentType.MANUAL,
+                                contentDescription = stringResource(R.string.manual)
                             )
                         },
                         colors = NavigationDrawerItemDefaults.colors(
@@ -1068,13 +1136,10 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                         },
                         icon = {
-                            Icon(
-                                Icons.Filled.MonetizationOn,
-                                contentDescription = stringResource(R.string.sponsor),
-                                tint = if (currentContentType == MainContentType.SPONSOR)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            DrawerItemIcon(
+                                icon = Icons.Filled.MonetizationOn,
+                                selected = currentContentType == MainContentType.SPONSOR,
+                                contentDescription = stringResource(R.string.sponsor)
                             )
                         },
                         colors = NavigationDrawerItemDefaults.colors(
@@ -1099,13 +1164,10 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                         },
                         icon = {
-                            Icon(
-                                Icons.Filled.Settings,
-                                contentDescription = stringResource(R.string.settings),
-                                tint = if (currentContentType == MainContentType.SETTINGS)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            DrawerItemIcon(
+                                icon = Icons.Filled.Settings,
+                                selected = currentContentType == MainContentType.SETTINGS,
+                                contentDescription = stringResource(R.string.settings)
                             )
                         },
                         colors = NavigationDrawerItemDefaults.colors(
@@ -1130,13 +1192,10 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                         },
                         icon = {
-                            Icon(
-                                Icons.Filled.Info,
-                                contentDescription = stringResource(R.string.about),
-                                tint = if (currentContentType == MainContentType.ABOUT)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            DrawerItemIcon(
+                                icon = Icons.Filled.Info,
+                                selected = currentContentType == MainContentType.ABOUT,
+                                contentDescription = stringResource(R.string.about)
                             )
                         },
                         colors = NavigationDrawerItemDefaults.colors(
@@ -1499,8 +1558,7 @@ fun MainScreen(
                         }
 
                         MainContentType.FORUM -> {
-                            // 源码论坛页，先行置空
-                            Box(modifier = Modifier.fillMaxSize())
+                            ForumScreen(toast = toast)
                         }
 
                         MainContentType.MANUAL -> {
@@ -2433,7 +2491,7 @@ fun DefaultProjectIcon() {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = Icons.Outlined.Folder,
+            imageVector = Icons.Filled.Android,
             contentDescription = stringResource(R.string.cd_project_folder),
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(24.dp)
@@ -2727,5 +2785,32 @@ private fun saveSponsorQrToGallery(context: Context): Boolean {
             }
             true
         }
+    }
+}
+
+/** 抽屉功能项图标：选中态 primaryContainer 圆底 + primary 图标；未选中无底色、onSurfaceVariant 图标 */
+@Composable
+private fun DrawerItemIcon(
+    icon: ImageVector,
+    selected: Boolean,
+    contentDescription: String?
+) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer
+                else Color.Transparent
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }

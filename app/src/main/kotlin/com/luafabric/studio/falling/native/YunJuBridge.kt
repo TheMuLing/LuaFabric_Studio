@@ -22,4 +22,11 @@ object YunJuBridge {
      * @return 1=已上报；-1=被门控拦截或失败
      */
     external fun nativeTjAdd(context: Context): Int
+
+    /**
+     * 源码论坛帖子列表（ForumList.php，native 直发）。
+     * @return 响应体字符串（含 HTTP 头，Kotlin 侧剥离 JSON 后 Gson 解析）；
+     *         被门控拦截或网络失败返回 null
+     */
+    external fun nativeForumList(context: Context, forumId: Int): String?
 }

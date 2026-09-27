@@ -28,9 +28,16 @@
 /* ---- 云居硬编码参数 ---- */
 #define YUNJU_APP_ID    "2283"
 #define YUNJU_ADMIN_KEY "1790465304"
+#define YUNJU_ADMIN     "3445352175"
+#define YUNJU_FORUM_DEFAULT "1"
 #define YUNJU_HOST      "yunju.99kpk.top"
 #define YUNJU_PORT      "443"
 #define YUNJU_PATH      "/API/tj_add.php"
+
+/* 源码论坛 ForumList 接口（yuju 域名 + 81 端口，区别于 DAU 上报的 yunju） */
+#define FORUM_HOST      "yuju.99kpk.top"
+#define FORUM_PORT      "81"
+#define FORUM_PATH      "/lt/ForumList.php"
 
 /* ---- VPN 接口模式表（源自 Lua VPN_PATTERNS，54 项） ---- */
 static const char * const VPN_PATTERNS[] = {
@@ -188,9 +195,17 @@ static int rng_urandom(void *p_rng, unsigned char *output, size_t output_len) {
     return (got == output_len) ? 0 : -1;
 }
 
-/* ---- HTTPS POST 上报；返回 1=成功，-1=失败 ---- */
-static int yunju_http_post(void) {
+/*
+ * ---- HTTPS POST（泛化）----
+ * 参数：host/port/path/body 由调用方传入（tj_add 与 ForumList 共用）。
+ * 返回：成功 → malloc 的完整响应体（含 HTTP 头，调用方 free）；
+ *       失败 → NULL。
+ */
+static char *yunju_http_post(const char *host, const char *port, const char *path,
+                             const char *body) {
     int ret = -1;
+    char *resp = NULL;
+    size_t total = 0;
     mbedtls_net_context server_fd;
     mbedtls_ssl_context ssl;
     mbedtls_ssl_config conf;
@@ -200,9 +215,9 @@ static int yunju_http_post(void) {
     mbedtls_ssl_config_init(&conf);
 
     /* 1. TCP 连接（mbedtls 自带 DNS 解析） */
-    ret = mbedtls_net_connect(&server_fd, YUNJU_HOST, YUNJU_PORT, MBEDTLS_NET_PROTO_TCP);
+    ret = mbedtls_net_connect(&server_fd, host, port, MBEDTLS_NET_PROTO_TCP);
     if (ret != 0) {
-        LOGE("net_connect fail: -0x%04X (%s)", (unsigned)-ret, YUNJU_HOST);
+        LOGE("net_connect fail: -0x%04X (%s:%s)", (unsigned)-ret, host, port);
         goto out;
     }
 
@@ -225,7 +240,7 @@ static int yunju_http_post(void) {
         LOGE("ssl_setup fail: -0x%04X", (unsigned)-ret);
         goto out;
     }
-    ret = mbedtls_ssl_set_hostname(&ssl, YUNJU_HOST);
+    ret = mbedtls_ssl_set_hostname(&ssl, host);
     if (ret != 0) {
         LOGE("set_hostname fail: -0x%04X", (unsigned)-ret);
         goto out;
@@ -239,34 +254,39 @@ static int yunju_http_post(void) {
         goto out;
     }
 
-    /* 5. POST 请求 */
-    static const char BODY[] = "appid=" YUNJU_APP_ID "&key=" YUNJU_ADMIN_KEY;
+    /* 5. POST 请求（Host 恒带端口） */
     char request[512];
     int req_len = snprintf(request, sizeof(request),
-        "POST " YUNJU_PATH " HTTP/1.1\r\n"
-        "Host: " YUNJU_HOST "\r\n"
+        "POST %s HTTP/1.1\r\n"
+        "Host: %s:%s\r\n"
         "Content-Type: application/x-www-form-urlencoded\r\n"
         "Content-Length: %d\r\n"
         "Connection: close\r\n"
         "\r\n"
-        "%s", (int)strlen(BODY), BODY);
+        "%s", path, host, port, (int)strlen(body), body);
 
     ret = mbedtls_ssl_write(&ssl, (const unsigned char *)request, (size_t)req_len);
     if (ret <= 0) {
         LOGE("ssl_write fail: %d", ret);
         goto out;
     }
-    LOGI("POST sent (%d bytes)", req_len);
+    LOGI("POST sent (%d bytes) -> %s:%s%s", req_len, host, port, path);
 
-    /* 6. 读响应（Connection: close → 读到 0 或错误结束） */
-    char buf[4096];
-    size_t total = 0;
+    /* 6. 读响应（Connection: close → 读到 0 或错误结束；缓冲动态扩容防截断） */
+    size_t cap = 4096;
+    resp = (char *)malloc(cap);
+    if (!resp) goto out;
     for (;;) {
-        ret = mbedtls_ssl_read(&ssl, (unsigned char *)buf + total,
-                               sizeof(buf) - 1 - total);
+        if (total >= cap - 1) {
+            size_t ncap = cap * 2;
+            char *nbuf = (char *)realloc(resp, ncap);
+            if (!nbuf) break;
+            resp = nbuf;
+            cap = ncap;
+        }
+        ret = mbedtls_ssl_read(&ssl, (unsigned char *)resp + total, cap - 1 - total);
         if (ret > 0) {
             total += (size_t)ret;
-            if (total >= sizeof(buf) - 1) break;
         } else if (ret == 0 || ret == MBEDTLS_ERR_SSL_WANT_READ ||
                    ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
             break;
@@ -275,27 +295,32 @@ static int yunju_http_post(void) {
             break;
         }
     }
-    buf[total] = '\0';
+    resp[total] = '\0';
 
     /* 7. 记响应 code/msg 到日志（静默，不上报 UI） */
-    const char *code_at = strstr(buf, "\"code\"");
-    const char *msg_at = strstr(buf, "\"msg\"");
-    if (code_at) {
-        const char *v = strchr(code_at, ':');
-        LOGI("response code=%s", v ? v + 1 : "?");
+    if (resp != NULL) {
+        const char *code_at = strstr(resp, "\"code\"");
+        const char *msg_at = strstr(resp, "\"msg\"");
+        if (code_at) {
+            const char *v = strchr(code_at, ':');
+            LOGI("response code=%s", v ? v + 1 : "?");
+        }
+        if (msg_at) {
+            const char *v = strchr(msg_at, ':');
+            LOGI("response msg=%s", v ? v + 1 : "?");
+        }
     }
-    if (msg_at) {
-        const char *v = strchr(msg_at, ':');
-        LOGI("response msg=%s", v ? v + 1 : "?");
+    if (total == 0) {
+        free(resp);
+        resp = NULL;
     }
-    ret = (total > 0) ? 1 : -1;
     LOGI("HTTP response received (%zu bytes)", total);
 
 out:
     mbedtls_ssl_free(&ssl);
     mbedtls_ssl_config_free(&conf);
     mbedtls_net_free(&server_fd);
-    return ret;
+    return resp;
 }
 
 /*
@@ -320,5 +345,45 @@ Java_com_luafabric_studio_falling_native_YunJuBridge_nativeTjAdd(JNIEnv *env,
         return -1;
     }
 
-    return yunju_http_post();
+    static const char BODY[] = "appid=" YUNJU_APP_ID "&key=" YUNJU_ADMIN_KEY;
+    char *resp = yunju_http_post(YUNJU_HOST, YUNJU_PORT, YUNJU_PATH, BODY);
+    if (resp == NULL) return -1;
+    free(resp);
+    return 1;
+}
+
+/*
+ * JNI 入口：POST ForumList（源码论坛帖子列表）。
+ * 返回响应体字符串（含 HTTP 头，Kotlin 侧剥离 JSON 后 Gson 解析）；
+ * 被门控或失败返回 NULL。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeForumList(JNIEnv *env,
+                                                                     jclass clazz,
+                                                                     jobject context,
+                                                                     jint forumId) {
+    (void)clazz;
+
+    /* 门控：VPN 或 WLAN 代理命中 → 不发本次请求，Kotlin 侧按加载失败处理 */
+    if (check_vpn(env, context)) {
+        LOGI("gated: VPN interface detected, forum request skipped");
+        clear_exception(env);
+        return NULL;
+    }
+    if (check_wlan(env, context)) {
+        LOGI("gated: WLAN proxy detected, forum request skipped");
+        clear_exception(env);
+        return NULL;
+    }
+
+    char body[128];
+    snprintf(body, sizeof(body),
+             "user=" YUNJU_ADMIN "&forum_id=%d", (int)forumId);
+
+    char *resp = yunju_http_post(FORUM_HOST, FORUM_PORT, FORUM_PATH, body);
+    if (resp == NULL) return NULL;
+    jstring js = (*env)->NewStringUTF(env, resp);
+    free(resp);
+    if (clear_exception(env)) return NULL;
+    return js;
 }

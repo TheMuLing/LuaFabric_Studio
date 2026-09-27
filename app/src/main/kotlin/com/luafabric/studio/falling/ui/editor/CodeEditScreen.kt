@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.filled.*
@@ -521,51 +522,51 @@ fun CodeEditScreen(
     // ========== 快捷功能列表（使用资源 ID） ==========
     val quickActions = remember {
         listOf(
-            QuickAction(R.string.code_editor_open, "打开") {
+            QuickAction(R.string.code_editor_open, "打开", icon = Icons.Filled.FolderOpen) {
                 viewModel.incrementQuickActionFrequency("打开")
                 scope.launch {
                     if (fileTreeDrawerState.isClosed) fileTreeDrawerState.open()
                 }
             },
-            QuickAction(R.string.save, "保存") {
+            QuickAction(R.string.save, "保存", icon = Icons.Filled.Save) {
                 viewModel.incrementQuickActionFrequency("保存")
                 scope.launch { viewModel.saveAllModifiedFiles(toast) }
             },
-            QuickAction(R.string.code_editor_new, "新建") {
+            QuickAction(R.string.code_editor_new, "新建", icon = Icons.Filled.Add) {
                 viewModel.incrementQuickActionFrequency("新建")
                 newFileType = context.getString(R.string.code_editor_file)
                 newFileName = ""
                 showNewFileDialog = true
             },
-            QuickAction(R.string.code_editor_format, "格式化") {
+            QuickAction(R.string.code_editor_format, "格式化", icon = Icons.AutoMirrored.Filled.FormatAlignLeft) {
                 viewModel.incrementQuickActionFrequency("格式化")
                 viewModel.formatCode()
             },
-            QuickAction(R.string.code_editor_layout_helper, "布局助手") {
+            QuickAction(R.string.code_editor_layout_helper, "布局助手", icon = Icons.Filled.Extension) {
                 viewModel.incrementQuickActionFrequency("布局助手")
                 onLaunchLayoutHelper()
             },
-            QuickAction(R.string.code_editor_project_property, "项目属性") {
+            QuickAction(R.string.code_editor_project_property, "项目属性", icon = Icons.Filled.FolderSpecial) {
                 scope.launch {
                     viewModel.saveAllFilesSilently()
                     viewModel.incrementQuickActionFrequency("项目属性")
                     currentOverlay = OverlayScreen.ATTRIBUTE
                 }
             },
-            QuickAction(R.string.code_editor_build, "构建项目") {
+            QuickAction(R.string.code_editor_build, "构建项目", icon = Icons.Filled.Android) {
                 viewModel.incrementQuickActionFrequency("构建项目")
                 onBuildProjectAction()
             },
-            QuickAction(R.string.code_editor_analyse, "导入分析") {
+            QuickAction(R.string.code_editor_analyse, "导入分析", icon = Icons.Filled.Layers) {
                 viewModel.incrementQuickActionFrequency("导入分析")
                 val codeContent = viewModel.activeFileState?.content ?: ""
                 currentOverlay = OverlayScreen.ANALYSE(codeContent, projectPath)
             },
-            QuickAction(R.string.code_editor_api_viewer, "API阅览器") {
+            QuickAction(R.string.code_editor_api_viewer, "API阅览器", icon = Icons.Filled.Book) {
                 viewModel.incrementQuickActionFrequency("API阅览器")
                 currentOverlay = OverlayScreen.JAVA_API()
             },
-            QuickAction(R.string.search, "搜索") {
+            QuickAction(R.string.search, "搜索", icon = Icons.Filled.Search) {
                 viewModel.incrementQuickActionFrequency("搜索")
                 if (viewModel.openFiles.isNotEmpty()) {
                     isSearchVisible = !isSearchVisible
@@ -578,11 +579,11 @@ fun CodeEditScreen(
                     }
                 }
             },
-            QuickAction(R.string.code_editor_backup, "备份") {
+            QuickAction(R.string.code_editor_backup, "备份", icon = Icons.Filled.Backup) {
                 viewModel.incrementQuickActionFrequency("备份")
                 onBackupProject()
             },
-            QuickAction(R.string.code_editor_palette, "调色板") {
+            QuickAction(R.string.code_editor_palette, "调色板", icon = Icons.Filled.Palette) {
                 viewModel.incrementQuickActionFrequency("调色板")
                 showColorPickerDialog = true
             }
@@ -1240,7 +1241,8 @@ fun EditorContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(38.dp),
-                scrollState = quickActionScrollState
+                scrollState = quickActionScrollState,
+                iconOnly = SettingsManager.currentSettings.quickBarIconOnly
             )
         }
 

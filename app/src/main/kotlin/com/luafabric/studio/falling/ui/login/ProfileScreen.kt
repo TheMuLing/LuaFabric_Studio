@@ -17,15 +17,23 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -165,12 +173,52 @@ private fun ProfileContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // 退出登录
+            // 经验进度条：登录接口返回的经验值映射进度（不可拖动），最高 1w 经验值
+            val expValue = user.exp.toFloatOrNull() ?: 0f
+            val expProgress = (expValue / 10000f).coerceIn(0f, 1f)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.profile_exp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.profile_exp_value,
+                            user.exp.ifBlank { "0" }
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { expProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(CircleShape)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 退出登录：先弹确认对话框，确认后执行退出；文本红色 + 更浅的容器色
+            var showLogoutDialog by remember { mutableStateOf(false) }
             Button(
-                onClick = onLogout,
-                modifier = Modifier.fillMaxWidth()
+                onClick = { showLogoutDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                    contentColor = MaterialTheme.colorScheme.error
+                )
             ) {
                 Icon(
                     Icons.Filled.Logout,
@@ -181,6 +229,46 @@ private fun ProfileContent(
                 Text(
                     text = stringResource(R.string.profile_logout),
                     fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            if (showLogoutDialog) {
+                AlertDialog(
+                    onDismissRequest = { showLogoutDialog = false },
+                    title = {
+                        Text(
+                            text = stringResource(R.string.profile_logout_title),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    },
+                    text = {
+                        Text(stringResource(R.string.profile_logout_message))
+                    },
+                    confirmButton = {
+                        // 积极按钮「取消」：莫奈取色（primary）
+                        TextButton(
+                            onClick = { showLogoutDialog = false },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Text(stringResource(R.string.profile_logout_cancel))
+                        }
+                    },
+                    dismissButton = {
+                        // 消极按钮「退出」：红色（error）
+                        TextButton(
+                            onClick = {
+                                showLogoutDialog = false
+                                onLogout()
+                            },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text(stringResource(R.string.profile_logout_confirm))
+                        }
+                    }
                 )
             }
 

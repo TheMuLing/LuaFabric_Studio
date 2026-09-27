@@ -24,6 +24,7 @@
     <string name="forum">源码论坛</string>
     <string name="sign_in_now">立即登录</string>
     <string name="sign_in">签到</string>
+    <string name="drawer_sign_card_signed">已签到</string>
     <string name="join_group_title">加入 LuaFabric 官方交流群</string>
     <string name="join">加入</string>
     <string name="no_thanks">不了</string>
@@ -205,6 +206,8 @@
     <string name="settings_smart_sorting_desc">根据使用频率自动排序快捷功能和符号栏</string>
     <string name="settings_hex_color_highlight">十六进制颜色高亮</string>
     <string name="settings_hex_color_highlight_desc">显示十六进制颜色</string>
+    <string name="settings_quick_bar_icon_only">快捷功能栏无字模式</string>
+    <string name="settings_quick_bar_icon_only_desc">将快捷功能栏的文本功能更换为图标</string>
 
     <!-- 通知提示 -->
     <string name="settings_toast_position">弹出位置</string>
@@ -522,12 +525,31 @@
 
     <!-- 个人主页 -->
     <string name="profile_title">个人主页</string>
+    <string name="profile_exp">经验</string>
+    <string name="profile_exp_value">%s / 10000</string>
     <string name="profile_qq">QQ：%1$s</string>
     <string name="profile_email">邮箱：%1$s</string>
     <string name="profile_coin">金币：%1$s</string>
+    <string name="drawer_coin_label">金币</string>
     <string name="profile_autograph">签名：%1$s</string>
     <string name="profile_logout">退出登录</string>
+    <string name="profile_logout_title">退出登录？</string>
+    <string name="profile_logout_message">这将导致您的登录选项失效，直到您重新登录</string>
+    <string name="profile_logout_cancel">取消</string>
+    <string name="profile_logout_confirm">退出</string>
     <string name="profile_logout_success">已退出登录</string>
+
+    <!-- 源码论坛 -->
+    <string name="forum_search_hint">搜索帖子标题 / 作者</string>
+    <string name="forum_filter">筛选</string>
+    <string name="forum_source">源码实例</string>
+    <string name="forum_project">完整项目</string>
+    <string name="forum_post">发帖</string>
+    <string name="forum_empty">暂无帖子</string>
+    <string name="forum_compose_title">标题</string>
+    <string name="forum_compose_content">正文</string>
+    <string name="forum_submit">提交</string>
+    <string name="forum_compose_wip">发帖功能开发中</string>
 
     <!-- 属性页面 -->
     <string name="attribute_build_options">构建选项</string>

@@ -109,6 +109,10 @@
 # 云居登录 Gson 模型（防 R8 剥离字段导致反序列化结果为空/崩溃）
 -keep class com.luafabric.studio.falling.ui.login.YunJuResponse { *; }
 
+# 源码论坛 Gson 模型（防 R8 剥离字段导致反序列化结果为空/崩溃）
+-keep class com.luafabric.studio.falling.ui.forum.ForumItem { *; }
+-keep class com.luafabric.studio.falling.ui.forum.ForumListResponse { *; }
+
 # OkHttp 3
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }

@@ -351,21 +351,6 @@ fun EditorMoreMenu(
                     onDismiss()
                 }
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.code_editor_format_code)) },
-                onClick = {
-                    viewModel.formatCode()
-                    onDismiss()
-                }
-            )
-
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.code_editor_build)) },
-                onClick = {
-                    onBuildProject()
-                    onDismiss()
-                }
-            )
 
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.code_editor_clear_cache)) },
