@@ -1123,10 +1123,20 @@ function loadlayout(layout, views, parentViewClass)
 
   -- Handle deferred settings (ConstraintLayout constraints and RelativeLayout rules)
   for _, item in ipairs(deferredSet) do
+    -- "@id/xxx" / "@+id/xxx" 归一化为裸 id 再查 views 表，避免引用未注册键导致 nil 崩溃
+    local refValue = item.value
+    if type(refValue) == "string" then
+      local cleaned = string.gsub(refValue, "^@[%+]?id/", "")
+      if views[cleaned] then refValue = cleaned end
+    end
+    local target = views[refValue]
+    if not target then
+      error("deferred attribute references undefined id: " .. tostring(item.value), 0)
+    end
     if item.rule then
-      item.layoutParams.addRule(item.rule, views[item.value].getId())
+      item.layoutParams.addRule(item.rule, target.getId())
      elseif item.constraintSetter then
-      item.constraintSetter(item.layoutParams, views[item.value].getId())
+      item.constraintSetter(item.layoutParams, target.getId())
     end
   end
 

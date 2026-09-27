@@ -28,6 +28,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -48,6 +49,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -71,6 +73,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -100,6 +104,8 @@ import com.luafabric.studio.falling.ui.editor.buildProject
 import com.luafabric.studio.falling.ui.editor.installApk
 import com.luafabric.studio.falling.ui.manual.ManualScreen
 import com.luafabric.studio.falling.ui.project.NewProjectScreen
+import com.luafabric.studio.falling.ui.forum.ForumItem
+import com.luafabric.studio.falling.ui.forum.ForumRepository
 import com.luafabric.studio.falling.ui.forum.ForumScreen
 import com.luafabric.studio.falling.ui.settings.DarkMode
 import com.luafabric.studio.falling.ui.settings.SettingsManager
@@ -580,48 +586,115 @@ fun MainScreen(
 
     // ---- 底部导航栏滚动隐藏/显示 ----
     // 上滑(内容向下滚)隐藏，下滑(内容向上滚)显示；项目/论坛列表都联动
+    // 导航栏高度常量：与 bottomBar 固定占位 + 内容区浮层导航栏配合，显隐不改变内容区高度
+    val navBarHeightDp = 80.dp
     val forumListState = rememberLazyListState()
-    val densityPx = LocalDensity.current.density
-    var navBarVisible by remember { mutableStateOf(true) }
+
+    // ---- 源码论坛数据缓存：仅在首次进入与手动刷新时请求，切换导航页不重复请求 ----
+    val forumScope = rememberCoroutineScope()
+    var forumCache by remember { mutableStateOf<Map<Int, List<ForumItem>>>(emptyMap()) }
+    var forumRefreshing by remember { mutableStateOf(false) }
+    var forumInitialized by remember { mutableStateOf(false) }
+    fun ensureForumPosts(forumId: Int) {
+        if (forumCache.containsKey(forumId)) return
+        forumScope.launch {
+            val list = withContext(Dispatchers.IO) {
+                ForumRepository.loadPosts(context, forumId)
+            }
+            forumCache = forumCache + (forumId to list)
+        }
+    }
+    fun refreshForumPosts(forumId: Int) {
+        forumRefreshing = true
+        forumScope.launch {
+            val list = withContext(Dispatchers.IO) {
+                ForumRepository.loadPosts(context, forumId)
+            }
+            forumCache = forumCache + (forumId to list)
+            forumRefreshing = false
+        }
+    }
+    val density = LocalDensity.current.density
+    val navBarVisibleState = remember { mutableStateOf(true) }
+    val navBarVisible by navBarVisibleState
+    // fab 距底间距：导航栏可见时停在其上方，隐藏时沉到底部（平滑过渡）
+    val fabGap by animateDpAsState(
+        targetValue = if (navBarVisible) navBarHeightDp + 16.dp else 16.dp,
+        label = "fabGap"
+    )
     var navBarPrevIndex by remember { mutableIntStateOf(0) }
     var navBarPrevOffset by remember { mutableIntStateOf(0) }
-    var navBarBackAccum by remember { mutableIntStateOf(0) }
+    var navBarBackFrames by remember { mutableIntStateOf(0) }
+    // 拖动回滚的物理距离累计：短列表贴底后下拉只会被 stretch 过滚动吸收（offset 不变），
+    // 但原始拖动位移仍会经 onPreScroll 送达，据此显示导航栏
+    val dragBackPx = remember { mutableIntStateOf(0) }
+    val dragShowThresholdPx = (16 * density).toInt()
+    val navScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val dy = available.y
+                if (source == NestedScrollSource.Drag) {
+                    if (dy < 0) {
+                        navBarVisibleState.value = false
+                        dragBackPx.intValue = 0
+                    } else if (dy > 0) {
+                        val acc = dragBackPx.intValue + dy.toInt()
+                        if (acc >= dragShowThresholdPx) {
+                            navBarVisibleState.value = true
+                            dragBackPx.intValue = 0
+                        } else {
+                            dragBackPx.intValue = acc
+                        }
+                    }
+                } else if (source == NestedScrollSource.Fling && dy < 0) {
+                    // 向前(内容向下)甩动：立即隐藏；回弹甩动(Fling 且 dy>0)不参与显示，避免闪烁
+                    navBarVisibleState.value = false
+                    dragBackPx.intValue = 0
+                }
+                return Offset.Zero
+            }
+        }
+    }
     LaunchedEffect(currentContentType) {
-        navBarVisible = true
-        navBarBackAccum = 0
+        navBarVisibleState.value = true
+        navBarBackFrames = 0
+        // 源码论坛：仅刚打开软件后首次进入时自动请求一次初始化，之后切换导航页不再重新请求
+        if (currentContentType == MainContentType.FORUM && !forumInitialized) {
+            forumInitialized = true
+            ensureForumPosts(1)
+        }
         val listState = when (currentContentType) {
             MainContentType.PROJECTS -> lazyListState
             MainContentType.FORUM -> forumListState
             else -> return@LaunchedEffect
         }
-        val backThresholdPx = (48 * densityPx).toInt()
         snapshotFlow {
             listState.firstVisibleItemIndex to
                 (listState.firstVisibleItemScrollOffset to listState.canScrollForward)
         }.collect { (idx, pair) ->
             val (off, canScrollDown) = pair
             if (idx != navBarPrevIndex || off != navBarPrevOffset) {
-                if (!canScrollDown) {
-                    // 已滚到底：保持隐藏，忽略 overscroll 回弹，避免导航栏闪烁
-                    navBarVisible = false
-                    navBarBackAccum = 0
-                } else if (idx < navBarPrevIndex ||
+                val movedBack = idx < navBarPrevIndex ||
                     (idx == navBarPrevIndex && off < navBarPrevOffset)
-                ) {
-                    // 回滚方向：累积回滚距离，超过阈值才重新显示（抑制到底后的回弹抖动）
-                    val backPx = if (idx < navBarPrevIndex) Int.MAX_VALUE
-                    else (navBarPrevOffset - off).coerceAtLeast(0)
-                    if (backPx >= backThresholdPx || navBarBackAccum >= backThresholdPx) {
-                        navBarVisible = true
-                        navBarBackAccum = 0
-                    } else {
-                        navBarBackAccum += backPx
+                val movedForward = idx > navBarPrevIndex ||
+                    (idx == navBarPrevIndex && off > navBarPrevOffset)
+                // 纯方向驱动：canScrollForward 在短列表（内容仅略高于视口）中于未到物理底部
+                // 时就会变 false，若以其为隐藏门控会在整段范围持续隐藏、回滚永远不显示。
+                if (movedForward) {
+                    navBarVisibleState.value = false
+                    navBarBackFrames = 0
+                } else if (movedBack) {
+                    // 连续 2 帧回滚再显示，抑制到底回弹/抖动产生的单帧反向 blip
+                    navBarBackFrames += 1
+                    if (navBarBackFrames >= 2) {
+                        navBarVisibleState.value = true
+                        navBarBackFrames = 0
                     }
-                } else {
-                    // 下滑方向：隐藏
-                    navBarVisible = false
-                    navBarBackAccum = 0
                 }
+                android.util.Log.d(
+                    "NavScroll",
+                    "idx=$idx off=$off canF=$canScrollDown back=${navBarBackFrames} visible=$navBarVisible"
+                )
             }
             navBarPrevIndex = idx
             navBarPrevOffset = off
@@ -1422,99 +1495,7 @@ fun MainScreen(
                     },
                     scrollBehavior = scrollBehavior
                 )
-            },
-            bottomBar = {
-                // 底部导航栏：仅 项目/源码论坛/账户 三个 tab 显示；选中项才显示文本
-                if (currentContentType == MainContentType.PROJECTS ||
-                    currentContentType == MainContentType.FORUM ||
-                    currentContentType == MainContentType.ACCOUNT
-                ) {
-                    AnimatedVisibility(
-                        visible = navBarVisible,
-                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-                    ) {
-                        NavigationBar {
-                            NavigationBarItem(
-                                selected = currentContentType == MainContentType.PROJECTS,
-                                onClick = { onCurrentContentTypeChange(MainContentType.PROJECTS) },
-                                icon = {
-                                    Icon(
-                                        Icons.Filled.Folder,
-                                        contentDescription = stringResource(R.string.projects)
-                                    )
-                                },
-                                label = {
-                                    if (currentContentType == MainContentType.PROJECTS) {
-                                        Text(stringResource(R.string.projects))
-                                    }
-                                }
-                            )
-                            NavigationBarItem(
-                                selected = currentContentType == MainContentType.FORUM,
-                                onClick = { onCurrentContentTypeChange(MainContentType.FORUM) },
-                                icon = {
-                                    Icon(
-                                        Icons.Filled.Forum,
-                                        contentDescription = stringResource(R.string.forum)
-                                    )
-                                },
-                                label = {
-                                    if (currentContentType == MainContentType.FORUM) {
-                                        Text(stringResource(R.string.forum))
-                                    }
-                                }
-                            )
-                            NavigationBarItem(
-                                selected = currentContentType == MainContentType.ACCOUNT,
-                                onClick = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
-                                icon = {
-                                    Icon(
-                                        Icons.Filled.AccountCircle,
-                                        contentDescription = stringResource(R.string.account)
-                                    )
-                                },
-                                label = {
-                                    if (currentContentType == MainContentType.ACCOUNT) {
-                                        Text(stringResource(R.string.account))
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            },
-            floatingActionButton = {
-                when (currentContentType) {
-                    MainContentType.PROJECTS -> {
-                        ExtendedFloatingActionButton(
-                            onClick = onNavigateToNewProject,
-                            icon = {
-                                Icon(
-                                    Icons.Filled.Add,
-                                    contentDescription = stringResource(R.string.cd_add),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            },
-                            text = {
-                                AnimatedVisibility(
-                                    visible = showExtendedFab,
-                                    enter = TransitionUtil.createFABTransition(),
-                                    exit = TransitionUtil.createFABExitTransition()
-                                ) {
-                                    Text(stringResource(R.string.create_project))
-                                }
-                            },
-                            expanded = showExtendedFab,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-                    }
-
-                    MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.FORUM, MainContentType.ACCOUNT -> {
-                    }
-                }
-            },
-            floatingActionButtonPosition = FabPosition.End
+            }
         ) { paddingValues ->
             Box(
                 modifier = Modifier
@@ -1582,9 +1563,15 @@ fun MainScreen(
                                         }
                                     } else {
                                         LazyColumn(
-                                            modifier = Modifier.fillMaxSize(),
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .nestedScroll(navScrollConnection),
                                             state = lazyListState,
-                                            contentPadding = PaddingValues(16.dp),
+                                            contentPadding = PaddingValues(
+                                                start = 16.dp, top = 16.dp, end = 16.dp,
+                                                // 底部为浮层导航栏让位：内容可滚至导航栏上方，不裁切也无永久空缺
+                                                bottom = 16.dp + navBarHeightDp
+                                            ),
                                             verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
                                             items(
@@ -1619,7 +1606,14 @@ fun MainScreen(
                         }
 
                         MainContentType.FORUM -> {
-                            ForumScreen(toast = toast, listState = forumListState)
+                            ForumScreen(
+                                toast = toast,
+                                listState = forumListState,
+                                postsCache = forumCache,
+                                isRefreshing = forumRefreshing,
+                                onEnsureLoaded = { ensureForumPosts(it) },
+                                onRefresh = { refreshForumPosts(it) }
+                            )
                         }
 
                         MainContentType.ACCOUNT -> {
@@ -1671,6 +1665,97 @@ fun MainScreen(
                             )
                         }
                     }
+                }
+
+                // 底部导航栏浮层：与 bottomBar 占位同尺寸，覆盖内容底部，不参与布局高度
+                // → 显隐动画不改变内容区高度，列表无“裁切”观感
+                if (currentContentType == MainContentType.PROJECTS ||
+                    currentContentType == MainContentType.FORUM ||
+                    currentContentType == MainContentType.ACCOUNT
+                ) {
+                    AnimatedVisibility(
+                        visible = navBarVisible,
+                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    ) {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = currentContentType == MainContentType.PROJECTS,
+                                onClick = { onCurrentContentTypeChange(MainContentType.PROJECTS) },
+                                icon = {
+                                    Icon(
+                                        Icons.Filled.Folder,
+                                        contentDescription = stringResource(R.string.projects)
+                                    )
+                                },
+                                label = {
+                                    if (currentContentType == MainContentType.PROJECTS) {
+                                        Text(stringResource(R.string.projects))
+                                    }
+                                }
+                            )
+                            NavigationBarItem(
+                                selected = currentContentType == MainContentType.FORUM,
+                                onClick = { onCurrentContentTypeChange(MainContentType.FORUM) },
+                                icon = {
+                                    Icon(
+                                        Icons.Filled.Forum,
+                                        contentDescription = stringResource(R.string.forum)
+                                    )
+                                },
+                                label = {
+                                    if (currentContentType == MainContentType.FORUM) {
+                                        Text(stringResource(R.string.forum))
+                                    }
+                                }
+                            )
+                            NavigationBarItem(
+                                selected = currentContentType == MainContentType.ACCOUNT,
+                                onClick = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
+                                icon = {
+                                    Icon(
+                                        Icons.Filled.AccountCircle,
+                                        contentDescription = stringResource(R.string.account)
+                                    )
+                                },
+                                label = {
+                                    if (currentContentType == MainContentType.ACCOUNT) {
+                                        Text(stringResource(R.string.account))
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // 新建项目 FAB：导航栏可见时停在其上方，隐藏时沉底（fabGap 平滑过渡）
+                if (currentContentType == MainContentType.PROJECTS) {
+                    ExtendedFloatingActionButton(
+                        onClick = onNavigateToNewProject,
+                        icon = {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = stringResource(R.string.cd_add),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        },
+                        text = {
+                            AnimatedVisibility(
+                                visible = showExtendedFab,
+                                enter = TransitionUtil.createFABTransition(),
+                                exit = TransitionUtil.createFABExitTransition()
+                            ) {
+                                Text(stringResource(R.string.create_project))
+                            }
+                        },
+                        expanded = showExtendedFab,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .navigationBarsPadding()
+                            .padding(end = 16.dp)
+                            .padding(bottom = fabGap)
+                    )
                 }
             }
         }
@@ -2353,6 +2438,28 @@ private fun CategoryTabBar(
     onAddClick: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
+    // 主题圆角由 MaterialTheme.shapes.medium 派生，直接复用其 CornerSize 而非换算像素
+    val mediumCorner: CornerSize =
+        (MaterialTheme.shapes.medium as? RoundedCornerShape)?.topStart ?: CornerSize(12.dp)
+    val smallCorner: CornerSize = CornerSize(6.dp)
+    // 按钮总高 = 文本行高(lineHeight sp→dp) + 上下 9dp 内边距
+    val chipHeight = with(LocalDensity.current) {
+        MaterialTheme.typography.labelLarge.lineHeight.toDp() + 18.dp
+    }
+    // 收藏：左上左下大圆角（组首贴屏幕），右上右下小圆角；所有：与之镜像（左小右大）；
+    // 二者拼接成一体、右侧分割线与其他分类隔开；其余自定义分类为普通全圆角胶囊
+    fun chipShape(token: String): RoundedCornerShape =
+        when (token) {
+            CATEGORY_FAVORITE -> RoundedCornerShape(
+                topStart = mediumCorner, topEnd = smallCorner,
+                bottomEnd = smallCorner, bottomStart = mediumCorner
+            )
+            CATEGORY_ALL -> RoundedCornerShape(
+                topStart = smallCorner, topEnd = mediumCorner,
+                bottomEnd = mediumCorner, bottomStart = smallCorner
+            )
+            else -> RoundedCornerShape(mediumCorner)
+        }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2375,7 +2482,7 @@ private fun CategoryTabBar(
                 Box {
                     Box(
                         modifier = Modifier
-                            .clip(MaterialTheme.shapes.medium)
+                            .clip(chipShape(token))
                             .background(if (isSel) cs.primaryContainer else cs.surfaceContainerHigh)
                             .combinedClickable(
                                 onClick = { onSelect(token) },
@@ -2418,6 +2525,15 @@ private fun CategoryTabBar(
                             )
                         }
                     }
+                }
+                // 「所有」右侧细分割线：与类别按钮同高，把 收藏/所有 与其他分类隔开
+                if (token == CATEGORY_ALL) {
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(chipHeight)
+                            .background(cs.outlineVariant)
+                    )
                 }
             }
         }

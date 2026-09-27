@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,11 +26,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -50,8 +53,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.settings.SettingsManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import muling.views.tool.utils.NonBlockingToastState
 
 /** 源码实例 第二层分类：默认「全部」，7 类两字扩写为四字 + 「其他」 */
@@ -72,15 +73,20 @@ private fun themeRadius(): Dp = when (SettingsManager.currentSettings.shapeSizeI
 }
 
 /** 源码论坛：搜索框 + 双层 tabs + 帖子列表 + 发帖 FAB */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ForumScreen(toast: NonBlockingToastState, listState: LazyListState) {
-    val context = LocalContext.current
+fun ForumScreen(
+    toast: NonBlockingToastState,
+    listState: LazyListState,
+    postsCache: Map<Int, List<ForumItem>>,
+    isRefreshing: Boolean,
+    onEnsureLoaded: (Int) -> Unit,
+    onRefresh: (Int) -> Unit
+) {
     var searchQuery by remember { mutableStateOf("") }
     var layer1Index by remember { mutableIntStateOf(0) }
     // 第一层切换时第二层回到首个分类
     var layer2Index by remember(layer1Index) { mutableIntStateOf(0) }
-    var posts by remember { mutableStateOf<List<ForumItem>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
     var showCompose by remember { mutableStateOf(false) }
 
     val layer1Tabs = listOf(
@@ -92,14 +98,12 @@ fun ForumScreen(toast: NonBlockingToastState, listState: LazyListState) {
 
     // 板块 ID：第一层「源码实例」=1，「完整项目」=2（云居后端按板块发帖）
     val layer1ForumIds = listOf(1, 2)
+    val layer1ForumId = layer1ForumIds[layer1Index.coerceIn(layer1ForumIds.indices)]
+    // 帖子数据来自外层缓存：板块无缓存才请求加载（有缓存直接用，切换导航页不重复请求）
+    val posts = postsCache[layer1ForumId] ?: emptyList()
+    val isLoading = !postsCache.containsKey(layer1ForumId)
 
-    LaunchedEffect(layer1Index) {
-        loading = true
-        posts = withContext(Dispatchers.IO) {
-            ForumRepository.loadPosts(context, layer1ForumIds[layer1Index.coerceIn(layer1ForumIds.indices)])
-        }
-        loading = false
-    }
+    LaunchedEffect(layer1ForumId) { onEnsureLoaded(layer1ForumId) }
 
     // 帖子过滤：搜索（标题/作者/正文）+ 当前分类
     val filtered = remember(posts, searchQuery, layer1Index, layer2Index) {
@@ -205,7 +209,7 @@ fun ForumScreen(toast: NonBlockingToastState, listState: LazyListState) {
             )
 
             when {
-                loading -> {
+                isLoading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
@@ -220,14 +224,23 @@ fun ForumScreen(toast: NonBlockingToastState, listState: LazyListState) {
                     }
                 }
                 else -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
-                        items(filtered) { post ->
-                            ForumPostCard(post)
-                            HorizontalDivider(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                thickness = 0.5.dp,
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                            )
+                    PullToRefreshBox(
+                        isRefreshing = isRefreshing,
+                        onRefresh = { onRefresh(layer1ForumId) }
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            state = listState,
+                            contentPadding = PaddingValues(bottom = 96.dp)
+                        ) {
+                            items(filtered) { post ->
+                                ForumPostCard(post)
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                )
+                            }
                         }
                     }
                 }
