@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
@@ -22,6 +23,9 @@ object LoginStore {
         val KEEP_LOGGED_IN = booleanPreferencesKey("keep_logged_in")
         val REMEMBER_ACCOUNT = booleanPreferencesKey("remember_account")
         val USER_JSON = stringPreferencesKey("user_json")
+        // 180s 冷却：各自独立，存到期时间戳(毫秒)，进程重启后依旧生效
+        val SEND_CODE_UNTIL = longPreferencesKey("send_code_until")
+        val FIND_PASS_UNTIL = longPreferencesKey("find_pass_until")
     }
 
     data class SavedLogin(
@@ -78,4 +82,31 @@ object LoginStore {
     suspend fun clear(context: Context) {
         context.loginDataStore.edit { it.clear() }
     }
+
+    /** 读取冷却到期时间戳(毫秒)。无记录或已过期返回 0。 */
+    suspend fun readCooldownUntil(context: Context, tag: String): Long {
+        val prefs = context.loginDataStore.data.first()
+        val until = when (tag) {
+            CooldownTag.SEND_CODE -> prefs[Keys.SEND_CODE_UNTIL] ?: 0L
+            CooldownTag.FIND_PASS -> prefs[Keys.FIND_PASS_UNTIL] ?: 0L
+            else -> 0L
+        }
+        return if (until > System.currentTimeMillis()) until else 0L
+    }
+
+    /** 写入冷却到期时间戳(毫秒)。 */
+    suspend fun writeCooldownUntil(context: Context, tag: String, untilMillis: Long) {
+        context.loginDataStore.edit { prefs ->
+            when (tag) {
+                CooldownTag.SEND_CODE -> prefs[Keys.SEND_CODE_UNTIL] = untilMillis
+                CooldownTag.FIND_PASS -> prefs[Keys.FIND_PASS_UNTIL] = untilMillis
+            }
+        }
+    }
+}
+
+/** 冷却标签：注册验证码发送 / 找回密码发送，各自独立计时 */
+object CooldownTag {
+    const val SEND_CODE = "send_code"
+    const val FIND_PASS = "find_pass"
 }

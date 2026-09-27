@@ -505,12 +505,17 @@
     <string name="login_back_to_login">返回登录</string>
     <string name="login_confirm_pass_label">再输入一次密码</string>
     <string name="login_nickname_label">输入您的昵称</string>
-    <string name="login_code_label">输入您获得的验证码</string>
+    <string name="login_code_label">输入您的邮箱验证码</string>
     <string name="login_get_code">获取验证码</string>
     <string name="login_pass_mismatch">两次输入的密码不一致</string>
     <string name="login_send_code_success">验证码已发送</string>
     <string name="login_send_code_failed">验证码发送失败</string>
     <string name="login_register_failed">注册失败</string>
+    <string name="login_cooldown_seconds">%1$d 秒</string>
+    <string name="login_find_pass_title">忘记密码</string>
+    <string name="login_find_pass_button">找回密码</string>
+    <string name="login_find_pass_success">密码已发送至您的邮箱</string>
+    <string name="login_find_pass_failed">找回失败</string>
 
     <!-- 属性页面 -->
     <string name="attribute_build_options">构建选项</string>

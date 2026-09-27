@@ -120,4 +120,27 @@ object LoginRepository {
             }
         }
     }
+
+    /** POST user_zhmm.php 找回密码（密码发往邮箱）。 */
+    suspend fun findPassword(email: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val body = FormBody.Builder()
+            .add("appid", YunJuApi.APP_ID)
+            .add("key", YunJuApi.APP_KEY)
+            .add("email", email)
+            .build()
+        val request = Request.Builder()
+            .url(YunJuApi.FIND_PASS_URL)
+            .post(body)
+            .build()
+        client.newCall(request).execute().use { resp ->
+            val text = resp.body?.string() ?: return@withContext (false to "")
+            val parsed = runCatching { gson.fromJson(text, YunJuResponse::class.java) }.getOrNull()
+                ?: return@withContext (false to "")
+            if (parsed.code == "1") {
+                true to parsed.msg
+            } else {
+                false to parsed.msg.ifBlank { "找回失败(${parsed.code})" }
+            }
+        }
+    }
 }

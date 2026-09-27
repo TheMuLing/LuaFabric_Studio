@@ -10,6 +10,7 @@ object YunJuApi {
     const val SIGN_URL = "https://yunju.99kpk.top/API/user_qiandao.php"
     const val REGISTER_URL = "https://yunju.99kpk.top/API/user_azc.php"
     const val SEND_CODE_URL = "https://yunju.99kpk.top/API/user_yzm.php"
+    const val FIND_PASS_URL = "https://yunju.99kpk.top/API/user_zhmm.php"
     const val AVATAR_URL = "https://q1.qlogo.cn/g?b=qq&nk=%s&s=640"
 
     fun avatarUrl(qq: String): String = AVATAR_URL.format(qq)

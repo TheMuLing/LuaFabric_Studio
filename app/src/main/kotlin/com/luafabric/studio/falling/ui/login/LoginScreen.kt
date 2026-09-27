@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,12 +68,14 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.luafabric.studio.falling.R
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import muling.views.tool.utils.NonBlockingToastState
 
-/** 云居登录/注册全屏界面 */
+/** 云居登录/注册/忘记密码全屏界面 */
 @Composable
 fun LoginScreen(
     onBack: () -> Unit,
@@ -93,8 +96,11 @@ fun LoginScreen(
     var keepLoggedIn by remember { mutableStateOf(true) }
     var rememberAccount by remember { mutableStateOf(false) }
     var isRegisterMode by remember { mutableStateOf(false) }
+    var isForgotMode by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var sendingCode by remember { mutableStateOf(false) }
+    var codeRemaining by remember { mutableStateOf(0) }
+    var findPassRemaining by remember { mutableStateOf(0) }
 
     var qqError by remember { mutableStateOf<String?>(null) }
     var passError by remember { mutableStateOf<String?>(null) }
@@ -115,28 +121,41 @@ fun LoginScreen(
     val codeLabel = stringResource(R.string.login_code_label)
     val passMismatch = stringResource(R.string.login_pass_mismatch)
 
-    // 左右摇晃动画 + 短振一次
+    // 每秒刷新两个独立冷却剩余秒数（DataStore 持久化，重启依旧生效）
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val codeUntil = LoginStore.readCooldownUntil(context, CooldownTag.SEND_CODE)
+            val passUntil = LoginStore.readCooldownUntil(context, CooldownTag.FIND_PASS)
+            codeRemaining = ((codeUntil - now) / 1000L).toInt().coerceAtLeast(0)
+            findPassRemaining = ((passUntil - now) / 1000L).toInt().coerceAtLeast(0)
+            delay(1000)
+        }
+    }
+
+    // 左右摇晃动画 + 错误短振一次（保留原始触感）
     suspend fun shake(anim: Animatable<Float, AnimationVector1D>) {
         for (target in listOf(-12f, 12f, -8f, 8f, -4f, 4f, 0f)) {
             anim.animateTo(target, tween(durationMillis = 70, easing = LinearEasing))
         }
     }
 
-    fun vibrate() {
-        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+    // 更轻的触感（按钮等常规交互）
+    fun vibrateLight() {
+        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
     }
 
     // 登录：从上到下每次只查错一个编辑框，命中即停止
     val onLoginClick: () -> Unit = loginAction@{
         if (qq.isBlank()) {
             qqError = qqLabel
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(qqShake) }
             return@loginAction
         }
         if (pass.isBlank()) {
             passError = passLabel
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(passShake) }
             return@loginAction
         }
@@ -168,38 +187,38 @@ fun LoginScreen(
     val onRegisterClick: () -> Unit = registerAction@{
         if (qq.isBlank()) {
             qqError = qqLabel
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(qqShake) }
             return@registerAction
         }
         if (pass.isBlank()) {
             passError = passLabel
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(passShake) }
             return@registerAction
         }
         if (confirmPass.isBlank()) {
             confirmPassError = confirmPassLabel
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(confirmShake) }
             return@registerAction
         }
         if (confirmPass != pass) {
             confirmPassError = passMismatch
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(passShake) }
             scope.launch { shake(confirmShake) }
             return@registerAction
         }
         if (nickname.isBlank()) {
             nicknameError = nicknameLabel
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(nicknameShake) }
             return@registerAction
         }
         if (code.isBlank()) {
             codeError = codeLabel
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(codeShake) }
             return@registerAction
         }
@@ -239,19 +258,27 @@ fun LoginScreen(
         }
     }
 
-    // 获取验证码：发送到 QQ号@qq.com
+    // 获取验证码：发送到 QQ号@qq.com，成功进入 180s 冷却
     val onGetCodeClick: () -> Unit = codeAction@{
         if (qq.isBlank()) {
             qqError = qqLabel
-            vibrate()
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             scope.launch { shake(qqShake) }
             return@codeAction
         }
         qqError = null
+        vibrateLight()
         scope.launch {
             sendingCode = true
             try {
                 val res = LoginRepository.sendCode("${qq.trim()}@qq.com")
+                if (res.first) {
+                    LoginStore.writeCooldownUntil(
+                        context, CooldownTag.SEND_CODE,
+                        System.currentTimeMillis() + 180_000L
+                    )
+                    codeRemaining = 180
+                }
                 toast.showToast(
                     res.second.ifBlank {
                         context.getString(
@@ -268,20 +295,62 @@ fun LoginScreen(
         }
     }
 
+    // 找回密码：POST user_zhmm.php（密码发往邮箱），成功进入 180s 冷却
+    val onFindPassClick: () -> Unit = findPassAction@{
+        if (qq.isBlank()) {
+            qqError = qqLabel
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            scope.launch { shake(qqShake) }
+            return@findPassAction
+        }
+        qqError = null
+        vibrateLight()
+        scope.launch {
+            loading = true
+            try {
+                val res = LoginRepository.findPassword("${qq.trim()}@qq.com")
+                if (res.first) {
+                    LoginStore.writeCooldownUntil(
+                        context, CooldownTag.FIND_PASS,
+                        System.currentTimeMillis() + 180_000L
+                    )
+                    findPassRemaining = 180
+                }
+                toast.showToast(
+                    res.second.ifBlank {
+                        context.getString(
+                            if (res.first) R.string.login_find_pass_success
+                            else R.string.login_find_pass_failed
+                        )
+                    }
+                )
+            } catch (e: Exception) {
+                toast.showToast(context.getString(R.string.login_network_error))
+            } finally {
+                loading = false
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
-        // 顶部栏：无容器色返回按钮 + 同行折叠标题（登录 ↔ 注册 淡入淡出切换）
+        // 顶部栏：左上角返回。忘记密码模式下仅退回本界面（保留登录/注册态）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+            IconButton(
+                onClick = {
+                    if (isForgotMode) isForgotMode = false else onBack()
+                },
+                modifier = Modifier.size(48.dp)
+            ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.login_back),
@@ -289,15 +358,23 @@ fun LoginScreen(
                 )
             }
             AnimatedContent(
-                targetState = isRegisterMode,
+                targetState = when {
+                    isForgotMode -> 2
+                    isRegisterMode -> 1
+                    else -> 0
+                },
                 transitionSpec = {
                     fadeIn(tween(200)) togetherWith fadeOut(tween(200))
                 },
                 label = "login_title"
-            ) { registerMode ->
+            ) { mode ->
                 Text(
                     text = stringResource(
-                        if (registerMode) R.string.register_title else R.string.login_title
+                        when (mode) {
+                            2 -> R.string.login_find_pass_title
+                            1 -> R.string.register_title
+                            else -> R.string.login_title
+                        }
                     ),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
@@ -306,326 +383,431 @@ fun LoginScreen(
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // QQ号：仅数字，md3 Chat 图标，末尾清空
-            OutlinedTextField(
-                value = qq,
-                onValueChange = { new ->
-                    if (new.all(Char::isDigit)) {
-                        qq = new
-                        qqError = null
-                    }
-                },
+        if (isForgotMode) {
+            // ===== 忘记密码：仅 QQ 框 + 主按钮「找回密码」 =====
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .graphicsLayer { translationX = qqShake.value },
-                label = { Text(qqLabel) },
-                leadingIcon = {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Chat,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                },
-                trailingIcon = {
-                    if (qq.isNotEmpty()) {
-                        IconButton(onClick = { qq = ""; qqError = null }) {
-                            Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear))
-                        }
-                    }
-                },
-                singleLine = true,
-                isError = qqError != null,
-                supportingText = { qqError?.let { Text(it) } },
-                shape = MaterialTheme.shapes.medium,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Next
-                )
-            )
-
-            // 密码：md3 Lock 图标，末尾可视/不可视小眼睛，默认不可视
-            OutlinedTextField(
-                value = pass,
-                onValueChange = { new ->
-                    pass = new
-                    passError = null
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer { translationX = passShake.value },
-                label = { Text(passLabel) },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                },
-                trailingIcon = {
-                    IconButton(onClick = { passVisible = !passVisible }) {
-                        Icon(
-                            if (passVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = stringResource(
-                                if (passVisible) R.string.login_hide_password
-                                else R.string.login_show_password
-                            )
-                        )
-                    }
-                },
-                singleLine = true,
-                isError = passError != null,
-                supportingText = { passError?.let { Text(it) } },
-                visualTransformation =
-                    if (passVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                shape = MaterialTheme.shapes.medium,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Next
-                )
-            )
-
-            // 注册模式专属三编辑框：默认隐藏，进入注册模式后滑出
-            AnimatedVisibility(
-                visible = isRegisterMode,
-                enter = expandVertically(tween(300)) + fadeIn(tween(300)),
-                exit = shrinkVertically(tween(250)) + fadeOut(tween(250))
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // 再输入一次密码：md3 LockReset，小眼睛默认不可视
-                    OutlinedTextField(
-                        value = confirmPass,
-                        onValueChange = { new ->
-                            confirmPass = new
-                            confirmPassError = null
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer { translationX = confirmShake.value },
-                        label = { Text(confirmPassLabel) },
-                        leadingIcon = {
+                Spacer(modifier = Modifier.height(24.dp))
+
+                OutlinedTextField(
+                    value = qq,
+                    onValueChange = { new ->
+                        if (new.all(Char::isDigit)) {
+                            qq = new
+                            qqError = null
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { translationX = qqShake.value },
+                    label = { Text(qqLabel) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Chat,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    trailingIcon = {
+                        if (qq.isNotEmpty()) {
+                            IconButton(onClick = { qq = ""; qqError = null }) {
+                                Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    isError = qqError != null,
+                    supportingText = { qqError?.let { Text(it) } },
+                    shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    )
+                )
+
+                Button(
+                    onClick = onFindPassClick,
+                    enabled = !loading && findPassRemaining <= 0,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    when {
+                        loading -> CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        findPassRemaining > 0 -> Text(
+                            stringResource(R.string.login_cooldown_seconds, findPassRemaining),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        else -> Text(
+                            stringResource(R.string.login_find_pass_button),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        } else {
+            // ===== 登录 / 注册 共用主体 =====
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // QQ号：仅数字，md3 Chat 图标，末尾清空
+                OutlinedTextField(
+                    value = qq,
+                    onValueChange = { new ->
+                        if (new.all(Char::isDigit)) {
+                            qq = new
+                            qqError = null
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { translationX = qqShake.value },
+                    label = { Text(qqLabel) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Chat,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    trailingIcon = {
+                        if (qq.isNotEmpty()) {
+                            IconButton(onClick = { qq = ""; qqError = null }) {
+                                Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    isError = qqError != null,
+                    supportingText = { qqError?.let { Text(it) } },
+                    shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next
+                    )
+                )
+
+                // 密码：md3 Lock 图标，末尾可视/不可视小眼睛，默认不可视
+                OutlinedTextField(
+                    value = pass,
+                    onValueChange = { new ->
+                        pass = new
+                        passError = null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { translationX = passShake.value },
+                    label = { Text(passLabel) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.Lock,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { passVisible = !passVisible }) {
                             Icon(
-                                Icons.Filled.LockReset,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = { confirmPassVisible = !confirmPassVisible }) {
-                                Icon(
-                                    if (confirmPassVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                    contentDescription = stringResource(
-                                        if (confirmPassVisible) R.string.login_hide_password
-                                        else R.string.login_show_password
-                                    )
+                                if (passVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = stringResource(
+                                    if (passVisible) R.string.login_hide_password
+                                    else R.string.login_show_password
                                 )
-                            }
-                        },
-                        singleLine = true,
-                        isError = confirmPassError != null,
-                        supportingText = { confirmPassError?.let { Text(it) } },
-                        visualTransformation =
-                            if (confirmPassVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        shape = MaterialTheme.shapes.medium,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Next
-                        )
-                    )
-
-                    // 昵称：md3 Edit 铅笔，末尾清空
-                    OutlinedTextField(
-                        value = nickname,
-                        onValueChange = { new ->
-                            nickname = new
-                            nicknameError = null
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer { translationX = nicknameShake.value },
-                        label = { Text(nicknameLabel) },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Edit,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
                             )
-                        },
-                        trailingIcon = {
-                            if (nickname.isNotEmpty()) {
-                                IconButton(onClick = { nickname = ""; nicknameError = null }) {
-                                    Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear))
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        isError = nicknameError != null,
-                        supportingText = { nicknameError?.let { Text(it) } },
-                        shape = MaterialTheme.shapes.medium,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Text,
-                            imeAction = ImeAction.Next
-                        )
+                        }
+                    },
+                    singleLine = true,
+                    isError = passError != null,
+                    supportingText = { passError?.let { Text(it) } },
+                    visualTransformation =
+                        if (passVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Next
                     )
+                )
 
-                    // 验证码：md3 VerifiedUser 盾+对勾，末尾清空，同排右侧边框按钮「获取验证码」
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                // 注册模式专属三编辑框：默认隐藏，进入注册模式后滑出
+                AnimatedVisibility(
+                    visible = isRegisterMode,
+                    enter = expandVertically(tween(300)) + fadeIn(tween(300)),
+                    exit = shrinkVertically(tween(250)) + fadeOut(tween(250))
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        // 再输入一次密码：md3 LockReset，小眼睛默认不可视
                         OutlinedTextField(
-                            value = code,
+                            value = confirmPass,
                             onValueChange = { new ->
-                                if (new.all(Char::isDigit)) {
-                                    code = new
-                                    codeError = null
-                                }
+                                confirmPass = new
+                                confirmPassError = null
                             },
                             modifier = Modifier
-                                .weight(1f)
-                                .graphicsLayer { translationX = codeShake.value },
-                            label = { Text(codeLabel) },
+                                .fillMaxWidth()
+                                .graphicsLayer { translationX = confirmShake.value },
+                            label = { Text(confirmPassLabel) },
                             leadingIcon = {
                                 Icon(
-                                    Icons.Filled.VerifiedUser,
+                                    Icons.Filled.LockReset,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             },
                             trailingIcon = {
-                                if (code.isNotEmpty()) {
-                                    IconButton(onClick = { code = ""; codeError = null }) {
+                                IconButton(onClick = { confirmPassVisible = !confirmPassVisible }) {
+                                    Icon(
+                                        if (confirmPassVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                        contentDescription = stringResource(
+                                            if (confirmPassVisible) R.string.login_hide_password
+                                            else R.string.login_show_password
+                                        )
+                                    )
+                                }
+                            },
+                            singleLine = true,
+                            isError = confirmPassError != null,
+                            supportingText = { confirmPassError?.let { Text(it) } },
+                            visualTransformation =
+                                if (confirmPassVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            shape = MaterialTheme.shapes.medium,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Next
+                            )
+                        )
+
+                        // 昵称：md3 Edit 铅笔，末尾清空
+                        OutlinedTextField(
+                            value = nickname,
+                            onValueChange = { new ->
+                                nickname = new
+                                nicknameError = null
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer { translationX = nicknameShake.value },
+                            label = { Text(nicknameLabel) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Edit,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            trailingIcon = {
+                                if (nickname.isNotEmpty()) {
+                                    IconButton(onClick = { nickname = ""; nicknameError = null }) {
                                         Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear))
                                     }
                                 }
                             },
                             singleLine = true,
-                            isError = codeError != null,
-                            supportingText = { codeError?.let { Text(it) } },
+                            isError = nicknameError != null,
+                            supportingText = { nicknameError?.let { Text(it) } },
                             shape = MaterialTheme.shapes.medium,
                             keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
                             )
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        OutlinedButton(
-                            onClick = onGetCodeClick,
-                            enabled = !sendingCode
+
+                        // 验证码：md3 VerifiedUser，限数字+小写字母，label 单行省略，
+                        // 末尾清空，同排右侧边框按钮「获取验证码」(高度与编辑框一致，180s 冷却)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (sendingCode) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp
+                            OutlinedTextField(
+                                value = code,
+                                onValueChange = { new ->
+                                    if (new.all { it.isDigit() || it in 'a'..'z' }) {
+                                        code = new
+                                        codeError = null
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .graphicsLayer { translationX = codeShake.value },
+                                label = {
+                                    Text(
+                                        text = codeLabel,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.VerifiedUser,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (code.isNotEmpty()) {
+                                        IconButton(onClick = { code = ""; codeError = null }) {
+                                            Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.clear))
+                                        }
+                                    }
+                                },
+                                singleLine = true,
+                                isError = codeError != null,
+                                supportingText = { codeError?.let { Text(it) } },
+                                shape = MaterialTheme.shapes.medium,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Text,
+                                    imeAction = ImeAction.Done
                                 )
-                            } else {
-                                Text(stringResource(R.string.login_get_code))
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            OutlinedButton(
+                                onClick = onGetCodeClick,
+                                enabled = !sendingCode && codeRemaining <= 0,
+                                modifier = Modifier.height(56.dp)
+                            ) {
+                                when {
+                                    sendingCode -> CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    codeRemaining > 0 -> Text(
+                                        stringResource(R.string.login_cooldown_seconds, codeRemaining)
+                                    )
+                                    else -> Text(stringResource(R.string.login_get_code))
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // 主按钮：登录模式=登录，注册模式=注册
-            Button(
-                onClick = if (isRegisterMode) onRegisterClick else onLoginClick,
-                enabled = !loading,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                } else {
-                    Text(
-                        text = stringResource(
-                            if (isRegisterMode) R.string.login_register_submit else R.string.login_button
-                        ),
-                        fontWeight = FontWeight.SemiBold
-                    )
+                // 主按钮：登录模式=登录，注册模式=注册
+                Button(
+                    onClick = if (isRegisterMode) onRegisterClick else onLoginClick,
+                    enabled = !loading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(
+                                if (isRegisterMode) R.string.login_register_submit else R.string.login_button
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
-            }
 
-            // 双复选框上下堆叠（宽度最大），进入注册模式后淡出
-            AnimatedVisibility(
-                visible = !isRegisterMode,
-                enter = fadeIn(tween(300)),
-                exit = fadeOut(tween(250))
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LoginCheckboxRow(
-                        checked = keepLoggedIn,
-                        onCheckedChange = {
-                            keepLoggedIn = it
-                            vibrate()
-                        },
-                        text = stringResource(R.string.login_keep_login)
-                    )
-                    LoginCheckboxRow(
-                        checked = rememberAccount,
-                        onCheckedChange = {
-                            rememberAccount = it
-                            vibrate()
-                        },
-                        text = stringResource(R.string.login_remember_account)
-                    )
+                // 双复选框上下堆叠（宽度最大），进入注册模式后淡出
+                AnimatedVisibility(
+                    visible = !isRegisterMode,
+                    enter = fadeIn(tween(300)),
+                    exit = fadeOut(tween(250))
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LoginCheckboxRow(
+                            checked = keepLoggedIn,
+                            onCheckedChange = {
+                                keepLoggedIn = it
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            },
+                            text = stringResource(R.string.login_keep_login)
+                        )
+                        LoginCheckboxRow(
+                            checked = rememberAccount,
+                            onCheckedChange = {
+                                rememberAccount = it
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            },
+                            text = stringResource(R.string.login_remember_account)
+                        )
+                    }
                 }
             }
         }
 
-        // 底部：注册账号(注册模式=返回登录) 与 忘记密码 各占半行分别居中，中间分割竖线
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 32.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.Center
+        // 底部：忘记密码模式=单个「返回登录」居中；否则 注册/返回登录 + 分割线 + 忘记密码
+        if (isForgotMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
                     onClick = {
-                        vibrate()
-                        isRegisterMode = !isRegisterMode
-                        confirmPassError = null
-                        nicknameError = null
-                        codeError = null
+                        vibrateLight()
+                        isForgotMode = false
                     }
                 ) {
-                    Text(
-                        stringResource(
-                            if (isRegisterMode) R.string.login_back_to_login
-                            else R.string.login_register
-                        )
-                    )
+                    Text(stringResource(R.string.login_back_to_login))
                 }
             }
-            VerticalDivider(
+        } else {
+            Row(
                 modifier = Modifier
-                    .height(40.dp)
-                    .width(1.dp),
-                color = MaterialTheme.colorScheme.outlineVariant
-            )
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(
-                    onClick = { vibrate() }
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(stringResource(R.string.login_forgot_password))
+                    TextButton(
+                        onClick = {
+                            vibrateLight()
+                            isRegisterMode = !isRegisterMode
+                            confirmPassError = null
+                            nicknameError = null
+                            codeError = null
+                        }
+                    ) {
+                        Text(
+                            stringResource(
+                                if (isRegisterMode) R.string.login_back_to_login
+                                else R.string.login_register
+                            )
+                        )
+                    }
+                }
+                VerticalDivider(
+                    modifier = Modifier
+                        .height(40.dp)
+                        .width(1.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TextButton(
+                        onClick = {
+                            vibrateLight()
+                            isForgotMode = true
+                        }
+                    ) {
+                        Text(stringResource(R.string.login_forgot_password))
+                    }
                 }
             }
         }
