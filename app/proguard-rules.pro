@@ -101,6 +101,11 @@
 -keep class com.luafabric.studio.falling.ui.editor.ai.CodeReference { *; }
 -keep class com.luafabric.studio.falling.ui.editor.ai.ToolCallInfo { *; }
 
+# 手册 Gson 模型（防 R8 删除构造器后类被标 abstract，
+# 导致 Gson 反射实例化崩溃 Abstract classes can't be instantiated）
+-keep class com.luafabric.studio.falling.ui.manual.ManualIndex { *; }
+-keep class com.luafabric.studio.falling.ui.manual.ManualPost { *; }
+
 # OkHttp 3
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }
