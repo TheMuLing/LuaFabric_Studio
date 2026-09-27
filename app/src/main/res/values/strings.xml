@@ -22,6 +22,7 @@
     <string name="wechat_not_installed">微信未安装，请先安装微信</string>
     <string name="debug_build_chip">DEBUG</string>
     <string name="forum">源码论坛</string>
+    <string name="account">账户</string>
     <string name="sign_in_now">立即登录</string>
     <string name="sign_in">签到</string>
     <string name="drawer_sign_card_signed">已签到</string>
@@ -629,6 +630,7 @@
     <string name="filetree_new_folder">新建文件夹</string>
     <string name="filetree_rename">重命名</string>
     <string name="filetree_copy_path">复制绝对路径</string>
+    <string name="filetree_copy_rel_path">复制相对路径</string>
 
     <!-- FileTree - 删除确认对话框 -->
     <string name="filetree_delete_confirm_title">确认删除</string>

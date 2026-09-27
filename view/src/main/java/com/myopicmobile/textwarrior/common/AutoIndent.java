@@ -37,7 +37,13 @@ public class AutoIndent {
             case CATCH:
             case FINALLY:
             case TRY:
+            case DEFER:
                 return 1;
+            case DO:
+                // DO 仅在行首成对出现（do ... end），
+                // 行中（for/while ... do）另加一档会造成双重缩进，故此处恒为 0，
+                // 行首 DO 的 +1 在 format() 中单独处理
+                return 0;
             case UNTIL:
             case END:
             case RCURLY:
@@ -81,7 +87,17 @@ public class AutoIndent {
                             break;
                         case DOUBLE_COLON:
                         case AT:
+                            // label 行：按当前块级缩进输出，不再顶格
+                            builder.append(createIndent(idt * width));
                             builder.append(lexer.yytext());
+                            isNewLine = false;
+                            break;
+                        case DO:
+                            // 行首 DO（do ... end 块）：正常缩进并 开栈 +1，
+                            // 由随后的 END 平衡；行中 for/while 的 DO 走默认分支保持 0
+                            builder.append(createIndent(idt * width));
+                            builder.append(lexer.yytext());
+                            idt += 1;
                             isNewLine = false;
                             break;
                         case END:

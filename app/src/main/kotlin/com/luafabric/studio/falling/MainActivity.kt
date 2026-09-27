@@ -139,10 +139,8 @@ import java.util.zip.ZipOutputStream
 // 屏幕枚举
 enum class AppScreen {
     MAIN,
-    NEW_PROJECT,
-    EDITOR,
-    LOGIN,
-    PROFILE
+    NEW_PROJECT,EDITOR,
+    LOGIN
 }
 
 // 项目数据类
@@ -162,6 +160,7 @@ const val CATEGORY_ALL = "\u0000all"
 enum class MainContentType {
     PROJECTS,
     FORUM,
+    ACCOUNT,
     MANUAL,
     SETTINGS,
     ABOUT,
@@ -238,9 +237,6 @@ fun MainApp() {
             AppScreen.LOGIN -> {
                 currentScreen = AppScreen.MAIN
             }
-            AppScreen.PROFILE -> {
-                currentScreen = AppScreen.MAIN
-            }
             else -> {}
         }
     }
@@ -275,7 +271,6 @@ fun MainApp() {
                         loggedInUser = loggedInUser,
                         loginChecking = loginChecking,
                         onOpenLogin = { currentScreen = AppScreen.LOGIN },
-                        onOpenProfile = { currentScreen = AppScreen.PROFILE },
                         onUserUpdated = { loggedInUser = it }
                     )
                     AppScreen.NEW_PROJECT -> {
@@ -337,20 +332,6 @@ fun MainApp() {
                             toast = toast
                         )
                     }
-                    AppScreen.PROFILE -> {
-                        ProfileScreen(
-                            user = loggedInUser,
-                            onBack = { currentScreen = AppScreen.MAIN },
-                            onLogout = {
-                                scope.launch {
-                                    LoginStore.clear(context)
-                                    loggedInUser = null
-                                    currentScreen = AppScreen.MAIN
-                                }
-                                toast.showToast(context.getString(R.string.profile_logout_success))
-                            }
-                        )
-                    }
                 }
             }
         }
@@ -400,8 +381,7 @@ fun MainScreen(
     loggedInUser: YunJuResponse?,
     loginChecking: Boolean,
     onOpenLogin: () -> Unit,
-    onOpenProfile: () -> Unit,
-    onUserUpdated: (YunJuResponse) -> Unit
+    onUserUpdated: (YunJuResponse?) -> Unit
 ) {
 
     val packageInfo = AppInfoUtil.getPackageInfo()
@@ -593,10 +573,37 @@ fun MainScreen(
         showExtendedFab = !isScrolled
     }
 
+    // ---- 底部导航栏滚动隐藏/显示 ----
+    // 上滑(内容向下滚)隐藏，下滑(内容向上滚)显示；项目/论坛列表都联动
+    val forumListState = rememberLazyListState()
+    var navBarVisible by remember { mutableStateOf(true) }
+    var navBarPrevIndex by remember { mutableIntStateOf(0) }
+    var navBarPrevOffset by remember { mutableIntStateOf(0) }
+    LaunchedEffect(currentContentType) {
+        navBarVisible = true
+        val listState = when (currentContentType) {
+            MainContentType.PROJECTS -> lazyListState
+            MainContentType.FORUM -> forumListState
+            else -> return@LaunchedEffect
+        }
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (idx, off) ->
+            if (idx != navBarPrevIndex || off != navBarPrevOffset) {
+                val scrollingDown =
+                    idx > navBarPrevIndex || (idx == navBarPrevIndex && off > navBarPrevOffset)
+                navBarVisible = !scrollingDown
+            }
+            navBarPrevIndex = idx
+            navBarPrevOffset = off
+        }
+    }
+
     val pageOrder =
         listOf(
             MainContentType.PROJECTS,
             MainContentType.FORUM,
+            MainContentType.ACCOUNT,
             MainContentType.MANUAL,
             MainContentType.SPONSOR,
             MainContentType.SETTINGS,
@@ -877,7 +884,13 @@ fun MainScreen(
                         .fillMaxWidth()
                         .clipToBounds()
                         .clickable(enabled = !loginChecking) {
-                            if (loggedInUser == null) onOpenLogin() else onOpenProfile()
+                            if (loggedInUser == null) {
+                                onOpenLogin()
+                            } else {
+                                // 已登录 → 跳底部导航「账户」页
+                                onCurrentContentTypeChange(MainContentType.ACCOUNT)
+                                scope.launch { drawerState.close() }
+                            }
                         }
                 ) {
                     Column(
@@ -1042,62 +1055,6 @@ fun MainScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    NavigationDrawerItem(
-                        label = {
-                            Text(stringResource(R.string.projects), fontWeight = FontWeight.Medium)
-                        },
-                        selected = currentContentType == MainContentType.PROJECTS,
-                        onClick = {
-                            onCurrentContentTypeChange(MainContentType.PROJECTS)
-                            scope.launch { drawerState.close() }
-                        },
-                        icon = {
-                            DrawerItemIcon(
-                                icon = Icons.Filled.Folder,
-                                selected = currentContentType == MainContentType.PROJECTS,
-                                contentDescription = stringResource(R.string.cd_project_folder)
-                            )
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            unselectedContainerColor = Color.Transparent,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-
-                    NavigationDrawerItem(
-                        label = {
-                            Text(stringResource(R.string.forum), fontWeight = FontWeight.Medium)
-                        },
-                        selected = currentContentType == MainContentType.FORUM,
-                        onClick = {
-                            onCurrentContentTypeChange(MainContentType.FORUM)
-                            scope.launch { drawerState.close() }
-                        },
-                        icon = {
-                            DrawerItemIcon(
-                                icon = Icons.Filled.Forum,
-                                selected = currentContentType == MainContentType.FORUM,
-                                contentDescription = stringResource(R.string.forum)
-                            )
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            unselectedContainerColor = Color.Transparent,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-
                     NavigationDrawerItem(
                         label = {
                             Text(stringResource(R.string.manual), fontWeight = FontWeight.Medium)
@@ -1312,6 +1269,7 @@ fun MainScreen(
                                 text = when (currentContentType) {
                                     MainContentType.PROJECTS -> AppInfoUtil.getAppName(LocalContext.current)
                                     MainContentType.FORUM -> stringResource(R.string.forum)
+                                    MainContentType.ACCOUNT -> stringResource(R.string.account)
                                     MainContentType.MANUAL -> stringResource(R.string.manual)
                                     MainContentType.SETTINGS -> stringResource(R.string.settings)
                                     MainContentType.ABOUT -> stringResource(R.string.about)
@@ -1416,12 +1374,73 @@ fun MainScreen(
                                 }
                             }
 
-                            MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.FORUM -> {
+                            MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.FORUM, MainContentType.ACCOUNT -> {
                             }
                         }
                     },
                     scrollBehavior = scrollBehavior
                 )
+            },
+            bottomBar = {
+                // 底部导航栏：仅 项目/源码论坛/账户 三个 tab 显示；选中项才显示文本
+                if (currentContentType == MainContentType.PROJECTS ||
+                    currentContentType == MainContentType.FORUM ||
+                    currentContentType == MainContentType.ACCOUNT
+                ) {
+                    AnimatedVisibility(
+                        visible = navBarVisible,
+                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                    ) {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = currentContentType == MainContentType.PROJECTS,
+                                onClick = { onCurrentContentTypeChange(MainContentType.PROJECTS) },
+                                icon = {
+                                    Icon(
+                                        Icons.Filled.Folder,
+                                        contentDescription = stringResource(R.string.projects)
+                                    )
+                                },
+                                label = {
+                                    if (currentContentType == MainContentType.PROJECTS) {
+                                        Text(stringResource(R.string.projects))
+                                    }
+                                }
+                            )
+                            NavigationBarItem(
+                                selected = currentContentType == MainContentType.FORUM,
+                                onClick = { onCurrentContentTypeChange(MainContentType.FORUM) },
+                                icon = {
+                                    Icon(
+                                        Icons.Filled.Forum,
+                                        contentDescription = stringResource(R.string.forum)
+                                    )
+                                },
+                                label = {
+                                    if (currentContentType == MainContentType.FORUM) {
+                                        Text(stringResource(R.string.forum))
+                                    }
+                                }
+                            )
+                            NavigationBarItem(
+                                selected = currentContentType == MainContentType.ACCOUNT,
+                                onClick = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
+                                icon = {
+                                    Icon(
+                                        Icons.Filled.AccountCircle,
+                                        contentDescription = stringResource(R.string.account)
+                                    )
+                                },
+                                label = {
+                                    if (currentContentType == MainContentType.ACCOUNT) {
+                                        Text(stringResource(R.string.account))
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
             },
             floatingActionButton = {
                 when (currentContentType) {
@@ -1449,7 +1468,7 @@ fun MainScreen(
                         )
                     }
 
-                    MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.FORUM -> {
+                    MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.FORUM, MainContentType.ACCOUNT -> {
                     }
                 }
             },
@@ -1558,7 +1577,22 @@ fun MainScreen(
                         }
 
                         MainContentType.FORUM -> {
-                            ForumScreen(toast = toast)
+                            ForumScreen(toast = toast, listState = forumListState)
+                        }
+
+                        MainContentType.ACCOUNT -> {
+                            // 账户页：内嵌于主框架，未登录显示去登录引导
+                            ProfileScreen(
+                                user = loggedInUser,
+                                onLogout = {
+                                    scope.launch {
+                                        LoginStore.clear(context)
+                                        onUserUpdated(null)
+                                    }
+                                    toast.showToast(context.getString(R.string.profile_logout_success))
+                                },
+                                onLoginClick = onOpenLogin
+                            )
                         }
 
                         MainContentType.MANUAL -> {

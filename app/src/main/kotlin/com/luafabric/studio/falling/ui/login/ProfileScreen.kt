@@ -49,39 +49,42 @@ import com.luafabric.studio.falling.R
 @Composable
 fun ProfileScreen(
     user: YunJuResponse?,
-    onBack: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    onLoginClick: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
+            .then(if (onBack != null) Modifier.statusBarsPadding() else Modifier)
     ) {
-        // 顶部栏：返回按钮 + 标题
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.login_back),
-                    tint = MaterialTheme.colorScheme.onSurface
+        // 顶部栏：仅独立全屏页显示返回按钮 + 标题；内嵌为导航栏「账户」页时由外层顶栏负责标题
+        if (onBack != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.login_back),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.profile_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
-            Text(
-                text = stringResource(R.string.profile_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
         }
 
         if (user == null) {
-            // 未登录态兜底：理论上不会进入（入口仅登录后显示）
+            // 未登录态兜底：可内嵌「去登录」引导
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -93,6 +96,12 @@ fun ProfileScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (onLoginClick != null) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = onLoginClick) {
+                        Text(stringResource(R.string.sign_in_now))
+                    }
+                }
             }
         } else {
             ProfileContent(user, onLogout)

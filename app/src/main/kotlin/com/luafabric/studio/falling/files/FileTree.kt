@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Html
 import androidx.compose.material.icons.filled.Javascript
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -292,6 +293,7 @@ fun FileTree(
         ) {
             FileActionBottomSheet(
                 node = selectedFileNode!!,
+                rootPath = rootPath,
                 onDismiss = {
                     scope.launch { sheetState.hide() }
                         .invokeOnCompletion { if (!sheetState.isVisible) showBottomSheet = false }
@@ -762,6 +764,7 @@ private fun BottomSheetActionItem(
 @Composable
 fun FileActionBottomSheet(
     node: FileNode,
+    rootPath: String,
     onDismiss: () -> Unit,
     onDeleteRequest: () -> Unit,
     onCreateFileRequest: () -> Unit,
@@ -788,6 +791,14 @@ fun FileActionBottomSheet(
             Icons.Default.DriveFileRenameOutline,
             stringResource(R.string.filetree_rename),
             { onRenameRequest(); onDismiss() })
+        BottomSheetActionItem(
+            Icons.Filled.Link,
+            stringResource(R.string.filetree_copy_rel_path), {
+                val rel = File(rootPath).toURI().relativize(node.file.absoluteFile.toURI()).path
+                clipboardManager.setText(AnnotatedString(rel))
+                Toast.makeText(context, context.getString(R.string.filetree_path_copied), Toast.LENGTH_SHORT).show()
+                onDismiss()
+            })
         BottomSheetActionItem(
             Icons.Default.ContentCopy,
             stringResource(R.string.filetree_copy_path), {

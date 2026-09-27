@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -72,7 +73,7 @@ private fun themeRadius(): Dp = when (SettingsManager.currentSettings.shapeSizeI
 
 /** 源码论坛：搜索框 + 双层 tabs + 帖子列表 + 发帖 FAB */
 @Composable
-fun ForumScreen(toast: NonBlockingToastState) {
+fun ForumScreen(toast: NonBlockingToastState, listState: LazyListState) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
     var layer1Index by remember { mutableIntStateOf(0) }
@@ -219,7 +220,7 @@ fun ForumScreen(toast: NonBlockingToastState) {
                     }
                 }
                 else -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
                         items(filtered) { post ->
                             ForumPostCard(post)
                             HorizontalDivider(
