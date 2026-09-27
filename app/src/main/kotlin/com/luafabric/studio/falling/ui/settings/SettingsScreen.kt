@@ -85,6 +85,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
@@ -573,7 +574,8 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_editor_config),
                     icon = Icons.Filled.Edit,
                     initiallyExpanded = editorConfigExpanded,
-                    onExpandedChange = { editorConfigExpanded = it }
+                    onExpandedChange = { editorConfigExpanded = it },
+                    contentSpacing = 4.dp
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -961,7 +963,8 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_syntax_highlight),
                     icon = Icons.Filled.ColorLens,
                     initiallyExpanded = syntaxHighlightExpanded,
-                    onExpandedChange = { syntaxHighlightExpanded = it }
+                    onExpandedChange = { syntaxHighlightExpanded = it },
+                    contentSpacing = 4.dp
                 ) {
                     // 类名高亮
                     SettingsListItem(
@@ -1004,7 +1007,7 @@ fun SettingsScreen(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(vertical = 2.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.05f)
                     )
@@ -1050,7 +1053,7 @@ fun SettingsScreen(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(vertical = 2.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.05f)
                     )
@@ -1096,7 +1099,7 @@ fun SettingsScreen(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(vertical = 2.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.05f)
                     )
@@ -1142,7 +1145,7 @@ fun SettingsScreen(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(vertical = 2.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.05f)
                     )
@@ -1188,7 +1191,7 @@ fun SettingsScreen(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(vertical = 2.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.05f)
                     )
@@ -1234,7 +1237,7 @@ fun SettingsScreen(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
+                        modifier = Modifier.padding(vertical = 2.dp),
                         thickness = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.05f)
                     )
@@ -1645,6 +1648,7 @@ fun SettingsCardGroup(
     icon: ImageVector,
     initiallyExpanded: Boolean = false,
     onExpandedChange: (Boolean) -> Unit,
+    contentSpacing: Dp = 8.dp,
     content: @Composable () -> Unit
 ) {
     var expanded by remember { mutableStateOf(initiallyExpanded) }
@@ -1714,7 +1718,7 @@ fun SettingsCardGroup(
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
                         .padding(bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(contentSpacing)
                 ) {
                     content()
                 }

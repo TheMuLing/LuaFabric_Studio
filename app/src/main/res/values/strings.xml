@@ -483,6 +483,35 @@
     <string name="settings_third_party_widget_support">三方控件支持</string>
     <string name="settings_third_party_widget_desc">分析 根目录/libs/*.dex 内控件，使布局助手支持预览携带三方控件的布局文件</string>
 
+    <!-- 云居登录界面 -->
+    <string name="login_title">登录</string>
+    <string name="login_back">返回</string>
+    <string name="login_qq_label">输入您的QQ号</string>
+    <string name="login_pass_label">输入您的密码</string>
+    <string name="login_button">登录</string>
+    <string name="login_keep_login">在此设备上保持登录状态</string>
+    <string name="login_remember_account">记住账号</string>
+    <string name="login_register">注册账号</string>
+    <string name="login_forgot_password">忘记密码</string>
+    <string name="login_failed_default">登录失败</string>
+    <string name="login_network_error">网络异常，请稍后重试</string>
+    <string name="login_show_password">显示密码</string>
+    <string name="login_hide_password">隐藏密码</string>
+    <string name="login_level_format">Lv.%s</string>
+    <string name="login_sign_success">签到成功</string>
+    <string name="login_sign_failed">签到失败</string>
+    <string name="register_title">注册</string>
+    <string name="login_register_submit">注册</string>
+    <string name="login_back_to_login">返回登录</string>
+    <string name="login_confirm_pass_label">再输入一次密码</string>
+    <string name="login_nickname_label">输入您的昵称</string>
+    <string name="login_code_label">输入您获得的验证码</string>
+    <string name="login_get_code">获取验证码</string>
+    <string name="login_pass_mismatch">两次输入的密码不一致</string>
+    <string name="login_send_code_success">验证码已发送</string>
+    <string name="login_send_code_failed">验证码发送失败</string>
+    <string name="login_register_failed">注册失败</string>
+
     <!-- 属性页面 -->
     <string name="attribute_build_options">构建选项</string>
     <string name="attribute_encrypt_build">让 %1$s 加密项目</string>

@@ -115,6 +115,12 @@ import io.github.tarifchakder.ktoast.ToastHost
 import kotlinx.coroutines.*
 
 import com.luafabric.studio.falling.native.YunJuBridge
+import com.luafabric.studio.falling.ui.login.LoginRepository
+import com.luafabric.studio.falling.ui.login.LoginScreen
+import com.luafabric.studio.falling.ui.login.LoginStore
+import com.luafabric.studio.falling.ui.login.YunJuApi
+import com.luafabric.studio.falling.ui.login.YunJuResponse
+import coil.compose.AsyncImage
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -128,7 +134,8 @@ import java.util.zip.ZipOutputStream
 enum class AppScreen {
     MAIN,
     NEW_PROJECT,
-    EDITOR
+    EDITOR,
+    LOGIN
 }
 
 // 项目数据类
@@ -166,12 +173,31 @@ fun MainApp() {
     var currentContentType by rememberSaveable { mutableStateOf(MainContentType.PROJECTS) }
     var selectedProject by rememberSaveable { mutableStateOf<ProjectItem?>(null) }
     var projectItems by remember { mutableStateOf(emptyList<ProjectItem>()) }
+    var loggedInUser by remember { mutableStateOf<YunJuResponse?>(null) }
     val toast = rememberNonBlockingToastState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     val settings = SettingsManager.currentSettings
     val toastPosition = settings.toastPosition
+
+    // 启动静默重新校验：保持登录开启且有存账号密码时，POST user_dl 验证登录态
+    LaunchedEffect(Unit) {
+        val saved = LoginStore.read(context)
+        if (saved.keepLoggedIn && saved.qq.isNotBlank() && saved.pass.isNotBlank()) {
+            try {
+                val result = LoginRepository.login(saved.qq, saved.pass)
+                if (result.success && result.user != null) {
+                    loggedInUser = result.user
+                } else {
+                    // 后端明确返回失败/封禁/关闭 → 清空本地登录态
+                    LoginStore.clear(context)
+                }
+            } catch (e: Exception) {
+                // 网络异常：静默保持本地登录态，不因离线清空
+            }
+        }
+    }
 
     val toastTransitionSpec: AnimatedContentTransitionScope<ToastData?>.() -> ContentTransform = {
         TransitionUtil.createToastPositionedScaleTransition(toastPosition)
@@ -196,6 +222,9 @@ fun MainApp() {
                         projectItems = newItems
                     }
                 }
+            }
+            AppScreen.LOGIN -> {
+                currentScreen = AppScreen.MAIN
             }
             else -> {}
         }
@@ -227,7 +256,10 @@ fun MainApp() {
                         },
                         projectItems = projectItems,
                         onProjectItemsChanged = { newItems -> projectItems = newItems },
-                        toast = toast
+                        toast = toast,
+                        loggedInUser = loggedInUser,
+                        onOpenLogin = { currentScreen = AppScreen.LOGIN },
+                        onUserUpdated = { loggedInUser = it }
                     )
                     AppScreen.NEW_PROJECT -> {
                         NewProjectScreen(
@@ -275,6 +307,16 @@ fun MainApp() {
                             }
                         } ?: run { SideEffect { currentScreen = AppScreen.MAIN } }
                     }
+                    AppScreen.LOGIN -> {
+                        LoginScreen(
+                            onBack = { currentScreen = AppScreen.MAIN },
+                            onLoginSuccess = { user ->
+                                loggedInUser = user
+                                currentScreen = AppScreen.MAIN
+                            },
+                            toast = toast
+                        )
+                    }
                 }
             }
         }
@@ -320,7 +362,10 @@ fun MainScreen(
     onNavigateToEditor: (ProjectItem) -> Unit,
     projectItems: List<ProjectItem>,
     onProjectItemsChanged: (List<ProjectItem>) -> Unit,
-    toast: NonBlockingToastState
+    toast: NonBlockingToastState,
+    loggedInUser: YunJuResponse?,
+    onOpenLogin: () -> Unit,
+    onUserUpdated: (YunJuResponse) -> Unit
 ) {
 
     val packageInfo = AppInfoUtil.getPackageInfo()
@@ -759,57 +804,108 @@ fun MainScreen(
     }
     // --------------------------
 
+    // 签到：侧边栏顶部签到按钮（仅登录后显示），POST user_qiandao，成功刷新 sign 状态
+    val onSignInClick: () -> Unit = {
+        val user = loggedInUser
+        if (user != null) {
+            scope.launch {
+                try {
+                    val (ok, msg) = LoginRepository.signIn(user.qq)
+                    toast.showToast(msg.ifBlank {
+                        context.getString(if (ok) R.string.login_sign_success else R.string.login_sign_failed)
+                    })
+                    if (ok) onUserUpdated(user.copy(sign = "true"))
+                } catch (e: Exception) {
+                    toast.showToast(context.getString(R.string.login_network_error))
+                }
+            }
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.widthIn(max = 280.dp),
             ) {
-                // 抽屉顶部登录卡：波纹覆盖分割线以上整个头区
+                // 抽屉顶部登录/用户卡：整区点击。未登录→跳登录界面；已登录→昵称+头像+签到按钮（仅登录后显示）
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clipToBounds()
+                        .clickable(enabled = loggedInUser == null) { onOpenLogin() }
                 ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { /* 纯占位 */ }
-                        .padding(horizontal = 24.dp, vertical = 24.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 24.dp)
                     ) {
-                        // 圆形头像占位（暂无用户体系）
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(
-                                Icons.Filled.Person,
-                                contentDescription = stringResource(R.string.sign_in_now),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.sign_in_now),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
-                        Button(onClick = { /* 纯占位 */ }) {
-                            Text(stringResource(R.string.sign_in))
+                            if (loggedInUser == null) {
+                                // 未登录：头像占位
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Person,
+                                        contentDescription = stringResource(R.string.sign_in_now),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(R.string.sign_in_now),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            } else {
+                                // 已登录：qlogo 头像 + 昵称
+                                AsyncImage(
+                                    model = YunJuApi.avatarUrl(loggedInUser.qq),
+                                    contentDescription = loggedInUser.name,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = loggedInUser.name.ifBlank { loggedInUser.qq },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (loggedInUser.level.isNotBlank()) {
+                                        Text(
+                                            text = stringResource(R.string.login_level_format, loggedInUser.level),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            if (loggedInUser != null) {
+                                // 签到按钮：仅登录后显示
+                                Button(onClick = onSignInClick) {
+                                    Text(stringResource(R.string.sign_in))
+                                }
+                            }
                         }
                     }
-                }
                 }
 
                 HorizontalDivider(
