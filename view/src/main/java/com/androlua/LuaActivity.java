@@ -218,6 +218,8 @@ public class LuaActivity extends AppCompatActivity
       if (arg == null) arg = new Object[0];
 
       luaPath = getLuaPath();
+      // 防御：intent 无 data 时基类返回 null，退回 localDir/main.lua 避免 new File(null) 崩溃
+      if (luaPath == null) luaPath = new File(luaDir, "main.lua").getAbsolutePath();
       pageName = new File(luaPath).getName();
       int idx = pageName.lastIndexOf(".");
       if (idx > 0) pageName = pageName.substring(0, idx);
@@ -1408,8 +1410,15 @@ public class LuaActivity extends AppCompatActivity
       return;
     }
 
+    // 打包产物不携带调试控制台桥（仅 IDE 宿主在启动期注册）→ settings.json 分支只在 IDE 生效：
+    // 产物运行时无论用户代码是否在 filesDir 写入同名文件，都不再依赖 settings.json（与 compose 同待遇）。
+    if (DebugConsoleRegistry.get() == null) {
+      mDebug = false;
+      return;
+    }
+
     if (!new File(luaDir + "/settings.json").exists()) {
-      // 打包产物不再携带 settings.json：显式关闭调试，避免 mDebug 默认 true 误开控制台/调试链路。
+      // IDE 项目未同步配置：显式关闭调试，避免 mDebug 默认 true 误开控制台/调试链路。
       mDebug = false;
       return;
     }
@@ -1423,13 +1432,17 @@ public class LuaActivity extends AppCompatActivity
           muling.views.tool.utils.JsonUtil.parseObject(
               com.androlua.util.FileUtil.read(luaDir + "/settings.json"));
 
+      // 缺少 application 键 ⇒ 非框架级配置（如用户代码运行时写入的同名文件）：安全忽略，不崩溃、不弹 toast
       Map<String, Object> application = (Map<String, Object>) jsonMap.get("application");
+      if (application == null) {
+        mDebug = false;
+        return;
+      }
 
-      String label = (String) application.get("label");
+      Object labelVal = application.get("label");
+      if (labelVal instanceof String && !((String) labelVal).isEmpty()) setTitle((String) labelVal);
       Boolean debug = (Boolean) application.get("debugmode");
-
-      setTitle(label);
-      mDebug = debug;
+      mDebug = debug != null && debug.booleanValue();
 
       @SuppressWarnings("unchecked")
       List<String> globalUtils = (List<String>) jsonMap.get("global_utils");
@@ -1440,7 +1453,8 @@ public class LuaActivity extends AppCompatActivity
       }
 
     } catch (Exception e) {
-      sendMsg(e.getMessage());
+      // 解析失败（文件被改写/损坏）：按非框架级配置处理，不再弹 toast
+      mDebug = false;
     }
   }
 
@@ -1650,6 +1664,7 @@ public class LuaActivity extends AppCompatActivity
   }
 
   public void sendMsg(String msg) {
+    if (msg == null) msg = "";
     Message message = new Message();
     Bundle bundle = new Bundle();
     bundle.putString(DATA, msg);
@@ -1757,6 +1772,7 @@ public class LuaActivity extends AppCompatActivity
 
   @Override
   public void sendError(String title, Exception msg) {
+    android.util.Log.e("LuaActivity", "LuaError: " + title, msg);
     Object ret = runFunc("onError", title, msg);
     // 报错 Toast 由控制台设置项门控（默认关），避免高版本受限 toast 遮 UI / 卡点击；
     // 无论开关与否，错误都会经 reportConsoleError 入控制台 F1 缓冲（角标可见）。

@@ -192,6 +192,8 @@ public class LuaActivity extends ComponentActivity implements LuaContext {
       if (arg == null) arg = new Object[0];
 
       luaPath = getLuaPath();
+      // 防御：intent 无 data 时基类返回 null，退回 localDir/main.lua 避免 new File(null) 崩溃
+      if (luaPath == null) luaPath = new File(luaDir, "main.lua").getAbsolutePath();
       pageName = new File(luaPath).getName();
       int idx = pageName.lastIndexOf(".");
       if (idx > 0) pageName = pageName.substring(0, idx);
@@ -1213,6 +1215,7 @@ public class LuaActivity extends ComponentActivity implements LuaContext {
   }
 
   public void sendMsg(String msg) {
+    if (msg == null) msg = "";
     Message message = new Message();
     Bundle bundle = new Bundle();
     bundle.putString(DATA, msg);
@@ -1320,6 +1323,7 @@ public class LuaActivity extends ComponentActivity implements LuaContext {
 
   @Override
   public void sendError(String title, Exception msg) {
+    android.util.Log.e("LuaActivity", "LuaError: " + title, msg);
     Object ret = runFunc("onError", title, msg);
     // 报错 Toast 由控制台设置项门控（默认关），避免高版本受限 toast 遮 UI / 卡点击；
     // 无论开关与否，错误都会经 reportConsoleError 入控制台 F1 缓冲（角标可见）。
