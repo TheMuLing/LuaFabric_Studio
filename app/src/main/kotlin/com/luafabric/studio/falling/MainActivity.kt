@@ -10,7 +10,6 @@ import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -87,6 +86,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
@@ -106,7 +106,15 @@ import com.luafabric.studio.falling.ui.manual.ManualScreen
 import com.luafabric.studio.falling.ui.project.NewProjectScreen
 import com.luafabric.studio.falling.ui.forum.ForumItem
 import com.luafabric.studio.falling.ui.forum.ForumRepository
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
+import androidx.compose.material3.rememberModalBottomSheetState
 import com.luafabric.studio.falling.ui.forum.ForumScreen
+import com.luafabric.studio.falling.ui.icons.AccountOffOutlineIcon
+import com.luafabric.studio.falling.ui.icons.ClockOutlineIcon
+import com.luafabric.studio.falling.ui.icons.CogIcon
+import com.luafabric.studio.falling.ui.icons.ImageOffOutlineIcon
+import com.luafabric.studio.falling.ui.settings.SettingsData
 import com.luafabric.studio.falling.ui.settings.DarkMode
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import com.luafabric.studio.falling.ui.settings.SettingsScreen
@@ -202,19 +210,42 @@ fun MainApp() {
 
     // 启动静默重新校验：保持登录开启且有存账号密码时，POST user_dl 验证登录态
     LaunchedEffect(Unit) {
-        val saved = LoginStore.read(context)
+        android.util.Log.d("LoginRecheck", "recheck start")
+        val saved = try {
+            LoginStore.read(context)
+        } catch (e: Throwable) {
+            android.util.Log.e("LoginRecheck", "read failed", e)
+            null
+        } ?: return@LaunchedEffect
+        android.util.Log.d(
+            "LoginRecheck",
+            "saved: keep=${saved.keepLoggedIn} remember=${saved.rememberAccount} qq=${saved.qq.take(4)} pass=${saved.pass.take(2)} userJson=${saved.user != null}"
+        )
         if (saved.keepLoggedIn && saved.qq.isNotBlank() && saved.pass.isNotBlank()) {
             loginChecking = true
             try {
                 val result = LoginRepository.login(saved.qq, saved.pass)
+                android.util.Log.d(
+                    "LoginRecheck",
+                    "resp: success=${result.success} code=${result.code} msg=${result.message} user=${result.user?.name}"
+                )
                 if (result.success && result.user != null) {
                     loggedInUser = result.user
+                    // 后端返回最新用户信息（coin/level/exp 等）→ 落库刷新，账户页数据实时
+                    LoginStore.updateUser(context, result.user)
                 } else {
-                    // 后端明确返回失败/封禁/关闭 → 清空本地登录态
-                    LoginStore.clear(context)
+                    // 官方 code 语义：-2 账号封禁 / -1 登录失败 / 0 登录功能关闭 → 凭据确证无效才清
+                    // 未知 code / 响应畸形（code == null）→ 无法证伪，保留本地凭据，防静默丢失
+                    when (result.code) {
+                        "-2", "-1", "0" -> {
+                            android.util.Log.d("LoginRecheck", "clear by code=${result.code}")
+                            LoginStore.clear(context)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 // 网络异常：静默保持本地登录态，不因离线清空
+                android.util.Log.d("LoginRecheck", "network exception: ${e.javaClass.simpleName} ${e.message}")
             } finally {
                 loginChecking = false
             }
@@ -408,6 +439,9 @@ fun MainScreen(
 
     // 签到请求进行中：点击后立即禁用，后端返回后无论成败恢复可用
     var signingIn by remember { mutableStateOf(false) }
+
+    // 论坛设置弹层（仅 FORUM 页可触发）：cog 图标点开后展示三显示开关
+    var showForumSettings by remember { mutableStateOf(false) }
 
     // 搜索相关状态
     var isSearchActive by remember { mutableStateOf(false) }
@@ -1317,20 +1351,20 @@ fun MainScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        if (isDebuggableBuild(context)) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(MaterialTheme.shapes.extraSmall)
-                                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.debug_build_chip),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                        Box(
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.extraSmall)
+                                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    if (BuildConfig.DEBUG) R.string.build_chip_test else R.string.build_chip_release
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -1518,7 +1552,17 @@ fun MainScreen(
                                 }
                             }
 
-                            MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.FORUM, MainContentType.ACCOUNT -> {
+                            MainContentType.FORUM -> {
+                                // 论坛设置：cog 图标（纯波纹无容器色），点击弹论坛设置
+                                IconButton(onClick = { showForumSettings = true }) {
+                                    Icon(
+                                        CogIcon,
+                                        contentDescription = stringResource(R.string.forum_settings_title)
+                                    )
+                                }
+                            }
+
+                            MainContentType.MANUAL, MainContentType.SETTINGS, MainContentType.ABOUT, MainContentType.SPONSOR, MainContentType.ACCOUNT -> {
                             }
                         }
                     },
@@ -1642,7 +1686,8 @@ fun MainScreen(
                                 isRefreshing = forumRefreshing,
                                 onEnsureLoaded = { ensureForumPosts(it) },
                                 onRefresh = { refreshForumPosts(it) },
-                                fabGap = fabGap
+                                fabGap = fabGap,
+                                loggedInUser = loggedInUser
                             )
                         }
 
@@ -1799,6 +1844,8 @@ fun MainScreen(
                             }
                         },
                         expanded = showExtendedFab,
+                        // 圆角跟随 luafabric 主题设置，与源码论坛发帖 FAB 保持一致
+                        shape = RoundedCornerShape(forumThemeRadius()),
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .navigationBarsPadding()
@@ -1836,6 +1883,18 @@ fun MainScreen(
                 moveProject = null
                 setProjectCategory(p.id, cat)
             }
+        )
+    }
+
+    // ---- 论坛设置弹层 ----
+    if (showForumSettings) {
+        ForumSettingsSheet(
+            currentSettings = currentSettings,
+            onToggle = { newSettings ->
+                settingsManager.updateSettings(newSettings)
+                settingsManager.saveSettings(context)
+            },
+            onDismiss = { showForumSettings = false }
         )
     }
 
@@ -2883,12 +2942,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * 通过 ApplicationInfo 运行时 API 判断当前安装包是否为 debuggable（debug 构建），
- * 不硬编码构建类型
- */
-private fun isDebuggableBuild(context: Context): Boolean =
-    (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+/** 论坛/项目页 FAB 圆角：跟随 luafabric 主题 shapeSizeIndex（与 ForumScreen.themeRadius 一致） */
+private fun forumThemeRadius(): Dp = when (SettingsManager.currentSettings.shapeSizeIndex) {
+    0 -> 4.dp
+    1 -> 8.dp
+    2 -> 12.dp
+    3 -> 16.dp
+    else -> 12.dp
+}
 
 private const val SPONSOR_QR_ASSET = "sponsor/sponsor_qr.png"
 private const val SPONSOR_QR_FILE_NAME = "sponsor_qr.png"
@@ -3070,5 +3131,90 @@ private fun DrawerItemIcon(
             else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp)
         )
+    }
+}
+
+/** 论坛设置底部弹层：三显示开关（隐藏非己头像 / 快速帖子列表 / 相对发帖日期），均默认关闭 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ForumSettingsSheet(
+    currentSettings: SettingsData,
+    onToggle: (SettingsData) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = stringResource(R.string.forum_settings_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+            )
+            ForumSettingsSwitchRow(
+                icon = AccountOffOutlineIcon,
+                title = stringResource(R.string.forum_settings_hide_avatar),
+                desc = stringResource(R.string.forum_settings_hide_avatar_desc),
+                checked = currentSettings.forumHideOtherAvatars,
+                onCheckedChange = { onToggle(currentSettings.copy(forumHideOtherAvatars = it)) }
+            )
+            ForumSettingsSwitchRow(
+                icon = ImageOffOutlineIcon,
+                title = stringResource(R.string.forum_settings_hide_images),
+                desc = stringResource(R.string.forum_settings_hide_images_desc),
+                checked = currentSettings.forumHideOtherImages,
+                onCheckedChange = { onToggle(currentSettings.copy(forumHideOtherImages = it)) }
+            )
+            ForumSettingsSwitchRow(
+                icon = ClockOutlineIcon,
+                title = stringResource(R.string.forum_settings_relative_date),
+                desc = stringResource(R.string.forum_settings_relative_date_desc),
+                checked = currentSettings.forumRelativeDate,
+                onCheckedChange = { onToggle(currentSettings.copy(forumRelativeDate = it)) }
+            )
+            Spacer(modifier = Modifier.navigationBarsPadding().height(24.dp))
+        }
+    }
+}
+
+/** 论坛设置弹层内单行开关：图标 + 标题/副标题 + Switch */
+@Composable
+private fun ForumSettingsSwitchRow(
+    icon: ImageVector,
+    title: String,
+    desc: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = desc,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

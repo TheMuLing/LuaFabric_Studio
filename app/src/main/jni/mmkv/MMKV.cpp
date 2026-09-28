@@ -283,7 +283,16 @@ MMKV *MMKV::mmkvWithID(const string &mmapID, MMKVMode mode, const string *cryptK
 }
 
 MMKV *MMKV::mmkvWithID(const std::string &mmapID, const MMKVConfig &config) {
-    if (mmapID.empty() || !g_instanceLock) {
+    if (mmapID.empty()) {
+        return nullptr;
+    }
+    // Studio 域（studio_mmkv.cpp）不调用 initializeMMKV，此处必须显式触发
+    // 全局初始化（创建 g_instanceDic / g_instanceLock），否则 !g_instanceLock
+    // 直接 return nullptr，导致所有 put/get 被静默丢弃、文件永不落盘。
+    // 注意：只用 ensureMinimalInitialize() 构造基础结构，不设置 g_rootDir，
+    // 避免抢占全局默认根、污染 Lua 侧 mmkv.initialize() 的存储域。
+    ensureMinimalInitialize();
+    if (!g_instanceLock) {
         return nullptr;
     }
     auto ns = config.rootPath ? nameSpace(*config.rootPath) : defaultNameSpace();

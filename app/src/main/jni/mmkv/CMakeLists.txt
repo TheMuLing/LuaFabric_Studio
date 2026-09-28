@@ -13,6 +13,7 @@ string(REPLACE "-Wl,--no-undefined" "" CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED
 
 set(MMKV_SRCS
         lua_mmkv.cpp
+        studio_mmkv.cpp
         MMKV.cpp
         MMKV_Android.cpp
         MMKV_IO.cpp

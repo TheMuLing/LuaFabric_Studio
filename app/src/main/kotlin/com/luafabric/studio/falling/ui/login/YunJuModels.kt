@@ -42,5 +42,7 @@ data class YunJuResponse(
 data class LoginResult(
     val success: Boolean,
     val user: YunJuResponse?,
-    val message: String
+    val message: String,
+    /** 后端原始 code；响应缺失/畸形时为 null */
+    val code: String? = null
 )

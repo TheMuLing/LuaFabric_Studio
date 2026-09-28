@@ -31,12 +31,12 @@ object LoginRepository {
             .post(body)
             .build()
         client.newCall(request).execute().use { resp ->
-            val text = resp.body?.string() ?: return@withContext LoginResult(false, null, "")
+            val text = resp.body?.string() ?: return@withContext LoginResult(false, null, "", null)
             val parsed = runCatching { gson.fromJson(text, YunJuResponse::class.java) }.getOrNull()
-                ?: return@withContext LoginResult(false, null, "")
+                ?: return@withContext LoginResult(false, null, "", null)
             when (parsed.code) {
-                "1" -> LoginResult(true, parsed, parsed.msg)
-                else -> LoginResult(false, null, parsed.msg.ifBlank { "登录失败(${parsed.code})" })
+                "1" -> LoginResult(true, parsed, parsed.msg, parsed.code)
+                else -> LoginResult(false, null, parsed.msg.ifBlank { "登录失败(${parsed.code})" }, parsed.code)
             }
         }
     }

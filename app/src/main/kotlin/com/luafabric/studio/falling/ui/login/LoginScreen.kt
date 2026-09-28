@@ -125,6 +125,14 @@ fun LoginScreen(
     // 昵称超 10 字时 supportText 变红（不限制输入，仅注册按钮提交时拦截）
     val nicknameOverLimit = nickname.length > 10
 
+    // 进页回填上次选择：qq + 两个复选框状态（仅登录模式；登出 clear 后自然为空）
+    LaunchedEffect(Unit) {
+        val saved = LoginStore.read(context)
+        if (saved.qq.isNotBlank()) qq = saved.qq
+        keepLoggedIn = saved.keepLoggedIn
+        rememberAccount = saved.rememberAccount
+    }
+
     // 每秒刷新两个独立冷却剩余秒数（DataStore 持久化，重启依旧生效）
     LaunchedEffect(Unit) {
         while (true) {

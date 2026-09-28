@@ -39,6 +39,13 @@
 #define FORUM_PORT      "81"
 #define FORUM_PATH      "/lt/ForumList.php"
 
+/* 源码论坛互动接口（评论/回复/点赞/收藏，同 yuju 域名 + 81 端口） */
+#define FORUM_COMMENT_PATH      "/lt/Comment.php"
+#define FORUM_COMMENT_LIST_PATH "/lt/CommentList.php"
+#define FORUM_PRAISE_PATH       "/lt/Praise.php"
+#define FORUM_FOLLOW_PATH       "/lt/Follow.php"
+#define FORUM_REPLY_PATH        "/lt/CommentReply.php"
+
 /* ---- VPN 接口模式表（源自 Lua VPN_PATTERNS，54 项） ---- */
 static const char * const VPN_PATTERNS[] = {
     "tun", "ppp", "pptp", "l2tp", "ipsec", "wg", "utun", "tap", "gre", "ipip",
@@ -395,5 +402,234 @@ Java_com_luafabric_studio_falling_native_YunJuBridge_nativeForumList(JNIEnv *env
     jstring js = (*env)->NewStringUTF(env, resp);
     free(resp);
     if (clear_exception(env)) return NULL;
+    return js;
+}
+
+/*
+ * 表单 URL 编码（RFC 3986：非保留字符 → %XX，空格 → +）。
+ * 返回 malloc 字符串，调用方 free；失败返回 NULL。
+ */
+static char *url_encode(const char *s) {
+    if (!s) return NULL;
+    size_t len = strlen(s);
+    /* 最坏情况：全部字符各占 3 字节 */
+    char *out = (char *)malloc(len * 3 + 1);
+    if (!out) return NULL;
+    size_t o = 0;
+    static const char hex[] = "0123456789ABCDEF";
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == ' ') {
+            out[o++] = '+';
+        } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                   (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+            out[o++] = (char)c;
+        } else {
+            out[o++] = '%';
+            out[o++] = hex[c >> 4];
+            out[o++] = hex[c & 0x0F];
+        }
+    }
+    out[o] = '\0';
+    return out;
+}
+
+/*
+ * 论坛互动请求公共入口：门控 + POST + 裁剪纯 JSON body。
+ * path 由调用方给定，body 为已拼好（含 urlencode 值）的表单串。
+ */
+static jstring forum_interact(JNIEnv *env, jobject context, const char *path,
+                              const char *body) {
+    if (check_vpn(env, context)) {
+        LOGI("gated: VPN interface detected, forum request skipped");
+        clear_exception(env);
+        return NULL;
+    }
+    if (check_wlan(env, context)) {
+        LOGI("gated: WLAN proxy detected, forum request skipped");
+        clear_exception(env);
+        return NULL;
+    }
+    char *resp = yunju_http_post(FORUM_HOST, FORUM_PORT, path, body);
+    if (resp == NULL) return NULL;
+    jstring js = (*env)->NewStringUTF(env, resp);
+    free(resp);
+    if (clear_exception(env)) return NULL;
+    return js;
+}
+
+/*
+ * JNI 入口：POST Comment.php（发表评论）
+ * 参数 user/qq/nickname 由 Kotlin 侧取当前登录用户身份传入（user 恒为管理员）。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeComment(JNIEnv *env,
+                                                                   jclass clazz,
+                                                                   jobject context,
+                                                                   jlong postId,
+                                                                   jstring user,
+                                                                   jstring qq,
+                                                                   jstring nickname,
+                                                                   jstring content) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    const char *c_qq = (*env)->GetStringUTFChars(env, qq, NULL);
+    const char *c_nick = (*env)->GetStringUTFChars(env, nickname, NULL);
+    const char *c_content = (*env)->GetStringUTFChars(env, content, NULL);
+    if (!c_user || !c_qq || !c_nick || !c_content) {
+        if (c_user) (*env)->ReleaseStringUTFChars(env, user, c_user);
+        if (c_qq) (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+        if (c_nick) (*env)->ReleaseStringUTFChars(env, nickname, c_nick);
+        if (c_content) (*env)->ReleaseStringUTFChars(env, content, c_content);
+        return NULL;
+    }
+    char *e_qq = url_encode(c_qq);
+    char *e_nick = url_encode(c_nick);
+    char *e_content = url_encode(c_content);
+    jstring js = NULL;
+    if (e_qq && e_nick && e_content) {
+        char body[1024];
+        snprintf(body, sizeof(body),
+                 "user=%s&post_id=%lld&qq=%s&nickname=%s&content=%s",
+                 c_user, (long long)postId, e_qq, e_nick, e_content);
+        js = forum_interact(env, context, FORUM_COMMENT_PATH, body);
+    }
+    if (e_qq) free(e_qq);
+    if (e_nick) free(e_nick);
+    if (e_content) free(e_content);
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+    (*env)->ReleaseStringUTFChars(env, nickname, c_nick);
+    (*env)->ReleaseStringUTFChars(env, content, c_content);
+    return js;
+}
+
+/*
+ * JNI 入口：POST CommentList.php（拉取评论 + 回复列表）
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeCommentList(JNIEnv *env,
+                                                                       jclass clazz,
+                                                                       jobject context,
+                                                                       jlong postId,
+                                                                       jstring user) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    if (!c_user) return NULL;
+    char body[256];
+    snprintf(body, sizeof(body), "user=%s&post_id=%lld", c_user, (long long)postId);
+    jstring js = forum_interact(env, context, FORUM_COMMENT_LIST_PATH, body);
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    return js;
+}
+
+/*
+ * JNI 入口：POST Praise.php（点赞/取消，qq 为操作者）
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativePraise(JNIEnv *env,
+                                                                  jclass clazz,
+                                                                  jobject context,
+                                                                  jlong postId,
+                                                                  jstring user,
+                                                                  jstring qq) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    const char *c_qq = (*env)->GetStringUTFChars(env, qq, NULL);
+    if (!c_user || !c_qq) {
+        if (c_user) (*env)->ReleaseStringUTFChars(env, user, c_user);
+        if (c_qq) (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+        return NULL;
+    }
+    char *e_qq = url_encode(c_qq);
+    jstring js = NULL;
+    if (e_qq) {
+        char body[256];
+        snprintf(body, sizeof(body), "user=%s&post_id=%lld&qq=%s",
+                 c_user, (long long)postId, e_qq);
+        js = forum_interact(env, context, FORUM_PRAISE_PATH, body);
+        free(e_qq);
+    }
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+    return js;
+}
+
+/*
+ * JNI 入口：POST Follow.php（收藏/取消收藏，qq 为操作者）
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeFollow(JNIEnv *env,
+                                                                  jclass clazz,
+                                                                  jobject context,
+                                                                  jlong postId,
+                                                                  jstring user,
+                                                                  jstring qq) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    const char *c_qq = (*env)->GetStringUTFChars(env, qq, NULL);
+    if (!c_user || !c_qq) {
+        if (c_user) (*env)->ReleaseStringUTFChars(env, user, c_user);
+        if (c_qq) (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+        return NULL;
+    }
+    char *e_qq = url_encode(c_qq);
+    jstring js = NULL;
+    if (e_qq) {
+        char body[256];
+        snprintf(body, sizeof(body), "user=%s&post_id=%lld&qq=%s",
+                 c_user, (long long)postId, e_qq);
+        js = forum_interact(env, context, FORUM_FOLLOW_PATH, body);
+        free(e_qq);
+    }
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+    return js;
+}
+
+/*
+ * JNI 入口：POST CommentReply.php（回复某条评论）
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeCommentReply(JNIEnv *env,
+                                                                        jclass clazz,
+                                                                        jobject context,
+                                                                        jlong postId,
+                                                                        jlong commentId,
+                                                                        jstring user,
+                                                                        jstring qq,
+                                                                        jstring nickname,
+                                                                        jstring content) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    const char *c_qq = (*env)->GetStringUTFChars(env, qq, NULL);
+    const char *c_nick = (*env)->GetStringUTFChars(env, nickname, NULL);
+    const char *c_content = (*env)->GetStringUTFChars(env, content, NULL);
+    if (!c_user || !c_qq || !c_nick || !c_content) {
+        if (c_user) (*env)->ReleaseStringUTFChars(env, user, c_user);
+        if (c_qq) (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+        if (c_nick) (*env)->ReleaseStringUTFChars(env, nickname, c_nick);
+        if (c_content) (*env)->ReleaseStringUTFChars(env, content, c_content);
+        return NULL;
+    }
+    char *e_qq = url_encode(c_qq);
+    char *e_nick = url_encode(c_nick);
+    char *e_content = url_encode(c_content);
+    jstring js = NULL;
+    if (e_qq && e_nick && e_content) {
+        char body[1024];
+        snprintf(body, sizeof(body),
+                 "user=%s&post_id=%lld&comment_id=%lld&qq=%s&nickname=%s&content=%s",
+                 c_user, (long long)postId, (long long)commentId,
+                 e_qq, e_nick, e_content);
+        js = forum_interact(env, context, FORUM_REPLY_PATH, body);
+    }
+    if (e_qq) free(e_qq);
+    if (e_nick) free(e_nick);
+    if (e_content) free(e_content);
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+    (*env)->ReleaseStringUTFChars(env, nickname, c_nick);
+    (*env)->ReleaseStringUTFChars(env, content, c_content);
     return js;
 }

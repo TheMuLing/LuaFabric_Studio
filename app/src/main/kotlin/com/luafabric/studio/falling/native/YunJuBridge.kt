@@ -29,4 +29,54 @@ object YunJuBridge {
      *         被门控拦截或网络失败返回 null
      */
     external fun nativeForumList(context: Context, forumId: Int): String?
+
+    /**
+     * 发表评论（Comment.php，native 直发）。
+     * @param postId 帖子 ID；user/qq/nickname 取当前登录用户身份；content 评论内容
+     * @return 响应体字符串；被门控拦截或网络失败返回 null
+     */
+    external fun nativeComment(
+        context: Context,
+        postId: Long,
+        user: String,
+        qq: String,
+        nickname: String,
+        content: String
+    ): String?
+
+    /**
+     * 拉取评论 + 回复列表（CommentList.php，native 直发）。
+     * @param postId 帖子 ID；user 为当前登录用户身份
+     * @return 响应体字符串；被门控拦截或网络失败返回 null
+     */
+    external fun nativeCommentList(context: Context, postId: Long, user: String): String?
+
+    /**
+     * 点赞/取消点赞（Praise.php，native 直发）。
+     * @param postId 帖子 ID；user/qq 为当前登录用户身份
+     * @return 响应体字符串；被门控拦截或网络失败返回 null
+     */
+    external fun nativePraise(context: Context, postId: Long, user: String, qq: String): String?
+
+    /**
+     * 收藏/取消收藏（Follow.php，native 直发）。
+     * @param postId 帖子 ID；user/qq 为当前登录用户身份
+     * @return 响应体字符串；被门控拦截或网络失败返回 null
+     */
+    external fun nativeFollow(context: Context, postId: Long, user: String, qq: String): String?
+
+    /**
+     * 回复评论（CommentReply.php，native 直发）。
+     * @param postId 帖子 ID；commentId 被回复的评论 ID；user/qq/nickname 为当前登录用户身份
+     * @return 响应体字符串；被门控拦截或网络失败返回 null
+     */
+    external fun nativeCommentReply(
+        context: Context,
+        postId: Long,
+        commentId: Long,
+        user: String,
+        qq: String,
+        nickname: String,
+        content: String
+    ): String?
 }

@@ -9,27 +9,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.core.content.getSystemService
-import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.luafabric.studio.falling.core.StudioMmkv
 import com.luafabric.studio.falling.ui.theme.ThemeType
 import muling.views.tool.utils.IconManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
-
-// DataStore 实例
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
 
 // 定义所有存储键
 private object PreferencesKeys {
@@ -96,6 +89,11 @@ private object PreferencesKeys {
     // 防火墙：拦截次数按项目分计（项目名 → 次数）
     val CROSS_WRITE_COUNTS = stringPreferencesKey("cross_write_counts")
     val SELF_GUARD_COUNTS = stringPreferencesKey("self_guard_counts")
+
+    // 源码论坛展示开关（均默认关闭）
+    val FORUM_HIDE_OTHER_AVATARS = booleanPreferencesKey("forum_hide_other_avatars")
+    val FORUM_HIDE_OTHER_IMAGES = booleanPreferencesKey("forum_hide_other_images")
+    val FORUM_RELATIVE_DATE = booleanPreferencesKey("forum_relative_date")
 }
 
 // 排序方式枚举
@@ -156,9 +154,10 @@ object SettingsManager {
         }
     }
 
-    // 从 DataStore 异步加载设置
+    // 从 MMKV 同步加载设置
     suspend fun loadSavedSettings(context: Context) {
-        val preferences = context.dataStore.data.first()
+        StudioMmkv.ensureInit(context)
+        val preferences = MmkvPrefs(context)
 
         val themeType = ThemeType.valueOf(
             preferences[PreferencesKeys.THEME_TYPE] ?: "GREEN"
@@ -268,6 +267,11 @@ object SettingsManager {
         // 【新增】快捷功能栏无字模式
         val quickBarIconOnly = preferences[PreferencesKeys.QUICK_BAR_ICON_ONLY] ?: false
 
+        // 源码论坛展示开关（相对日期默认开启，其余默认关闭）
+        val forumHideOtherAvatars = preferences[PreferencesKeys.FORUM_HIDE_OTHER_AVATARS] ?: false
+        val forumHideOtherImages = preferences[PreferencesKeys.FORUM_HIDE_OTHER_IMAGES] ?: false
+        val forumRelativeDate = preferences[PreferencesKeys.FORUM_RELATIVE_DATE] ?: true
+
         // 防火墙拦截计数（项目名 → 次数，JSON 字符串）
         val crossWriteCounts: Map<String, Int> = try {
             val type = object : TypeToken<Map<String, Int>>() {}.type
@@ -321,79 +325,87 @@ object SettingsManager {
                 skipNextSponsor = skipNextSponsor,
                 quickBarIconOnly = quickBarIconOnly,
                 crossWriteCounts = crossWriteCounts,
-                selfGuardCounts = selfGuardCounts
+                selfGuardCounts = selfGuardCounts,
+                forumHideOtherAvatars = forumHideOtherAvatars,
+                forumHideOtherImages = forumHideOtherImages,
+                forumRelativeDate = forumRelativeDate
             )
         )
     }
 
-    // 异步保存设置到 DataStore
+    // 同步保存设置到 MMKV
     suspend fun saveSettingsAsync(context: Context) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.THEME_TYPE] = currentSettings.themeType.name
-            preferences[PreferencesKeys.DARK_MODE] = currentSettings.darkMode.name
-            preferences[PreferencesKeys.FONT_SIZE_SCALE] = currentSettings.fontSizeScale
-            preferences[PreferencesKeys.SHAPE_SIZE_INDEX] = currentSettings.shapeSizeIndex
-            preferences[PreferencesKeys.FONT_FAMILY_TYPE] = currentSettings.fontFamilyType.name
-            preferences[PreferencesKeys.DYNAMIC_COLOR] = currentSettings.dynamicColor
-            preferences[PreferencesKeys.EDITOR_FONT_TYPE] = currentSettings.editorFontType.name
-            preferences[PreferencesKeys.CUSTOM_FONT_PATH] = currentSettings.customFontPath
-            preferences[PreferencesKeys.ENABLE_TAB_HISTORY] = currentSettings.enableTabHistory
-            preferences[PreferencesKeys.INDENT_GUIDE_ENABLED] = currentSettings.indentGuideEnabled
-            preferences[PreferencesKeys.THIRD_PARTY_WIDGET_SUPPORT] =
-                currentSettings.thirdPartyWidgetSupport
-            preferences[PreferencesKeys.CROSS_PROJECT_WRITE_GUARD] =
-                currentSettings.crossProjectWriteGuard
-            preferences[PreferencesKeys.SELF_GUARD] =
-                currentSettings.selfGuard
-            preferences[PreferencesKeys.PROJECT_STORAGE_PATH] = currentSettings.projectStoragePath
+        StudioMmkv.ensureInit(context)
+        val preferences = MmkvPrefs(context)
+        preferences[PreferencesKeys.THEME_TYPE] = currentSettings.themeType.name
+        preferences[PreferencesKeys.DARK_MODE] = currentSettings.darkMode.name
+        preferences[PreferencesKeys.FONT_SIZE_SCALE] = currentSettings.fontSizeScale
+        preferences[PreferencesKeys.SHAPE_SIZE_INDEX] = currentSettings.shapeSizeIndex
+        preferences[PreferencesKeys.FONT_FAMILY_TYPE] = currentSettings.fontFamilyType.name
+        preferences[PreferencesKeys.DYNAMIC_COLOR] = currentSettings.dynamicColor
+        preferences[PreferencesKeys.EDITOR_FONT_TYPE] = currentSettings.editorFontType.name
+        preferences[PreferencesKeys.CUSTOM_FONT_PATH] = currentSettings.customFontPath
+        preferences[PreferencesKeys.ENABLE_TAB_HISTORY] = currentSettings.enableTabHistory
+        preferences[PreferencesKeys.INDENT_GUIDE_ENABLED] = currentSettings.indentGuideEnabled
+        preferences[PreferencesKeys.THIRD_PARTY_WIDGET_SUPPORT] =
+            currentSettings.thirdPartyWidgetSupport
+        preferences[PreferencesKeys.CROSS_PROJECT_WRITE_GUARD] =
+            currentSettings.crossProjectWriteGuard
+        preferences[PreferencesKeys.SELF_GUARD] =
+            currentSettings.selfGuard
+        preferences[PreferencesKeys.PROJECT_STORAGE_PATH] = currentSettings.projectStoragePath
 
-            preferences[PreferencesKeys.CLASS_NAME_COLOR] = currentSettings.classNameColor.toArgb()
-            preferences[PreferencesKeys.LOCAL_VAR_COLOR] =
-                currentSettings.localVariableColor.toArgb()
-            preferences[PreferencesKeys.KEYWORD_COLOR] = currentSettings.keywordColor.toArgb()
-            preferences[PreferencesKeys.FUNCTION_NAME_COLOR] =
-                currentSettings.functionNameColor.toArgb()
-            preferences[PreferencesKeys.LITERAL_COLOR] = currentSettings.literalColor.toArgb()
-            preferences[PreferencesKeys.COMMENT_COLOR] = currentSettings.commentColor.toArgb()
-            preferences[PreferencesKeys.SELECTED_LINE_COLOR] =
-                currentSettings.selectedLineColor.toArgb()
+        preferences[PreferencesKeys.CLASS_NAME_COLOR] = currentSettings.classNameColor.toArgb()
+        preferences[PreferencesKeys.LOCAL_VAR_COLOR] =
+            currentSettings.localVariableColor.toArgb()
+        preferences[PreferencesKeys.KEYWORD_COLOR] = currentSettings.keywordColor.toArgb()
+        preferences[PreferencesKeys.FUNCTION_NAME_COLOR] =
+            currentSettings.functionNameColor.toArgb()
+        preferences[PreferencesKeys.LITERAL_COLOR] = currentSettings.literalColor.toArgb()
+        preferences[PreferencesKeys.COMMENT_COLOR] = currentSettings.commentColor.toArgb()
+        preferences[PreferencesKeys.SELECTED_LINE_COLOR] =
+            currentSettings.selectedLineColor.toArgb()
 
-            preferences[PreferencesKeys.COMPLETION_CASE_SENSITIVE] =
-                currentSettings.completionCaseSensitive
+        preferences[PreferencesKeys.COMPLETION_CASE_SENSITIVE] =
+            currentSettings.completionCaseSensitive
 
-            preferences[PreferencesKeys.SELECTED_APP_ICON] = currentSettings.selectedAppIcon.name
+        preferences[PreferencesKeys.SELECTED_APP_ICON] = currentSettings.selectedAppIcon.name
 
-            preferences[PreferencesKeys.SORT_ORDER] = currentSettings.sortOrder.name
+        preferences[PreferencesKeys.SORT_ORDER] = currentSettings.sortOrder.name
 
-            val pinnedJson = Gson().toJson(currentSettings.pinnedProjects)
-            preferences[PreferencesKeys.PINNED_PROJECTS] = pinnedJson
+        val pinnedJson = Gson().toJson(currentSettings.pinnedProjects)
+        preferences[PreferencesKeys.PINNED_PROJECTS] = pinnedJson
 
-            preferences[PreferencesKeys.CATEGORIES] = Gson().toJson(currentSettings.categories)
-            preferences[PreferencesKeys.PROJECT_CATEGORY] = Gson().toJson(currentSettings.projectCategory)
+        preferences[PreferencesKeys.CATEGORIES] = Gson().toJson(currentSettings.categories)
+        preferences[PreferencesKeys.PROJECT_CATEGORY] = Gson().toJson(currentSettings.projectCategory)
 
-            preferences[PreferencesKeys.SMART_SORTING_ENABLED] = currentSettings.smartSortingEnabled
+        preferences[PreferencesKeys.SMART_SORTING_ENABLED] = currentSettings.smartSortingEnabled
 
-            preferences[PreferencesKeys.TOAST_POSITION] = currentSettings.toastPosition.name
+        preferences[PreferencesKeys.TOAST_POSITION] = currentSettings.toastPosition.name
 
-            preferences[PreferencesKeys.TOAST_BORDER_ENABLED] = currentSettings.toastBorderEnabled
+        preferences[PreferencesKeys.TOAST_BORDER_ENABLED] = currentSettings.toastBorderEnabled
 
-            preferences[PreferencesKeys.EDITOR_WORD_WRAP] = currentSettings.editorWordWrap
+        preferences[PreferencesKeys.EDITOR_WORD_WRAP] = currentSettings.editorWordWrap
 
-            // 【新增】保存十六进制颜色高亮开关
-            preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] = currentSettings.hexColorHighlightEnabled
+        // 【新增】保存十六进制颜色高亮开关
+        preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] = currentSettings.hexColorHighlightEnabled
 
-            // 保存构建次数赞助提示相关设置
-            preferences[PreferencesKeys.SPONSOR_BUILD_COUNT] = currentSettings.buildCount
-            preferences[PreferencesKeys.SPONSOR_ROUND] = currentSettings.sponsorRound
-            preferences[PreferencesKeys.SPONSOR_SKIP_NEXT] = currentSettings.skipNextSponsor
+        // 保存构建次数赞助提示相关设置
+        preferences[PreferencesKeys.SPONSOR_BUILD_COUNT] = currentSettings.buildCount
+        preferences[PreferencesKeys.SPONSOR_ROUND] = currentSettings.sponsorRound
+        preferences[PreferencesKeys.SPONSOR_SKIP_NEXT] = currentSettings.skipNextSponsor
 
-            // 【新增】快捷功能栏无字模式
-            preferences[PreferencesKeys.QUICK_BAR_ICON_ONLY] = currentSettings.quickBarIconOnly
+        // 【新增】快捷功能栏无字模式
+        preferences[PreferencesKeys.QUICK_BAR_ICON_ONLY] = currentSettings.quickBarIconOnly
 
-            // 防火墙拦截计数
-            preferences[PreferencesKeys.CROSS_WRITE_COUNTS] = Gson().toJson(currentSettings.crossWriteCounts)
-            preferences[PreferencesKeys.SELF_GUARD_COUNTS] = Gson().toJson(currentSettings.selfGuardCounts)
-        }
+        // 防火墙拦截计数
+        preferences[PreferencesKeys.CROSS_WRITE_COUNTS] = Gson().toJson(currentSettings.crossWriteCounts)
+        preferences[PreferencesKeys.SELF_GUARD_COUNTS] = Gson().toJson(currentSettings.selfGuardCounts)
+
+        // 源码论坛展示开关
+        preferences[PreferencesKeys.FORUM_HIDE_OTHER_AVATARS] = currentSettings.forumHideOtherAvatars
+        preferences[PreferencesKeys.FORUM_HIDE_OTHER_IMAGES] = currentSettings.forumHideOtherImages
+        preferences[PreferencesKeys.FORUM_RELATIVE_DATE] = currentSettings.forumRelativeDate
         notifyListeners()
     }
 
@@ -496,4 +508,71 @@ data class SettingsData(
     /** 防火墙拦截计数：项目名 → 次数 */
     val crossWriteCounts: Map<String, Int> = emptyMap(),
     val selfGuardCounts: Map<String, Int> = emptyMap(),
+    /** 源码论坛：隐藏非己头像（默认关闭） */
+    val forumHideOtherAvatars: Boolean = false,
+    /** 源码论坛：隐藏其他用户的帖子配图（默认关闭） */
+    val forumHideOtherImages: Boolean = false,
+    /** 源码论坛：相对发帖日期（默认开启） */
+    val forumRelativeDate: Boolean = true,
 )
+
+/**
+ * MMKV 兼容层：承接原有 DataStore 的 `preferences[key]` 读写调用点。
+ * 键名/类型载体仍为 PreferencesKeys（Preferences.Key<T>），实际读写全部落在
+ * StudioMmkv（Studio 私有根 + Keystore 派生密钥，与 Lua 侧 mmkv 双域隔离）。
+ * 每次写入附带一条类型标记（"tag:" + 键名），读取时按标记分派到对应 MMKV 类型 API；
+ * 标记缺失即视为键不存在（返回 null，由调用侧 `?: 默认值` 兜底）。
+ */
+private class MmkvPrefs(private val context: Context) {
+    private val id = StudioMmkv.ID_SETTINGS
+
+    private fun tagOf(key: String) = "tag:$key"
+
+    @Suppress("UNCHECKED_CAST")
+    operator fun <T> get(key: Preferences.Key<T>): T? {
+        val value: Any? = when (StudioMmkv.getString(context, id, tagOf(key.name))) {
+            "string" -> StudioMmkv.getString(context, id, key.name)
+            "bool" -> StudioMmkv.getBoolean(context, id, key.name, false)
+            "int" -> StudioMmkv.getInt(context, id, key.name, 0)
+            "long" -> StudioMmkv.getLong(context, id, key.name, 0L)
+            "float" -> StudioMmkv.getFloat(context, id, key.name, 0f)
+            else -> null
+        }
+        return value as T?
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    operator fun <T> set(key: Preferences.Key<T>, value: T?) {
+        val name = key.name
+        if (value == null) {
+            StudioMmkv.remove(context, id, name)
+            StudioMmkv.remove(context, id, tagOf(name))
+            return
+        }
+        when (value) {
+            is String -> {
+                StudioMmkv.putString(context, id, name, value)
+                StudioMmkv.putString(context, id, tagOf(name), "string")
+            }
+            is Boolean -> {
+                StudioMmkv.putBoolean(context, id, name, value)
+                StudioMmkv.putString(context, id, tagOf(name), "bool")
+            }
+            is Int -> {
+                StudioMmkv.putInt(context, id, name, value)
+                StudioMmkv.putString(context, id, tagOf(name), "int")
+            }
+            is Long -> {
+                StudioMmkv.putLong(context, id, name, value)
+                StudioMmkv.putString(context, id, tagOf(name), "long")
+            }
+            is Float -> {
+                StudioMmkv.putFloat(context, id, name, value)
+                StudioMmkv.putString(context, id, tagOf(name), "float")
+            }
+            else -> throw IllegalArgumentException(
+                "不支持的设置值类型: ${value::class.java.name}"
+            )
+        }
+    }
+}
