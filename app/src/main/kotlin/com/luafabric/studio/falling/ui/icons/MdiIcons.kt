@@ -60,3 +60,57 @@ val MicroscopeIcon: ImageVector by lazy {
         )
     }.build()
 }
+
+// 防火墙 折叠菜单标题图标（MDI "wall"，官方 path 数据）
+val WallIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Wall",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        addPath(
+            pathData = addPathNodes(
+                "M3,16H12V21H3V16M2,10H8V15H2V10M9,10H15V15H9V10M16,10H22V15H16V10M13,16H21V21H13V16M3,4H11V9H3V4M12,4H21V9H12V4Z"
+            ),
+            fill = SolidColor(Color.Black)
+        )
+    }.build()
+}
+
+// 越级写入拦截 开关图标（MDI "shield-edit"，官方 path 数据）
+val ShieldEditIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "ShieldEdit",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        addPath(
+            pathData = addPathNodes(
+                "M21.7 14.4L20.7 15.4L18.6 13.3L19.6 12.3C19.8 12.1 20.2 12.1 20.4 12.3L21.7 13.6C21.9 13.8 21.9 14.1 21.7 14.4M12 19.9L18.1 13.8L20.2 15.9L14.1 22H12V19.9M10 19.1L21 8.1V5L12 1L3 5V11C3 15.8 5.9 20.3 10 22.3V19.1Z"
+            ),
+            fill = SolidColor(Color.Black)
+        )
+    }.build()
+}
+
+// 自我守护 开关图标（MDI "shield-lock"，官方 path 数据）
+val ShieldLockIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "ShieldLock",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        addPath(
+            pathData = addPathNodes(
+                "M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.4,7 14.8,8.1 14.8,9.5V11C15.4,11 16,11.6 16,12.3V15.8C16,16.4 15.4,17 14.7,17H9.2C8.6,17 8,16.4 8,15.7V12.2C8,11.6 8.6,11 9.2,11V9.5C9.2,8.1 10.6,7 12,7M12,8.2C11.2,8.2 10.5,8.7 10.5,9.5V11H13.5V9.5C13.5,8.7 12.8,8.2 12,8.2Z"
+            ),
+            fill = SolidColor(Color.Black)
+        )
+    }.build()
+}

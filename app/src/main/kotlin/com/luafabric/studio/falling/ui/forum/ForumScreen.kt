@@ -1,5 +1,6 @@
 package com.luafabric.studio.falling.ui.forum
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import muling.views.tool.utils.NonBlockingToastState
+import muling.views.tool.utils.TransitionUtil
 
 /** 源码实例 第二层分类：默认「全部」，7 类两字扩写为四字 + 「其他」 */
 private val SOURCE_CATEGORIES =
@@ -81,13 +84,16 @@ fun ForumScreen(
     postsCache: Map<Int, List<ForumItem>>,
     isRefreshing: Boolean,
     onEnsureLoaded: (Int) -> Unit,
-    onRefresh: (Int) -> Unit
+    onRefresh: (Int) -> Unit,
+    fabGap: Dp
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var layer1Index by remember { mutableIntStateOf(0) }
     // 第一层切换时第二层回到首个分类
     var layer2Index by remember(layer1Index) { mutableIntStateOf(0) }
     var showCompose by remember { mutableStateOf(false) }
+    // 发帖 FAB 展开态：列表到顶显示文字，滚动后收起（复制自创建项目 FAB）
+    var showExtendedFab by remember { mutableStateOf(true) }
 
     val layer1Tabs = listOf(
         stringResource(R.string.forum_source),
@@ -104,6 +110,16 @@ fun ForumScreen(
     val isLoading = !postsCache.containsKey(layer1ForumId)
 
     LaunchedEffect(layer1ForumId) { onEnsureLoaded(layer1ForumId) }
+
+    // 发帖 FAB 展开态跟随列表滚动：到顶显示文字，滚动后收起（复制自创建项目 FAB）
+    LaunchedEffect(
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset
+    ) {
+        val isScrolled = listState.firstVisibleItemIndex > 0 ||
+                listState.firstVisibleItemScrollOffset > 0
+        showExtendedFab = !isScrolled
+    }
 
     // 帖子过滤：搜索（标题/作者/正文）+ 当前分类
     val filtered = remember(posts, searchQuery, layer1Index, layer2Index) {
@@ -122,6 +138,14 @@ fun ForumScreen(
                 else -> hay.contains(category, ignoreCase = true)
             }
         }
+    }
+    // 埋点：区分「后端未返回帖子」与「代码过滤导致不显示」
+    LaunchedEffect(posts.size, filtered.size, isLoading, layer1ForumId, searchQuery) {
+        android.util.Log.i(
+            "ForumLoad",
+            "page: forumId=$layer1ForumId posts=${posts.size} filtered=${filtered.size} " +
+                "isLoading=$isLoading 空因=${if (isLoading) "加载中" else if (posts.isEmpty()) "后端未返回" else if (filtered.isEmpty()) "代码过滤置空" else "有帖"}"
+        )
     }
 
     if (showCompose) {
@@ -247,15 +271,32 @@ fun ForumScreen(
             }
         }
 
-        // 右下角发帖 FAB：圆角跟随主题
+        // 右下角发帖 FAB：复制创建项目 FAB——列表到顶展开显示文字，滚动后收起，停靠导航栏上方
         ExtendedFloatingActionButton(
             onClick = { showCompose = true },
-            icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-            text = { Text(stringResource(R.string.forum_post)) },
+            icon = {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.forum_post),
+                    modifier = Modifier.size(24.dp)
+                )
+            },
+            text = {
+                AnimatedVisibility(
+                    visible = showExtendedFab,
+                    enter = TransitionUtil.createFABTransition(),
+                    exit = TransitionUtil.createFABExitTransition()
+                ) {
+                    Text(stringResource(R.string.forum_post))
+                }
+            },
+            expanded = showExtendedFab,
             shape = RoundedCornerShape(themeRadius()),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp)
+                .navigationBarsPadding()
+                .padding(end = 16.dp)
+                .padding(bottom = fabGap)
         )
     }
 }

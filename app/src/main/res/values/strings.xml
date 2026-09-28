@@ -150,6 +150,12 @@
     <string name="settings_theme_appearance">主题与外观</string>
     <string name="settings_app_icon">应用图标</string>
     <string name="settings_editor_config">编辑器配置</string>
+    <string name="settings_firewall">防火墙</string>
+    <string name="settings_firewall_cross_write">越级写入拦截</string>
+    <string name="settings_firewall_cross_write_desc">阻止项目间互相写入/删除/修改，但允许读取</string>
+    <string name="settings_firewall_self_guard">自我守护</string>
+    <string name="settings_firewall_self_guard_desc">拦截项目试图操作 LuaFabric-Studio/ 的请求</string>
+    <string name="settings_firewall_guarded">已守护您 %1$d 次</string>
     <string name="settings_notification_toast">通知提示</string>
     <string name="settings_syntax_highlight">语法高亮颜色</string>
 
@@ -505,6 +511,7 @@
     <string name="login_level_format">Lv.%s</string>
     <string name="login_sign_success">签到成功</string>
     <string name="login_sign_failed">签到失败</string>
+    <string name="login_sign_coin_sync_failed">金币数据同步失败</string>
     <string name="register_title">注册</string>
     <string name="login_register_submit">注册</string>
     <string name="login_back_to_login">返回登录</string>

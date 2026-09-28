@@ -35,6 +35,9 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Code
 import com.luafabric.studio.falling.ui.icons.MicroscopeIcon
+import com.luafabric.studio.falling.ui.icons.ShieldEditIcon
+import com.luafabric.studio.falling.ui.icons.ShieldLockIcon
+import com.luafabric.studio.falling.ui.icons.WallIcon
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DataArray
@@ -205,6 +208,7 @@ fun SettingsScreen(
 
     var appearanceExpanded by remember { mutableStateOf(false) }
     var editorConfigExpanded by remember { mutableStateOf(false) }
+    var firewallExpanded by remember { mutableStateOf(false) }
     var syntaxHighlightExpanded by remember { mutableStateOf(false) }
     var toastSettingsExpanded by remember { mutableStateOf(false) }
 
@@ -566,6 +570,86 @@ fun SettingsScreen(
                             }
                         )
                     }
+                }
+            }
+
+            item {
+                SettingsCardGroup(
+                    title = stringResource(R.string.settings_firewall),
+                    icon = WallIcon,
+                    initiallyExpanded = firewallExpanded,
+                    onExpandedChange = { firewallExpanded = it },
+                    contentSpacing = 2.dp
+                ) {
+                    SettingsListItem(
+                        title = stringResource(R.string.settings_firewall_cross_write),
+                        subtitle = stringResource(R.string.settings_firewall_cross_write_desc),
+                        compact = true,
+                        leadingIcon = {
+                            Icon(
+                                ShieldEditIcon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = currentSettingsState.crossProjectWriteGuard,
+                                onCheckedChange = {
+                                    updateSettingsWithSave(
+                                        currentSettingsState.copy(crossProjectWriteGuard = it)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = {
+                            updateSettingsWithSave(currentSettingsState.copy(crossProjectWriteGuard = !currentSettingsState.crossProjectWriteGuard))
+                        }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                    )
+
+                    SettingsListItem(
+                        title = stringResource(R.string.settings_firewall_self_guard),
+                        subtitle = stringResource(R.string.settings_firewall_self_guard_desc),
+                        compact = true,
+                        leadingIcon = {
+                            Icon(
+                                ShieldLockIcon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = currentSettingsState.selfGuard,
+                                onCheckedChange = {
+                                    updateSettingsWithSave(
+                                        currentSettingsState.copy(selfGuard = it)
+                                    )
+                                }
+                            )
+                        },
+                        onClick = {
+                            updateSettingsWithSave(currentSettingsState.copy(selfGuard = !currentSettingsState.selfGuard))
+                        }
+                    )
+
+                    Text(
+                        text = stringResource(
+                            R.string.settings_firewall_guarded,
+                            SettingsManager.firewallGuardTotal()
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
                 }
             }
 

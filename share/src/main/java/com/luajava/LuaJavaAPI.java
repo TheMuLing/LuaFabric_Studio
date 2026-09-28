@@ -31,6 +31,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.os.Build;
 
 import android.widget.Toast;
+import com.androlua.FirewallGate;
 import com.androlua.LuaContext;
 import com.androlua.LuaGcable;
 
@@ -178,10 +179,138 @@ public final class LuaJavaAPI {
         }
     }
 
+    /**
+     * 防火墙 Java 侧方法调用判定：命中监控通道且越界 → 返回拦截原因；否则 null=放行。
+     * 判定前先按类+方法名短路，未命中通道零开销（仅 IDE 会话 isActive 时进入）。
+     */
+    private static String firewallCheckMethod(LuaState L, Object obj, String cacheName) {
+        if (!FirewallGate.isActive()) return null;
+        try {
+            String cls = obj instanceof Class ? ((Class<?>) obj).getName() : obj.getClass().getName();
+            String method = cacheName;
+            int at = cacheName.lastIndexOf('@');
+            int dot = cacheName.lastIndexOf('.');
+            if (at >= 0 || dot >= 0) method = cacheName.substring(Math.max(at, dot) + 1);
+            boolean luaUtil = "com.androlua.LuaUtil".equals(cls);
+            boolean file = obj instanceof java.io.File && ("delete".equals(method)
+                    || "createNewFile".equals(method) || "mkdir".equals(method)
+                    || "mkdirs".equals(method) || "renameTo".equals(method));
+            boolean runtime = obj instanceof Runtime && "exec".equals(method);
+            boolean builder = obj instanceof ProcessBuilder && "start".equals(method);
+            if (!luaUtil && !file && !runtime && !builder) return null;
+
+            // 读取参数（仅监控通道命中时）
+            Object[] args;
+            synchronized (L) {
+                int top = L.getTop();
+                args = new Object[top];
+                for (int i = 0; i < top; i++) {
+                    try {
+                        args[i] = L.toJavaObject(i + 1);
+                    } catch (Exception e) {
+                        args[i] = null;
+                    }
+                }
+            }
+
+            // LuaUtil 静态写方法（copyFile/copyDir/rmDir/unZip/zip/assetsToSD）
+            if (luaUtil) return firewallLuaUtil(method, args);
+            // 裸 java.io.File 实例写方法（renameTo 是移动：源 + 目标双侧判定，
+            // 自我保护要拦 LuaFabric-Studio/ 及 project/ 根目录被重命名）
+            if (file) {
+                if ("renameTo".equals(method)) {
+                    String p = argToPath(args.length > 0 ? args[0] : null);
+                    return p == null ? null
+                        : FirewallGate.checkRename(((java.io.File) obj).getAbsolutePath(), p);
+                }
+                return FirewallGate.checkWrite(((java.io.File) obj).getAbsolutePath());
+            }
+            // Runtime.exec(String)
+            if (runtime) {
+                Object first = args.length > 0 ? args[0] : null;
+                if (first instanceof String) return FirewallGate.checkShellCommand((String) first);
+                return null;
+            }
+            // ProcessBuilder.start() —— 命令列表拼串走同一 shell 词法
+            StringBuilder sb = new StringBuilder();
+            for (String part : ((ProcessBuilder) obj).command()) {
+                if (sb.length() > 0) sb.append(' ');
+                sb.append(part);
+            }
+            return FirewallGate.checkShellCommand(sb.toString());
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** LuaUtil 写方法 → 候选目标路径交引擎判定；读/流方法返回 null 放行。 */
+    private static String firewallLuaUtil(String method, Object[] args) {
+        String t;
+        switch (method) {
+            case "assetsToSD":   // (Context, in, out) → 写目标 = out
+                t = argToPath(args.length > 2 ? args[2] : null);
+                return t == null ? null : FirewallGate.checkWrite(t);
+            case "copyFile":     // (String from, String to)
+            case "copyDir":      // (String/File from, String/File to) → 写目标 = to
+                t = argToPath(args.length > 1 ? args[1] : null);
+                return t == null ? null : FirewallGate.checkWrite(t);
+            case "rmDir":        // (File dir[, String ext]) → 删除目标 = dir
+                t = argToPath(args.length > 0 ? args[0] : null);
+                return t == null ? null : FirewallGate.checkWrite(t);
+            case "unZip":        // (String src[, bool][, String extDir][, String ext]) 解压写入 src/extDir
+                t = argToPath(args.length > 0 ? args[0] : null);
+                if (t != null) {
+                    String r = FirewallGate.checkWrite(t);
+                    if (r != null) return r;
+                }
+                t = argToPath(args.length > 2 ? args[2] : null);
+                return t == null ? null : FirewallGate.checkWrite(t);
+            case "zip":          // (String src[, String zipPath][, String zipName]) → 写目标 = zipPath/src 目录
+                t = argToPath(args.length > 1 ? args[1] : (args.length > 0 ? args[0] : null));
+                return t == null ? null : FirewallGate.checkWrite(t);
+            default:
+                return null;
+        }
+    }
+
+    private static String argToPath(Object o) {
+        if (o instanceof String) return (String) o;
+        if (o instanceof java.io.File) return ((java.io.File) o).getAbsolutePath();
+        return null;
+    }
+
+    /** 防火墙：输出流构造器写目标拦截（RandomAccessFile 纯读模式 "r" 放行；读始终放行）。 */
+    private static String firewallCheckConstructor(Class<?> clazz, Object[] objs) {
+        if (!FirewallGate.isActive()) return null;
+        String n = clazz.getName();
+        if (!"java.io.FileOutputStream".equals(n)
+                && !"java.io.FileWriter".equals(n)
+                && !"java.io.RandomAccessFile".equals(n)) {
+            return null;
+        }
+        // RandomAccessFile(String/File, String mode)：纯读 "r" 放行
+        if ("java.io.RandomAccessFile".equals(n) && objs.length > 0) {
+            Object last = objs[objs.length - 1];
+            if (last instanceof String && "r".equals(last)) return null;
+        }
+        String p = null;
+        for (Object o : objs) {
+            p = argToPath(o);
+            if (p != null) break;
+        }
+        return p == null ? null : FirewallGate.checkWrite(p);
+    }
+
     public static int callMethod(long luaState, int idx, String cacheName)
             throws LuaException {
         LuaState L = LuaStateFactory.getExistingState(luaState);
         Object obj = L.getJavaObject(idx);
+
+        // 防火墙：越级写入拦截（Java 侧 File/LuaUtil/Runtime/ProcessBuilder 通道；仅 IDE 会话激活）
+        String fwBlock = firewallCheckMethod(L, obj, cacheName);
+        if (fwBlock != null) {
+            throw new LuaException(new SecurityException(fwBlock));
+        }
 
         // 调试控制台：方法调用拦截（newActivity / setContentView / runFunc / Toast.makeText / Snackbar.make）
         ConsoleBridgeRef.InterceptResult intercept = interceptMethodCall(luaState, obj, cacheName);
@@ -1113,6 +1242,11 @@ public final class LuaJavaAPI {
 
                 if (okConstructor) {
                     constructor = c;
+                    // 防火墙：输出流/随机文件构造器（FileOutputStream/FileWriter/RandomAccessFile）写目标拦截
+                    String fwBlock = firewallCheckConstructor(clazz, objs);
+                    if (fwBlock != null) {
+                        throw new LuaException(new SecurityException(fwBlock));
+                    }
                     Object ret;
                     try {
                         ret = constructor.newInstance(objs);

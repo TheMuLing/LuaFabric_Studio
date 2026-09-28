@@ -44,6 +44,10 @@ private object PreferencesKeys {
     val ENABLE_TAB_HISTORY = booleanPreferencesKey("enable_tab_history")
     val INDENT_GUIDE_ENABLED = booleanPreferencesKey("indentGuideEnabled")
     val THIRD_PARTY_WIDGET_SUPPORT = booleanPreferencesKey("thirdPartyWidgetSupport")
+    // 防火墙：越级写入拦截
+    val CROSS_PROJECT_WRITE_GUARD = booleanPreferencesKey("cross_project_write_guard")
+    // 防火墙：自我守护（保护 LuaFabric-Studio/ 容器目录）
+    val SELF_GUARD = booleanPreferencesKey("self_guard")
     val PROJECT_STORAGE_PATH = stringPreferencesKey("project_storage_path")
 
     // 语法高亮颜色
@@ -88,6 +92,10 @@ private object PreferencesKeys {
 
     // 【新增】快捷功能栏无字模式（文本功能替换为图标）
     val QUICK_BAR_ICON_ONLY = booleanPreferencesKey("quick_bar_icon_only")
+
+    // 防火墙：拦截次数按项目分计（项目名 → 次数）
+    val CROSS_WRITE_COUNTS = stringPreferencesKey("cross_write_counts")
+    val SELF_GUARD_COUNTS = stringPreferencesKey("self_guard_counts")
 }
 
 // 排序方式枚举
@@ -102,6 +110,9 @@ enum class SortOrder {
 enum class ToastPosition {
     TOP, BOTTOM
 }
+
+// 防火墙拦截类别
+enum class FirewallKind { CROSS_WRITE, SELF_GUARD }
 
 object SettingsManager {
 
@@ -169,6 +180,12 @@ object SettingsManager {
         val indentGuideEnabled = preferences[PreferencesKeys.INDENT_GUIDE_ENABLED] ?: true
         val thirdPartyWidgetSupport =
             preferences[PreferencesKeys.THIRD_PARTY_WIDGET_SUPPORT] ?: true
+        // 防火墙：越级写入拦截（默认开启）
+        val crossProjectWriteGuard =
+            preferences[PreferencesKeys.CROSS_PROJECT_WRITE_GUARD] ?: true
+        // 防火墙：自我守护（默认开启）
+        val selfGuard =
+            preferences[PreferencesKeys.SELF_GUARD] ?: true
 
         val fixedPath = getFixedProjectStoragePath()
 
@@ -251,6 +268,20 @@ object SettingsManager {
         // 【新增】快捷功能栏无字模式
         val quickBarIconOnly = preferences[PreferencesKeys.QUICK_BAR_ICON_ONLY] ?: false
 
+        // 防火墙拦截计数（项目名 → 次数，JSON 字符串）
+        val crossWriteCounts: Map<String, Int> = try {
+            val type = object : TypeToken<Map<String, Int>>() {}.type
+            Gson().fromJson(preferences[PreferencesKeys.CROSS_WRITE_COUNTS] ?: "{}", type)
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        val selfGuardCounts: Map<String, Int> = try {
+            val type = object : TypeToken<Map<String, Int>>() {}.type
+            Gson().fromJson(preferences[PreferencesKeys.SELF_GUARD_COUNTS] ?: "{}", type)
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
         updateSettings(
             SettingsData(
                 themeType = themeType,
@@ -272,6 +303,8 @@ object SettingsManager {
                 selectedLineColor = Color(selectedLineColor),
                 indentGuideEnabled = indentGuideEnabled,
                 thirdPartyWidgetSupport = thirdPartyWidgetSupport,
+                crossProjectWriteGuard = crossProjectWriteGuard,
+                selfGuard = selfGuard,
                 selectedAppIcon = selectedAppIcon,
                 completionCaseSensitive = completionCaseSensitive,
                 sortOrder = sortOrder,
@@ -286,7 +319,9 @@ object SettingsManager {
                 buildCount = buildCount,
                 sponsorRound = sponsorRound,
                 skipNextSponsor = skipNextSponsor,
-                quickBarIconOnly = quickBarIconOnly
+                quickBarIconOnly = quickBarIconOnly,
+                crossWriteCounts = crossWriteCounts,
+                selfGuardCounts = selfGuardCounts
             )
         )
     }
@@ -306,6 +341,10 @@ object SettingsManager {
             preferences[PreferencesKeys.INDENT_GUIDE_ENABLED] = currentSettings.indentGuideEnabled
             preferences[PreferencesKeys.THIRD_PARTY_WIDGET_SUPPORT] =
                 currentSettings.thirdPartyWidgetSupport
+            preferences[PreferencesKeys.CROSS_PROJECT_WRITE_GUARD] =
+                currentSettings.crossProjectWriteGuard
+            preferences[PreferencesKeys.SELF_GUARD] =
+                currentSettings.selfGuard
             preferences[PreferencesKeys.PROJECT_STORAGE_PATH] = currentSettings.projectStoragePath
 
             preferences[PreferencesKeys.CLASS_NAME_COLOR] = currentSettings.classNameColor.toArgb()
@@ -350,6 +389,10 @@ object SettingsManager {
 
             // 【新增】快捷功能栏无字模式
             preferences[PreferencesKeys.QUICK_BAR_ICON_ONLY] = currentSettings.quickBarIconOnly
+
+            // 防火墙拦截计数
+            preferences[PreferencesKeys.CROSS_WRITE_COUNTS] = Gson().toJson(currentSettings.crossWriteCounts)
+            preferences[PreferencesKeys.SELF_GUARD_COUNTS] = Gson().toJson(currentSettings.selfGuardCounts)
         }
         notifyListeners()
     }
@@ -360,6 +403,28 @@ object SettingsManager {
             saveSettingsAsync(context)
         }
     }
+
+    /** 记录一次防火墙拦截（按项目名分计），立即更新内存态并异步持久化。 */
+    fun recordFirewallGuard(kind: FirewallKind, projectName: String, context: Context) {
+        currentSettings = when (kind) {
+            FirewallKind.CROSS_WRITE -> {
+                val m = currentSettings.crossWriteCounts.toMutableMap()
+                m[projectName] = (m[projectName] ?: 0) + 1
+                currentSettings.copy(crossWriteCounts = m)
+            }
+            FirewallKind.SELF_GUARD -> {
+                val m = currentSettings.selfGuardCounts.toMutableMap()
+                m[projectName] = (m[projectName] ?: 0) + 1
+                currentSettings.copy(selfGuardCounts = m)
+            }
+        }
+        notifyListeners()
+        saveSettings(context)
+    }
+
+    /** 防火墙拦截全局累计（两开关合计）→ 设置页「已守护您 X 次」。 */
+    fun firewallGuardTotal(): Int =
+        currentSettings.crossWriteCounts.values.sum() + currentSettings.selfGuardCounts.values.sum()
 
     /**
      * 确保项目目录存在
@@ -407,6 +472,10 @@ data class SettingsData(
     val selectedLineColor: Color = Color(0x1A000000),
     val indentGuideEnabled: Boolean = true,
     val thirdPartyWidgetSupport: Boolean = true,
+    /** 防火墙：越级写入拦截（阻止项目间互相写入/删除/修改，但允许读取） */
+    val crossProjectWriteGuard: Boolean = true,
+    /** 防火墙：自我守护（拦截项目对 LuaFabric-Studio/ 容器的删除/移动/改名） */
+    val selfGuard: Boolean = true,
     val selectedAppIcon: IconManager.AppIcon = IconManager.AppIcon.PLAY_STORE,
     val completionCaseSensitive: Boolean = false,
     val sortOrder: SortOrder = SortOrder.NAME_ASC,
@@ -424,4 +493,7 @@ data class SettingsData(
     val sponsorRound: Int = 0,             // 当前待评估的赞助轮次指针 r（0 视为 1）
     val skipNextSponsor: Boolean = false,  // 下一轮是否跳过（已赞助则跳过）
     val quickBarIconOnly: Boolean = false, // 【新增】快捷功能栏无字模式（默认关闭）
+    /** 防火墙拦截计数：项目名 → 次数 */
+    val crossWriteCounts: Map<String, Int> = emptyMap(),
+    val selfGuardCounts: Map<String, Int> = emptyMap(),
 )

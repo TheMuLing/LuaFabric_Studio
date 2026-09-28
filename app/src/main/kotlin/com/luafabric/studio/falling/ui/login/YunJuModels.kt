@@ -8,6 +8,7 @@ object YunJuApi {
     const val APP_KEY = "1790465304"
     const val LOGIN_URL = "https://yunju.99kpk.top/API/user_dl.php"
     const val SIGN_URL = "https://yunju.99kpk.top/API/user_qiandao.php"
+    const val USER_INFO_URL = "https://yunju.99kpk.top/API/user_yhxx.php"
     const val REGISTER_URL = "https://yunju.99kpk.top/API/user_azc.php"
     const val SEND_CODE_URL = "https://yunju.99kpk.top/API/user_yzm.php"
     const val FIND_PASS_URL = "https://yunju.99kpk.top/API/user_zhmm.php"

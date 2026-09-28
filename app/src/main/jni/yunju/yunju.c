@@ -297,6 +297,16 @@ static char *yunju_http_post(const char *host, const char *port, const char *pat
     }
     resp[total] = '\0';
 
+    /* 8. 裁剪 HTTP 头，返回以 '{' 开头的 body：
+     *    响应头若含 '{'（如 Set-Cookie 等）会误导 Kotlin 侧 indexOf('{')，
+     *    故先从 '\r\n\r\n' 定位，再 strchr 找真正的 JSON 起点 */
+    char *body_at = strstr(resp, "\r\n\r\n");
+    char *src = (body_at != NULL) ? (body_at + 4) : resp;
+    char *json_start = strchr(src, '{');
+    if (json_start != NULL) {
+        memmove(resp, json_start, strlen(json_start) + 1);
+    }
+
     /* 7. 记响应 code/msg 到日志（静默，不上报 UI） */
     if (resp != NULL) {
         const char *code_at = strstr(resp, "\"code\"");

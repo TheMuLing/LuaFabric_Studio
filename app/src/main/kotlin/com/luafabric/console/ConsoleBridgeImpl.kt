@@ -1,12 +1,16 @@
 package com.luafabric.console
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Application
 import android.content.Context
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
+import android.widget.TextView
+import java.lang.ref.WeakReference
 import com.luafabric.console.core.ConsoleSettings
 import com.luafabric.console.core.ConsoleState
 import com.luafabric.console.core.EventTracker
@@ -26,6 +30,10 @@ import com.luafabric.console.persist.CrashCapture
 import com.luafabric.console.persist.SessionArchiver
 import com.luafabric.console.ui.ConsoleSheet
 import com.luafabric.console.ui.OverlayController
+import com.androlua.FirewallGate
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.luafabric.studio.falling.ui.settings.FirewallKind
+import com.luafabric.studio.falling.ui.settings.SettingsManager
 import com.luajava.LuaState
 import java.io.File
 import muling.views.tool.utils.JsonUtil
@@ -56,6 +64,10 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     /** 会话门控：仅 debugmode 项目激活捕获（非调试会话零捕获）。 */
     @Volatile
     private var active = false
+
+    /** 弹窗宿主兜底：退出调试后 task() 后台代码触发拦截时 SessionManager.activity 已空，
+     *  用最近一次 resume 的 Activity 顶替（弱引用防泄漏）。 */
+    private var hostActivity: WeakReference<Activity> = WeakReference(null)
 
     init {
         CrashCapture.install()
@@ -109,6 +121,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
                 }
             }
             override fun onActivityResumed(activity: Activity) {
+                // 弹窗宿主兜底：记录最近 resume 的页（调试会话结束后防火墙弹窗仍能用它作宿主）
+                hostActivity = WeakReference(activity)
                 // 回旧页等恢复场景：宿主切到该页，消除 openSheet 读到已销毁宿主而吞点击的竞态
                 SessionManager.onHostResumed(activity)
                 // 页内返回/恢复：浮球缺失则重建（面板开在销毁页上被收走/宿主销毁竞态等场景）
@@ -121,6 +135,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
             override fun onActivityDestroyed(activity: Activity) {
                 // 宿主销毁（newActivity+finish 等）：清 stale 引用，防死 sheet 短路 openSheet / 浮球随 decorView 丢失。
                 // 时序：晚于 LuaActivity.onDestroy → onSessionEnd，末页场景已 end() 全清，此处无操作；非末页场景补清理。
+                if (hostActivity.get() === activity) hostActivity = WeakReference(null)
                 SessionManager.onHostDestroyed(activity)
                 overlay.onHostDestroyed(activity)
                 // 兜底重建：fallback 浮球宿主销毁后 ball 引用被摘 → BALL 态缺失时立即重建挂新宿主
@@ -164,6 +179,8 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
             if (active) LogcatManager.start(info.luaDir, projectName(info))
             injectDebugParams(info)
         }
+        // 防火墙：逐页注入（每页独立 LuaState 均需挂载 io/os/popen/lfs 重写；reconfigure 幂等）
+        injectFirewall(info)
         // 每页上下文刷新（页面相关，跨页会话持续）
         FileStateTracker.updateFromSession(info)
         LuaEnvironment.probe(info.luaState)
@@ -190,6 +207,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
             overlay.closeAll()
             StateMachine.transition(ConsoleState.IDLE)
             LogcatManager.stop()
+            // 防火墙网关保持 active：退出调试后 task() 等后台代码仍在跑，仍须拦截 + 弹窗提醒
         }
         active = false
         EventTracker.clear()
@@ -214,6 +232,85 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
             info.luaState.newTable()
             pushMap(info.luaState, map)
             info.luaState.setGlobal("debugParams")
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * 防火墙：越级写入拦截注入。
+     * - firewall.lua（assets）→ 当前页 LuaState（io/os/popen/lfs 重写，脚本内 _FW_INJECTED 防重复包装）
+     * - FirewallGate.reconfigure → 网关预热（项目根/两开关/上报回调；幂等，逐页调用）
+     * - 上报 → 计数（SettingsManager 按项目名分计）+ 宿主弹窗
+     * 仅 IDE 调试会话（debugMode）注入；产物恒不注入、网关恒 inactive。
+     */
+    private fun injectFirewall(info: SessionInfo) {
+        if (!info.debugMode) return
+        val script = try {
+            context.assets.open("firewall.lua").bufferedReader().use { it.readText() }
+        } catch (_: Exception) {
+            null
+        }
+        if (script != null) {
+            try {
+                info.luaState.LdoString(script)
+            } catch (_: Exception) {
+            }
+        }
+        try {
+            val settings = SettingsManager.currentSettings
+            FirewallGate.reconfigure(
+                "/storage/emulated/0/LuaFabric-Studio",
+                info.luaDir ?: "",
+                settings.crossProjectWriteGuard,
+                settings.selfGuard,
+                object : FirewallGate.Reporter {
+                    override fun onBlock(kind: Int, projectName: String?, target: String?) {
+                        Handler(Looper.getMainLooper()).post {
+                            SettingsManager.recordFirewallGuard(
+                                if (kind == 1) FirewallKind.CROSS_WRITE else FirewallKind.SELF_GUARD,
+                                projectName ?: "", context)
+                            showFirewallDialog(kind, projectName, target)
+                        }
+                    }
+                }
+            )
+        } catch (_: Exception) {
+        }
+    }
+
+    /** 防火墙拦截弹窗：标题「<功能名>拦截」、双行消息、仅「好的」按钮、点击外部不关闭。
+     *  宿主：调试会话页优先，已退出调试（后台 task 触发）回退最近 resume 的页。
+     *  颜色/圆角全部跟随 luafabric「主题与外观」设置（ConsoleTheme）。 */
+    private fun showFirewallDialog(kind: Int, projectName: String?, target: String?) {
+        // 调试会话已结束后 SessionManager.activity 变空 —— 用最近 resume 页兜底
+        val host = SessionManager.activity ?: hostActivity.get() ?: return
+        if (host.isFinishing || host.isDestroyed) return
+        try {
+            val title = if (kind == 1) "越级写入拦截" else "自我守护拦截"
+            val msg = buildString {
+                appendLine("项目「${projectName ?: ""}」正在写入：")
+                appendLine(target ?: "")
+                appendLine()
+                append(if (kind == 1) "已拦截对其它项目目录的写入/删除/修改操作。" else "已拦截对 LuaFabric-Studio 根目录的保护操作。")
+            }
+            val theme = com.luafabric.console.ui.ConsoleTheme
+            theme.refresh(context)
+            val dlg = MaterialAlertDialogBuilder(host)
+                .setTitle(title)
+                .setMessage(msg)
+                .setPositiveButton("好的", null)
+                .setCancelable(false)
+                .create()
+            dlg.show()
+            dlg.setOnShowListener {
+                dlg.window?.setBackgroundDrawable(GradientDrawable().apply {
+                    setColor(theme.surface)
+                    cornerRadius = theme.cornerRadiusPx
+                })
+                dlg.findViewById<TextView>(android.R.id.title)?.setTextColor(theme.onSurface)
+                dlg.findViewById<TextView>(android.R.id.message)?.setTextColor(theme.onSurface)
+                dlg.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(theme.primary)
+            }
         } catch (_: Exception) {
         }
     }

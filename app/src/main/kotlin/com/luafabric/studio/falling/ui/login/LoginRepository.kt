@@ -64,6 +64,27 @@ object LoginRepository {
         }
     }
 
+    /** POST user_yhxx.php 拉取用户实时信息（金币/经验/等级等）。请求/解析失败返回 null。 */
+    suspend fun fetchUserInfo(qq: String): YunJuResponse? = withContext(Dispatchers.IO) {
+        val body = FormBody.Builder()
+            .add("appid", YunJuApi.APP_ID)
+            .add("key", YunJuApi.APP_KEY)
+            .add("user", qq)
+            .build()
+        val request = Request.Builder()
+            .url(YunJuApi.USER_INFO_URL)
+            .post(body)
+            .build()
+        runCatching {
+            client.newCall(request).execute().use { resp ->
+                val text = resp.body?.string() ?: return@withContext null
+                val parsed = runCatching { gson.fromJson(text, YunJuResponse::class.java) }.getOrNull()
+                    ?: return@withContext null
+                if (parsed.code == "1") parsed else null
+            }
+        }.getOrNull()
+    }
+
     /** POST user_azc.php 注册。email 由调用方拼接（QQ号@qq.com）。 */
     suspend fun register(
         qq: String,

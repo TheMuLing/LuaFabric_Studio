@@ -655,6 +655,20 @@ fun MainScreen(
             }
         }
     }
+    // 切分类期间抑制导航栏跟踪：scrollToItem 造成的索引骤变不等价于用户滚动
+    var navBarTracking by remember { mutableStateOf(true) }
+    // 切分类：重置列表到顶 + 复位导航栏，避免继承旧滚动位置导致列表"自动下滑/跳位"，
+    // 及索引骤变误触发底部导航栏/efab 显隐反应
+    LaunchedEffect(selectedCategory) {
+        navBarTracking = false
+        navBarVisibleState.value = true
+        navBarBackFrames = 0
+        navBarPrevIndex = 0
+        navBarPrevOffset = 0
+        dragBackPx.intValue = 0
+        lazyListState.scrollToItem(0)
+        navBarTracking = true
+    }
     LaunchedEffect(currentContentType) {
         navBarVisibleState.value = true
         navBarBackFrames = 0
@@ -673,6 +687,12 @@ fun MainScreen(
                 (listState.firstVisibleItemScrollOffset to listState.canScrollForward)
         }.collect { (idx, pair) ->
             val (off, canScrollDown) = pair
+            // 切分类重置期间：同步 prev 基准后忽略，不触发显隐
+            if (!navBarTracking) {
+                navBarPrevIndex = idx
+                navBarPrevOffset = off
+                return@collect
+            }
             if (idx != navBarPrevIndex || off != navBarPrevOffset) {
                 val movedBack = idx < navBarPrevIndex ||
                     (idx == navBarPrevIndex && off < navBarPrevOffset)
@@ -964,7 +984,16 @@ fun MainScreen(
                     toast.showToast(msg.ifBlank {
                         context.getString(if (ok) R.string.login_sign_success else R.string.login_sign_failed)
                     })
-                    if (ok) onUserUpdated(user.copy(sign = "true"))
+                    if (ok) {
+                        // 签到成功后拉取用户实时信息（金币/经验/等级），失败弹提示并降级使用本地数据
+                        val fresh = LoginRepository.fetchUserInfo(user.qq)
+                        val updated = (fresh ?: user).copy(sign = "true")
+                        onUserUpdated(updated)
+                        runCatching { LoginStore.updateUser(context, updated) }
+                        if (fresh == null) {
+                            toast.showToast(context.getString(R.string.login_sign_coin_sync_failed))
+                        }
+                    }
                 } catch (e: Exception) {
                     toast.showToast(context.getString(R.string.login_network_error))
                 } finally {
@@ -1612,7 +1641,8 @@ fun MainScreen(
                                 postsCache = forumCache,
                                 isRefreshing = forumRefreshing,
                                 onEnsureLoaded = { ensureForumPosts(it) },
-                                onRefresh = { refreshForumPosts(it) }
+                                onRefresh = { refreshForumPosts(it) },
+                                fabGap = fabGap
                             )
                         }
 
@@ -1673,13 +1703,31 @@ fun MainScreen(
                     currentContentType == MainContentType.FORUM ||
                     currentContentType == MainContentType.ACCOUNT
                 ) {
+                    // Scaffold 默认 contentWindowInsets=systemBars 会把内容区抬起 insets 高度，
+                    // 浮层直接 align 底部会悬空 insets 高度（不贴底）；offset 下移贴屏幕底，
+                    // 高度 = navBar + inset，inset 区域延伸同色背景覆盖系统三键/手势区
+                    val navBottomInsetDp = with(LocalDensity.current) {
+                        WindowInsets.navigationBars.getBottom(this).toDp()
+                    }
                     AnimatedVisibility(
                         visible = navBarVisible,
                         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                         exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                         modifier = Modifier.align(Alignment.BottomCenter)
                     ) {
-                        NavigationBar {
+                        // 主体固定 navBarHeightDp，底部系统栏区域延伸同色背景：
+                        // 消除三键/手势区颜色不一致，避免 Material3 默认 insets 叠加导致高度过高
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(navBarHeightDp + navBottomInsetDp)
+                                .offset(y = navBottomInsetDp)
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                        ) {
+                            NavigationBar(
+                                modifier = Modifier.height(navBarHeightDp),
+                                windowInsets = WindowInsets(0, 0, 0, 0)
+                            ) {
                             NavigationBarItem(
                                 selected = currentContentType == MainContentType.PROJECTS,
                                 onClick = { onCurrentContentTypeChange(MainContentType.PROJECTS) },
@@ -1725,6 +1773,7 @@ fun MainScreen(
                                     }
                                 }
                             )
+                            }
                         }
                     }
                 }
@@ -2479,11 +2528,20 @@ private fun CategoryTabBar(
             tabs.forEachIndexed { index, token ->
                 val isSel = token == selected
                 val isBuiltin = token == CATEGORY_FAVORITE || token == CATEGORY_ALL
+                // 选中底/文字色平滑过渡，消除切换分类时底色突变的闪烁观感
+                val chipBg by animateColorAsState(
+                    if (isSel) cs.primaryContainer else cs.surfaceContainerHigh,
+                    label = "categoryChipBg"
+                )
+                val chipFg by animateColorAsState(
+                    if (isSel) cs.onPrimaryContainer else cs.onSurfaceVariant,
+                    label = "categoryChipFg"
+                )
                 Box {
                     Box(
                         modifier = Modifier
                             .clip(chipShape(token))
-                            .background(if (isSel) cs.primaryContainer else cs.surfaceContainerHigh)
+                            .background(chipBg)
                             .combinedClickable(
                                 onClick = { onSelect(token) },
                                 onLongClick = if (isBuiltin) {
@@ -2503,7 +2561,7 @@ private fun CategoryTabBar(
                                 token
                             },
                             style = MaterialTheme.typography.labelLarge,
-                            color = if (isSel) cs.onPrimaryContainer else cs.onSurfaceVariant,
+                            color = chipFg,
                             maxLines = 1
                         )
                     }
