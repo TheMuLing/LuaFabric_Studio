@@ -291,7 +291,7 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
                 appendLine("项目「${projectName ?: ""}」正在写入：")
                 appendLine(target ?: "")
                 appendLine()
-                append(if (kind == 1) "已拦截对其它项目目录的写入/删除/修改操作。" else "已拦截对 LuaFabric-Studio 根目录的保护操作。")
+                append(if (kind == 1) "已拦截对其它项目目录的写入/删除/修改操作。" else "已拦截对 LuaFabric-Studio 根目录的操作。")
             }
             val theme = com.luafabric.console.ui.ConsoleTheme
             theme.refresh(context)

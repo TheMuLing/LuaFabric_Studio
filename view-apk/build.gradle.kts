@@ -101,6 +101,11 @@ android {
     }
 }
 
+configurations.all {
+    // androidx.emoji2.viewsintegration.* 为传递依赖残留,本项目无任何代码引用,剥离以缩体积
+    exclude(group = "androidx.emoji2", module = "emoji2-views-integration")
+}
+
 dependencies {
     api(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
 

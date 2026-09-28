@@ -107,7 +107,6 @@ dependencies {
     api(libs.recyclerview)
     api(libs.transition)
     api(libs.window)
-    api(libs.viewpager)
     api(libs.viewpager2)
     api(libs.cardview)
     api(libs.browser)

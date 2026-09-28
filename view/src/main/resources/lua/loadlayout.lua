@@ -934,7 +934,7 @@ local function createView(layout, views, parentViewClass)
   local builtinWidgetPrefixes = {
     "android.widget.", "android.view.", "android.text.", "android.graphics.",
     "android.app.", "androidx.appcompat.widget.", "androidx.recyclerview.widget.",
-    "androidx.coordinatorlayout.widget.", "androidx.viewpager.widget.",
+    "androidx.coordinatorlayout.widget.",
     "androidx.viewpager2.widget.", "androidx.cardview.widget.",
     "androidx.constraintlayout.widget.", "androidx.drawerlayout.widget.",
     "androidx.swiperefreshlayout.widget.", "androidx.core.widget.",

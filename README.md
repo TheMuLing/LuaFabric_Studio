@@ -36,6 +36,22 @@
 
 - 源码论坛：帖子卡片重设计（圆形头像 + 昵称 + 相对 / 绝对发帖日期 + 标题 + 正文节选 + 配图 + 收藏 / 点赞 / 评论内联展开）；论坛互动接口（评论 / 点赞 / 关注 / 回复）由 native 层直发；「相对发帖日期」默认开启；项目页 FAB 与论坛 efab 圆角跟随主题设置；侧滑栏底部构建 chip 恒显（测试版 / 正式版）
 
+- 传统 view 模块：ViewPager(v1) 全面迁移至 ViewPager2：
+
+  - 移除 `androidx.viewpager` 依赖（view/build.gradle.kts）；view-apk 剥离 `emoji2-views-integration` 传递依赖以缩减体积
+
+  - `LuaPagerAdapter` 由 `androidx.viewpager.widget.PagerAdapter` 重写为 `RecyclerView.Adapter`（ViewPager2 兼容），保留 Lua 侧 add / insert / remove / getItem / getData 方法签名不变
+
+  - loadlayout / layouthelper 内建控件前缀移除 `androidx.viewpager.widget.`；布局助手 `pages` / `pagesWithTitle` 属性改用 ViewPager2 适配器
+
+  - 布局助手支持控件清单剪裁：移除废弃 / 不常用控件（AppCompatImageButton、CheckedTextView、RatingBar、ToggleButton、AbsoluteLayout、ImageButton、ViewPager 等）
+
+- 清理传统 view 模块过期 / 未引用组件：LuaServer、LuaClient、LuaContentObserver、LuaFileObserver、LuaStringUtil、ZipUtil、Color、ColorFinder、ColorPoint、RippleLayout
+
+- 防火墙弹窗文案微调：根目录自我守护提示移除「保护」字样，保持与功能命名一致
+
+- 同步 core.apk 调试构建产物
+
 ## 26.09.27
 
 - 主页底部导航栏：新增 项目 / 源码论坛 / 账户 三个 tab（仅选中项显示文本，侧滑栏同步移除 项目 + 源码论坛 两项）；上滑列表隐藏、下滑回滚显示
