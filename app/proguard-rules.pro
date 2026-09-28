@@ -4,6 +4,10 @@
 
 # 保留调试控制台（ContentProvider 靠清单引用，桥实现被 core 经接口调用）
 -keep class com.luafabric.console.** { *; }
+# 保留 core 控制台契约（DebugConsoleRegistry/DebugConsoleBridge/SessionInfo/MethodCallResult）。
+# ConsoleBridgeRef 经 Class.forName + getMethod("get"/"onPrint"...) 反射访问，R8 改名会令
+# 桥恒为 null，release 版 print/toast/snackbar 拦截与控制台输出全部静默失效（debug 版正常）。
+-keep class com.luafabric.studio.falling.core.console.** { *; }
 
 # 保留指定包下的所有类（含子包）
 -keep class android.widget.** { *; }

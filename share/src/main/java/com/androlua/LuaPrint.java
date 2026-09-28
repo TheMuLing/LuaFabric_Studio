@@ -1,11 +1,14 @@
 package com.androlua;
 
+import android.util.Log;
 import com.luajava.ConsoleBridgeRef;
 import com.luajava.JavaFunction;
 import com.luajava.LuaException;
 import com.luajava.LuaState;
 
 public class LuaPrint extends JavaFunction {
+
+    private static final String TAG = "ConsoleTrace";
 
     private final LuaState L;
     private final LuaContext mLuaContext;
@@ -20,11 +23,13 @@ public class LuaPrint extends JavaFunction {
     @Override
     public int execute() throws LuaException {
         int top = L.getTop();
+        Log.d(TAG, "print.execute enter: top=" + top);
         if (top < 2) {
             mLuaContext.sendMsg("");
             return 0;
         }
         boolean bridgeActive = ConsoleBridgeRef.isBridgeActive();
+        Log.d(TAG, "print.execute: bridgeActive=" + bridgeActive);
         int[] luaTypes = null;
         Object[] rawArgs = null;
         if (bridgeActive) {
@@ -59,11 +64,13 @@ public class LuaPrint extends JavaFunction {
             output.append("\t");
         }
         String text = output.toString().substring(1, output.length() - 1);
+        Log.d(TAG, "print.execute: build ok, text.length=" + text.length());
         mLuaContext.sendMsg(text);
         if (bridgeActive) {
             try {
                 ConsoleBridgeRef.onPrint(text, luaTypes, rawArgs);
             } catch (Exception ignored) {
+                Log.e(TAG, "print.execute: ConsoleBridgeRef.onPrint threw", ignored);
             }
         }
         output.setLength(0);

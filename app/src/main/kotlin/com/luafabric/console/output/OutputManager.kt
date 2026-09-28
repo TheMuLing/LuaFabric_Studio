@@ -2,6 +2,7 @@ package com.luafabric.console.output
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -29,9 +30,16 @@ object OutputManager {
 
     /** 任意线程可调。追加到目标文件缓冲并触发主线程批量通知。 */
     fun append(entry: OutputEntry) {
+        Log.d("ConsoleTrace", "OutputManager.append: label=" + entry.label + " file=" + entry.file + " primary=" + preview(entry.primary))
         val key = if (entry.file.isBlank()) currentFile else entry.file
         pool.getOrCreate(key).append(entry)
         notifyChange()
+    }
+
+    private fun preview(s: String?): String {
+        if (s == null) return "null"
+        val t = s.replace('\n', ' ')
+        return if (t.length <= 200) "\"" + t + "\"" else "\"" + t.take(200) + "...(" + s.length + " chars)\""
     }
 
     fun bufferFor(file: String): OutputBuffer = pool.getOrCreate(file)

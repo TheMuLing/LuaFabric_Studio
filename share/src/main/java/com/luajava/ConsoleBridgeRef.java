@@ -1,6 +1,7 @@
 package com.luajava;
 
 import android.app.Activity;
+import android.util.Log;
 
 /**
  * 调试控制台桥的反射门面（compose 产物瘦身用）。
@@ -24,6 +25,8 @@ public final class ConsoleBridgeRef {
             "com.luafabric.studio.falling.core.console.MethodCallResult";
 
     private ConsoleBridgeRef() {}
+
+    private static final String TAG = "ConsoleTrace";
 
     /** 方法调用拦截结果（console 的 MethodCallResult 反射映射）。 */
     public static final class InterceptResult {
@@ -138,7 +141,11 @@ public final class ConsoleBridgeRef {
     /** onPopupCaptured(instance, text, snackbar) —— Toast/Snackbar.make 工厂登记。 */
     public static void onPopupCaptured(Object instance, String text, boolean snackbar) {
         Object bridge = getBridge();
-        if (bridge == null) return;
+        if (bridge == null) {
+            Log.e(TAG, "onPopupCaptured: bridge NULL text=" + text + " snackbar=" + snackbar);
+            return;
+        }
+        Log.d(TAG, "onPopupCaptured: bridge ok, text=" + text + " snackbar=" + snackbar);
         call(bridge, "onPopupCaptured",
                 new Class<?>[]{Object.class, String.class, boolean.class},
                 instance, text, snackbar);
@@ -147,7 +154,11 @@ public final class ConsoleBridgeRef {
     /** onPopupShown(instance) —— 实例 show() 配对。 */
     public static void onPopupShown(Object instance) {
         Object bridge = getBridge();
-        if (bridge == null) return;
+        if (bridge == null) {
+            Log.e(TAG, "onPopupShown: bridge NULL instance=" + instance);
+            return;
+        }
+        Log.d(TAG, "onPopupShown: bridge ok, instance=" + instance);
         call(bridge, "onPopupShown", new Class<?>[]{Object.class}, instance);
     }
 
@@ -162,7 +173,12 @@ public final class ConsoleBridgeRef {
     /** onPrint(text, luaTypes, rawArgs)。 */
     public static void onPrint(String text, int[] luaTypes, Object[] rawArgs) {
         Object bridge = getBridge();
-        if (bridge == null) return;
+        if (bridge == null) {
+            Log.e(TAG, "onPrint: bridge NULL text.length=" + (text == null ? "null" : text.length()));
+            return;
+        }
+        Log.d(TAG, "onPrint: bridge ok, text.length=" + (text == null ? "null" : text.length())
+                + " nArgs=" + (luaTypes == null ? 0 : luaTypes.length));
         call(bridge, "onPrint",
                 new Class<?>[]{String.class, int[].class, Object[].class}, text, luaTypes, rawArgs);
     }
