@@ -41,3 +41,16 @@ signer/bin/
 
 # GitHub workflows
 .github/
+
+# IDE / tool caches (untracked scratch)
+.kotlin/
+.trae_tmp/
+.trae/
+
+# Local diagnostics & experiments
+build_analysis/
+_fmt2/
+
+# Python
+__pycache__/
+*.pyc
