@@ -6,7 +6,6 @@ import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.KeyEvent
 import com.luafabric.console.core.ConsoleSettings
 import com.luafabric.console.core.ConsoleState
@@ -254,7 +253,6 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
 
     override fun onPrint(text: String?, luaTypes: IntArray?, rawArgs: Array<out Any?>?) {
         // 门控：捕获 print 关闭则不解析不入缓冲（不 gate active：非调试会话本就 clearAll，见原注释）
-        Log.d("ConsoleTrace", "onPrint: capturePrint=" + settings.capturePrint + " active=" + active + " text=" + preview(text) + " nArgs=" + (luaTypes?.size ?: 0))
         if (!settings.capturePrint) return
         // 不 gate active：主线程顶层 chunk 的 print 可能先于 onSessionStart 到达（游标未建），
         // 一律入兜底缓冲，会话建立后由 rebaseCatchAll 并入当前文件；非调试会话随后 clearAll 清空。
@@ -280,14 +278,12 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     }
 
     override fun onPopupCaptured(instance: Any, text: String?, snackbar: Boolean) {
-        Log.d("ConsoleTrace", "onPopupCaptured: active=" + active + " text=" + preview(text) + " snackbar=" + snackbar)
         if (!active) return
         // 同实例重复 make（罕见）覆盖旧文本；WeakHashMap 弱键随 GC 回收未 show 残留
         pendingPopups[instance] = PopupInfo(text ?: "", snackbar)
     }
 
     override fun onPopupShown(instance: Any) {
-        Log.d("ConsoleTrace", "onPopupShown: active=" + active + " matched=" + pendingPopups.containsKey(instance) + " pendingSize=" + pendingPopups.size)
         if (!active) return
         pendingPopups.remove(instance)?.let { info ->
             outputPopup(info)
@@ -308,7 +304,6 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     /** 弹窗输出：按类型开关门控（不标注是否调用 show，仅捕获内容）。 */
     private fun outputPopup(info: PopupInfo) {
         val want = if (info.snackbar) settings.captureSnackbar else settings.captureToast
-        Log.d("ConsoleTrace", "outputPopup: snackbar=" + info.snackbar + " want=" + want + " text=" + preview(info.text))
         if (!want) return
         val label = if (info.snackbar) "snackbar" else "toast"
         appendEntry(label, info.text)
@@ -376,7 +371,6 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
     }
 
     private fun appendEntry(label: String, primary: String, luaTypes: List<String> = emptyList(), typeDetails: List<String> = emptyList(), fullText: String? = null) {
-        Log.d("ConsoleTrace", "appendEntry: label=" + label + " file=" + OutputManager.currentFile + " primary=" + preview(primary))
         OutputManager.append(
             OutputEntry(
                 id = OutputManager.nextId(),
@@ -392,8 +386,4 @@ class ConsoleBridgeImpl(private val context: Context) : DebugConsoleBridge {
             )
         )
     }
-
-    /** 埋点日志专用：长文本截断到 200 字符，避免刷爆 logcat。 */
-    private fun preview(s: String?): String =
-        if (s == null) "null" else { val t = s.replace('\n', ' '); if (t.length <= 200) "\"" + t + "\"" else "\"" + t.take(200) + "...(" + s.length + " chars)\"" }
 }

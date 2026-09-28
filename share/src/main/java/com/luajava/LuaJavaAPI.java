@@ -29,7 +29,6 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Build;
-import android.util.Log;
 
 import android.widget.Toast;
 import com.androlua.LuaContext;
@@ -65,8 +64,6 @@ public final class LuaJavaAPI {
 
     private LuaJavaAPI() {
     }
-
-    private static final String TAG = "ConsoleTrace";
 
     /** Snackbar 探测：compose 产物无 material 依赖，按需反射，null 表示不存在。 */
     private static final Class<?> SNACKBAR_CLS = loadQuietly();
@@ -147,25 +144,16 @@ public final class LuaJavaAPI {
         int dot = cacheName.lastIndexOf('.');
         String method = cacheName.substring(Math.max(at, dot) + 1);
         Object bridge = ConsoleBridgeRef.getBridge();
-        if (bridge == null) {
-            Log.e(TAG, "interceptMethodCall: bridge NULL for cacheName=" + cacheName);
-            return ConsoleBridgeRef.allow();
-        }
+        if (bridge == null) return ConsoleBridgeRef.allow();
         boolean interesting =
                 (obj instanceof LuaContext)
                         || (obj instanceof Class
                                 && ("makeText".equals(method) || "make".equals(method)))
                         || (isPopup(obj) && "show".equals(method));
-        Log.d(TAG, "interceptMethodCall: cacheName=" + cacheName
-                + " method=" + method
-                + " obj=" + (obj == null ? "null" : obj.getClass().getName())
-                + " interesting=" + interesting
-                + " isPopup=" + (obj == null ? false : isPopup(obj)));
         if (!interesting) return ConsoleBridgeRef.allow();
 
         // 调试控制台：Toast/Snackbar show() —— 与 make 登记的实例配对，标注「已调用 show」，放行原显示
         if (isPopup(obj) && "show".equals(method)) {
-            Log.d(TAG, "interceptMethodCall: POPUP SHOW intercepted, obj=" + obj.getClass().getName());
             ConsoleBridgeRef.onPopupShown(obj);
             return ConsoleBridgeRef.allow();
         }
@@ -337,17 +325,10 @@ public final class LuaJavaAPI {
                             && ("makeText".equals(method.getName()) || "make".equals(method.getName()))) {
                         if (ConsoleBridgeRef.isBridgeActive()) {
                             Object popupText = objs.length > 1 ? objs[1] : null;
-                            Log.d(TAG, "callMethod: POPUP MADE cacheName=" + cacheName
-                                    + " method=" + method.getName()
-                                    + " ret=" + ret.getClass().getName()
-                                    + " text=" + (popupText == null ? "null" : String.valueOf(popupText))
-                                    + " snackbar=" + (!(ret instanceof Toast)));
                             ConsoleBridgeRef.onPopupCaptured(
                                     ret,
                                     popupText == null ? "" : String.valueOf(popupText),
                                     !(ret instanceof Toast));
-                        } else {
-                            Log.e(TAG, "callMethod: popup made but bridge INACTIVE cacheName=" + cacheName);
                         }
                     }
 
