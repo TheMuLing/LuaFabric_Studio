@@ -567,7 +567,7 @@
     <string name="forum_settings_hide_images">快速帖子列表</string>
     <string name="forum_settings_hide_images_desc">隐藏其他用户的帖子配图</string>
     <string name="forum_settings_relative_date">相对发帖日期</string>
-    <string name="forum_settings_relative_date_desc">使用相对日期(e.g.刚刚、3分钟前)而非绝对日期(e.g.26-09-28 18:45)显示具体发帖时间</string>
+    <string name="forum_settings_relative_date_desc">使用相对日期(e.g.刚刚、3分钟前)而非绝对日期(e.g.2026-09-28 18:45)显示具体发帖时间</string>
     <string name="forum_follow">收藏</string>
     <string name="forum_praise">点赞</string>
     <string name="forum_comment">评论</string>

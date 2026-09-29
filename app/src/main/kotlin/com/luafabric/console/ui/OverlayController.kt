@@ -7,6 +7,8 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Point
+import android.graphics.Rect
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
@@ -110,13 +112,35 @@ class OverlayController(private val appContext: Context) {
     @SuppressLint("NewApi")
     private fun maxBallBounds(): IntArray {
         val activity = hostActivity()
-        val s = wm?.currentWindowMetrics?.bounds
-        val w = s?.width() ?: activity?.windowManager?.currentWindowMetrics?.bounds?.width() ?: 0
-        val h = s?.height() ?: activity?.windowManager?.currentWindowMetrics?.bounds?.height() ?: 0
+        val b = windowBounds(activity)
+        val w = b?.width() ?: 0
+        val h = b?.height() ?: 0
         return intArrayOf(
             maxOf(0, w - appContext.dp(56)),
             maxOf(0, h - appContext.dp(56))
         )
+    }
+
+    /**
+     * 取悬浮窗口/宿主的可视窗口 bounds。
+     * currentWindowMetrics 仅 API 30+，旧系统改用 defaultDisplay.getRealSize 兼容
+     * （API 30+ 直呼会 NoSuchMethodError，Android 10 点浮球即崩）。
+     */
+    @SuppressLint("NewApi")
+    private fun windowBounds(activity: Activity?): Rect? {
+        val wmInst = wm ?: activity?.windowManager ?: return null
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            wmInst.currentWindowMetrics.bounds
+        } else {
+            @Suppress("DEPRECATION")
+            val size = Point()
+            wmInst.defaultDisplay?.getRealSize(size)
+            if (size.x <= 0 || size.y <= 0) {
+                activity?.resources?.displayMetrics?.let { Rect(0, 0, it.widthPixels, it.heightPixels) }
+            } else {
+                Rect(0, 0, size.x, size.y)
+            }
+        }
     }
 
     fun openSheet() {
@@ -153,7 +177,8 @@ class OverlayController(private val appContext: Context) {
 
     /** 横屏判定：宽>高即从右侧划出（不限平板）。 */
     private fun isLandscape(activity: Activity): Boolean {
-        val bounds = activity.windowManager.currentWindowMetrics.bounds
+        // 旧系统拿不到 currentWindowMetrics（NoSuchMethodError），取不到 bounds 一律按竖屏
+        val bounds = windowBounds(activity) ?: return false
         return bounds.width() > bounds.height()
     }
 

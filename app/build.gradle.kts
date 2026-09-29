@@ -15,8 +15,8 @@ android {
         applicationId = "com.luafabric.studio.falling"
         minSdk = 29
         targetSdk = 36
-        versionCode = 260902803
-        versionName = "26.09.28-gamma"
+        versionCode = 260902901
+        versionName = "26.09.29-alpha"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -79,7 +79,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            // minify 关闭：实测 R8/AGP 会把 Lua 经反射使用的
+            // androidx.viewpager2.widget 类连根剥离（同包 FragmentStateAdapter 反而幸存，
+            // 独立于 keep 规则），与 view-apk 壳保持一致走非混淆
+            isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -183,6 +186,12 @@ dependencies {
     // Module Dependencies
     api(project(":editor"))
     api(project(":view"))
+
+    // viewpager2：Vp2Holder 提供字节码强引用，防 R8/打包流水线剥离 widget 类
+    //（Lua 侧仅反射使用无 Java 调用）。必须以标准 AAR 依赖引入：AGP 会在编译期
+    // 为 androidx.viewpager2 生成 R/R$styleable，ViewPager2 构造依赖该 R 类；
+    // 此前用本地 jar 直连导致 R$styleable 缺失 -> NoClassDefFoundError
+    api(libs.viewpager2)
     api(project(":compose"))
     api(project(":signer"))
 

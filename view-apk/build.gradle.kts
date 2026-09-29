@@ -124,7 +124,6 @@ dependencies {
     api(libs.fragment)
     api(libs.constraintlayout)
     api(libs.recyclerview)
-    api(libs.viewpager2)
     api(libs.coordinatorlayout)
     api(libs.swiperefreshlayout)
 
