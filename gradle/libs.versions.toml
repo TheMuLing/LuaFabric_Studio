@@ -24,6 +24,9 @@ navigation = "2.9.7"
 # DataStore
 datastore = "1.2.0"
 
+# WorkManager（后台在线心跳周期任务）
+work = "2.10.0"
+
 # Material & Accompanist
 material = "1.14.0-alpha09"
 accompanist-permissions = "0.37.3"
@@ -118,6 +121,9 @@ navigation-ui = { module = "androidx.navigation:navigation-ui", version.ref = "n
 
 # DataStore
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
+# WorkManager
+androidx-work = { module = "androidx.work:work-runtime", version.ref = "work" }
 
 # Material & Accompanist
 material = { module = "com.google.android.material:material", version.ref = "material" }

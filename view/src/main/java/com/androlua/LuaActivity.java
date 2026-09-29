@@ -194,10 +194,11 @@ public class LuaActivity extends AppCompatActivity
 
     // 定义文件夹
     LuaApplication app = (LuaApplication) getApplication();
-    if (app.getClass() != LuaApplication.class) {
-      while (true) {
-        if (app.getClass() == LuaApplication.class) break;
-      }
+    // app 可能是 LuaApplication 子类（如 LuaFabricStudioApp），旧逻辑用 while(true) 等精确 LuaApplication.class
+    // 在子类 Application 下永不成立 → 主线程死循环 ANR。改为 getInstance() 兜底。
+    if (app == null || app.getClass() != LuaApplication.class) {
+      LuaApplication inst = LuaApplication.getInstance();
+      if (inst != null) app = inst;
     }
     localDir = app.getLocalDir();
     odexDir = app.getOdexDir();

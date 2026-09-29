@@ -145,6 +145,7 @@ object AiChatRepository {
         messages: List<ChatMessage>,
         tools: List<ToolDefinition>,
         onChunk: (String) -> Unit,
+        onReasoning: (String) -> Unit,
         onToolCall: (ToolCallInfo) -> Unit,
         onComplete: (String?) -> Unit
     ) {
@@ -163,14 +164,16 @@ object AiChatRepository {
                         val headers = resp.headers.toMultimap()
                             .map { (k, v) -> "$k=${v.joinToString(",")}" }
                             .joinToString("; ")
+                        // 422/400 类协议拒绝：连请求摘要一起落日志，便于直接定位哪条消息/哪个工具被拒
                         android.util.Log.w(logTag, "streamChat HTTP ${resp.code} in ${elapsedMs}ms body=$errorBody headers=$headers")
+                        android.util.Log.w(logTag, "streamChat failed request digest: ${requestDigest(messages, tools)}")
                         onComplete("HTTP ${resp.code}: $errorBody")
                         return
                     }
                     android.util.Log.d(logTag, "streamChat connected HTTP ${resp.code} in ${elapsedMs}ms")
                     try {
                         when (protocol) {
-                            ApiProtocol.OPENAI -> parseOpenAiStream(resp, onChunk, onToolCall, onComplete)
+                            ApiProtocol.OPENAI -> parseOpenAiStream(resp, onChunk, onReasoning, onToolCall, onComplete)
                             ApiProtocol.ANTHROPIC -> parseAnthropicStream(resp, onChunk, onToolCall, onComplete)
                         }
                     } catch (e: Exception) {
@@ -270,10 +273,85 @@ object AiChatRepository {
         tools: List<ToolDefinition>,
         protocol: ApiProtocol = config.resolvedProtocol
     ): String {
+        val safeMessages = sanitizeToolPairing(messages)
         return when (protocol) {
-            ApiProtocol.OPENAI -> buildOpenAiRequest(config, messages, tools)
-            ApiProtocol.ANTHROPIC -> buildAnthropicRequest(config, messages, tools)
+            ApiProtocol.OPENAI -> buildOpenAiRequest(config, safeMessages, tools)
+            ApiProtocol.ANTHROPIC -> buildAnthropicRequest(config, safeMessages, tools)
         }
+    }
+
+    /**
+     * 协议自愈：清洗 tool_calls 与 tool 结果的配对关系。
+     * 网关（422/400）会拒绝「assistant 声明了 tool_calls 但没有对应 tool 结果」或被取消中断留下的
+     * 孤儿 tool 消息；这里按 id 双向剔除不配对项，并对纯工具调用且内容为空的 assistant 消息整条丢弃。
+     */
+    private fun sanitizeToolPairing(messages: List<ChatMessage>): List<ChatMessage> {
+        val resultIds = messages.filter { it.role == ChatRole.TOOL }
+            .mapNotNull { it.toolCalls.firstOrNull()?.id }
+            .filter { it.isNotEmpty() }
+            .toSet()
+        val keepCallIds = messages.filter { it.role == ChatRole.ASSISTANT }
+            .flatMap { it.toolCalls }
+            .map { it.id }
+            .filter { it in resultIds }
+            .toSet()
+
+        val out = ArrayList<ChatMessage>(messages.size)
+        var droppedCalls = 0
+        var droppedTools = 0
+        for (msg in messages) {
+            when (msg.role) {
+                ChatRole.ASSISTANT -> {
+                    if (msg.toolCalls.isEmpty()) {
+                        out.add(msg)
+                        continue
+                    }
+                    val calls = msg.toolCalls.filter { it.id in keepCallIds }
+                    droppedCalls += msg.toolCalls.size - calls.size
+                    if (calls.isEmpty() && msg.content.isBlank()) {
+                        // 无内容的纯工具调用消息且全部无结果 → 整条丢弃（空 assistant 消息部分网关直接拒收）
+                        continue
+                    }
+                    out.add(if (calls.size == msg.toolCalls.size) msg else msg.copy(toolCalls = calls))
+                }
+                ChatRole.TOOL -> {
+                    val id = msg.toolCalls.firstOrNull()?.id
+                    if (id.isNullOrEmpty() || id !in keepCallIds) droppedTools++ else out.add(msg)
+                }
+                else -> out.add(msg)
+            }
+        }
+        if (droppedCalls > 0 || droppedTools > 0) {
+            android.util.Log.w(
+                logTag,
+                "sanitizeToolPairing: dropped ${droppedCalls} orphan tool_calls / ${droppedTools} orphan tool results " +
+                    "(in=${messages.size} out=${out.size})"
+            )
+        }
+        return out
+    }
+
+    /** 请求摘要（非 2xx 时落日志）：消息角色序列 + tool_call/tool 结果配对情况 + 工具数量。 */
+    private fun requestDigest(messages: List<ChatMessage>, tools: List<ToolDefinition>): String {
+        val safe = sanitizeToolPairing(messages)
+        val resultIds = safe.filter { it.role == ChatRole.TOOL }
+            .mapNotNull { it.toolCalls.firstOrNull()?.id }
+            .toSet()
+        val orphanCalls = safe.filter { it.role == ChatRole.ASSISTANT }
+            .flatMap { it.toolCalls }
+            .count { it.id !in resultIds }
+        val roles = safe.joinToString(",") { m ->
+            when (m.role) {
+                ChatRole.ASSISTANT ->
+                    if (m.toolCalls.isNotEmpty()) "assistant(tc=${m.toolCalls.size},len=${m.content.length})"
+                    else "assistant(len=${m.content.length})"
+                ChatRole.TOOL -> "tool(id=${m.toolCalls.firstOrNull()?.id?.take(8) ?: "MISSING"})"
+                ChatRole.USER -> "user(len=${m.content.length})"
+                ChatRole.SYSTEM -> "system(len=${m.content.length})"
+            }
+        }
+        return "sent=${safe.size}/raw=${messages.size} tools=${tools.size} " +
+            "last=${safe.lastOrNull()?.role} orphanToolCalls=$orphanCalls roles=[$roles]"
     }
 
     private fun buildOpenAiRequest(
@@ -445,6 +523,7 @@ object AiChatRepository {
     private fun parseOpenAiStream(
         response: okhttp3.Response,
         onChunk: (String) -> Unit,
+        onReasoning: (String) -> Unit,
         onToolCall: (ToolCallInfo) -> Unit,
         onComplete: (String?) -> Unit
     ) {
@@ -458,6 +537,8 @@ object AiChatRepository {
         val toolCallAccumulators = mutableMapOf<Int, ToolCallAccumulator>()
         var lineCount = 0
         var textChunkCount = 0
+        var reasoningChunkCount = 0
+        var reasoningLogged = false
 
         var line: String?
         while (reader.readLine().also { line = it } != null) {
@@ -475,6 +556,17 @@ object AiChatRepository {
             try {
                 val chunk = gson.fromJson(payload, OpenAiStreamChunk::class.java)
                 val choice = chunk.choices?.firstOrNull() ?: continue
+
+                // Thinking 模型（DeepSeek reasoner 等）先流式回思考链，再回正文
+                val reasoning = choice.delta.reasoning_content
+                if (!reasoning.isNullOrEmpty()) {
+                    reasoningChunkCount++
+                    if (!reasoningLogged) {
+                        reasoningLogged = true
+                        android.util.Log.d(logTag, "parseOpenAiStream: reasoning_content first chunk: ${reasoning.take(200)}")
+                    }
+                    onReasoning(reasoning)
+                }
 
                 // Text content
                 val content = choice.delta.content
@@ -516,7 +608,12 @@ object AiChatRepository {
         toolCallAccumulators.clear()
 
         if (textChunkCount == 0) {
-            android.util.Log.w(logTag, "parseOpenAiStream: stream ended with ZERO text chunks! total lines=$lineCount")
+            android.util.Log.w(
+                logTag,
+                "parseOpenAiStream: stream ended with ZERO text chunks! total lines=$lineCount reasoningChunks=$reasoningChunkCount"
+            )
+        } else {
+            android.util.Log.d(logTag, "parseOpenAiStream: done textChunks=$textChunkCount reasoningChunks=$reasoningChunkCount lines=$lineCount")
         }
         onComplete(null)
     }

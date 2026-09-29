@@ -15,6 +15,9 @@ _G.THIRD_PARTY_WIDGET_SUPPORT = intent.getBooleanExtra("third_party_widget_suppo
 
 luadir = luapath:gsub("/[^/]+$", "")
 
+-- 项目目录加入 require 搜索路径：ViewPager2 的 pages={"layout/homeN"} 需按项目相对路径加载页面布局
+package.path = package.path .. ";" .. luadir .. "/?.lua;" .. luadir .. "/?/init.lua"
+
 local ArrayExpandableListAdapter = bindClass "android.widget.ArrayExpandableListAdapter"
 local MaterialAlertDialogBuilder = bindClass "com.google.android.material.dialog.MaterialAlertDialogBuilder"
 local View = bindClass "android.view.View"
@@ -32,8 +35,11 @@ function Error(str)
   end
 end
 
--- 三方控件支持：预载项目 libs 目录下的 dex/jar，使 bindClass 可解析第三方控件类
+-- 三方控件支持：预载项目 libs 目录下的 dex/jar，并打通宿主 classpath 之外的装载器链。
+-- 背景：luajava.bindClass 走 Class.forName（只查宿主 APK classpath），看不到 activity.loadDex
+-- 追加的 DexClassLoader；aly 中的裸名（如 LiquidBottomTabs）与 FQN 字符串都要经装载器链解析。
 if _G.THIRD_PARTY_WIDGET_SUPPORT then
+  local libFiles = {}
   local libsDir = File(luadir .. "/libs")
   if libsDir.exists() then
     local ls = libsDir.listFiles()
@@ -46,21 +52,98 @@ if _G.THIRD_PARTY_WIDGET_SUPPORT then
           print("加载三方 dex 失败: " .. name .. " " .. tostring(err))
           Error("加载三方 dex 失败: " .. name .. " " .. tostring(err))
         end
+        libFiles[#libFiles + 1] = { name = name, path = f.getAbsolutePath() }
       end
     end
   end
 
-  -- 诊断埋点：探测三方控件类能否经 bindClass 解析 + 当前 dex 装载器数量（adb 取证用）
+  local loaders = luajava.astable(activity.getClassLoaders())
+
+  local function loadFromLoaders(className)
+    for i = 1, #loaders do
+      local ok, c = pcall(function() return loaders[i].loadClass(className) end)
+      if ok and c then return c end
+    end
+    return nil
+  end
+
+  -- 统一类解析入口：宿主 classpath → dex 装载器链（loadlayout2 解析 FQN 字符串走此入口）
+  _G.__luafabricResolveClass = function(className)
+    local ok, c = pcall(bindClass, className)
+    if ok and c then return c end
+    return loadFromLoaders(className)
+  end
+
+  -- 裸类名支持：枚举 libs 内 dex 的类表建立 简单名→全限定名 映射；
+  -- 只解析 aly 文本中实际出现的标识符，避免无谓的类加载开销。
+  -- Android 14+ 原文件为可写时 DexFile 拒绝打开，优先用 loadDex 第 0 步落在 private_libs 的只读副本。
+  local simpleToFull = {}
+  local dexEntryCount = 0
+  local okDexFile, DexFile = pcall(bindClass, "dalvik.system.DexFile")
+  if okDexFile then
+    for i = 1, #libFiles do
+      local f = libFiles[i]
+      local candidates = {
+        activity.getFilesDir().getAbsolutePath() .. "/private_libs/" .. f.name,
+        f.path
+      }
+      for k = 1, #candidates do
+        local ok, count = pcall(function()
+          local df = DexFile(candidates[k])
+          local e = df.entries()
+          local n = 0
+          while e.hasMoreElements() do
+            local full = tostring(e.nextElement())
+            if not full:find("%$") then
+              local short = full:match("[%w_]+$")
+              if short and not simpleToFull[short] then
+                simpleToFull[short] = full
+              end
+            end
+            n = n + 1
+          end
+          df.close()
+          return n
+        end)
+        if ok and count > 0 then
+          dexEntryCount = dexEntryCount + count
+          break
+        end
+      end
+    end
+  end
+
+  -- aly 中的裸标识符 → 从 dex 类表匹配简单名，经装载器链解析为类（仅 View 子类，不覆盖已有全局）
+  local registered = {}
+  if layoutContent then
+    local seen = {}
+    for ident in layoutContent:gmatch("[%a_][%w_]*") do
+      if not seen[ident] then
+        seen[ident] = true
+        if _G[ident] == nil and simpleToFull[ident] then
+          local c = loadFromLoaders(simpleToFull[ident])
+          local okView, isView = pcall(function() return View.isAssignableFrom(c) end)
+          if c and okView and isView then
+            _G[ident] = c
+            registered[#registered + 1] = ident .. "->" .. simpleToFull[ident]
+          end
+        end
+      end
+    end
+  end
+
+  -- 诊断埋点（adb 取证用）：装载器数、dex 类表规模、注册结果、抽检一个已注册类的解析
   do
     local msgs = {}
-    local loaders = activity.getClassLoaders()
     msgs[#msgs + 1] = "[Layouthelper] dex loaders=" .. tostring(#loaders) ..
-      " third_party=" .. tostring(_G.THIRD_PARTY_WIDGET_SUPPORT ~= nil)
-    local ok, err = pcall(function() return bindClass("LiquidBottomTabs") end)
-    if ok then
-      msgs[#msgs + 1] = "[Layouthelper] probe bindClass LiquidBottomTabs => ok"
-    else
-      msgs[#msgs + 1] = "[Layouthelper] probe bindClass LiquidBottomTabs => fail " .. tostring(err)
+      " third_party=true scanned=" .. tostring(dexEntryCount) ..
+      " registered=" .. tostring(#registered)
+    msgs[#msgs + 1] = "[Layouthelper] registered: " ..
+      (#registered > 0 and table.concat(registered, ",") or "(none)")
+    if #registered > 0 then
+      local sample = registered[1]:match("^[^->]+")
+      msgs[#msgs + 1] = "[Layouthelper] probe global " .. sample .. " => " ..
+        (type(_G[sample]) ~= "nil" and "ok" or "fail")
     end
     local joined = table.concat(msgs, "\n")
     print(joined)

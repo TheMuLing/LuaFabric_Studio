@@ -53,7 +53,9 @@ data class OpenAiChoice(
 data class OpenAiDelta(
     val content: String? = null,
     @SerializedName("tool_calls")
-    val toolCalls: List<OpenAiToolCallDelta>? = null
+    val toolCalls: List<OpenAiToolCallDelta>? = null,
+    /** DeepSeek/OpenAI thinking 模型的思考链（reasoning_content），仅在思考阶段非空。 */
+    val reasoning_content: String? = null
 )
 
 data class OpenAiToolCallDelta(
@@ -233,7 +235,9 @@ data class ChatMessage(
     val isStreaming: Boolean = false,
     val collapsedSections: List<String> = emptyList(),
     val toolCalls: List<ToolCallInfo> = emptyList(),
-    val codeReference: CodeReference? = null
+    val codeReference: CodeReference? = null,
+    /** thinking 模型的思考链（仅展示用，不回传 API）。 */
+    val reasoning: String = ""
 )
 
 enum class ChatRole { USER, ASSISTANT, SYSTEM, TOOL }

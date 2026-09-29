@@ -1261,6 +1261,53 @@ private fun ChatMessageBubble(
                         }
                     }
 
+                    // 思考过程（thinking 模型 reasoning_content）：流式时展开，正文开始后自动折叠
+                    if (!isUser && !isTool && message.reasoning.isNotBlank()) {
+                        var reasoningExpanded by remember(message.id) {
+                            // 无正文（思考中，或模型只回了思考链）默认展开；正文出现后自动折叠
+                            mutableStateOf(message.content.isBlank())
+                        }
+                        LaunchedEffect(message.content.isNotBlank()) {
+                            if (message.content.isNotBlank()) reasoningExpanded = false
+                        }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { reasoningExpanded = !reasoningExpanded }
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Filled.Psychology,
+                                    contentDescription = "思考过程",
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "思考过程",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    if (reasoningExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
+                                    contentDescription = if (reasoningExpanded) "收起" else "展开",
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            AnimatedVisibility(visible = reasoningExpanded) {
+                                Text(
+                                    text = message.reasoning,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
                     // Content with SelectionContainer for system long-press copy
                     if (message.content.isNotBlank()) {
                         if (isUser) {
@@ -1285,7 +1332,7 @@ private fun ChatMessageBubble(
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
-                    } else if (isStreaming && !isUser) {
+                    } else if (isStreaming && !isUser && message.reasoning.isBlank()) {
                         AndroidView(
                             factory = { ctx ->
                                 com.google.android.material.loadingindicator.LoadingIndicator(ctx).apply {
@@ -2615,6 +2662,7 @@ private suspend fun sendMessage(
 
     var assistantMsgId = UUID.randomUUID().toString()
     var assistantContent = ""
+    var assistantReasoning = ""
     var pendingToolCalls = mutableListOf<ToolCallInfo>()
     var currentAssistantMessage = ChatMessage(
         id = assistantMsgId,
@@ -2628,27 +2676,26 @@ private suspend fun sendMessage(
 
     val toolContext = ToolContext(
         projectPath = projectPath,
+        // 对话框回调必须在主线程置状态；等待点击期间只挂起当前协程，禁止 runBlocking（主线程自锁 → ANR）
         onAskUser = { title, options ->
-            var result: String? = null
-            kotlinx.coroutines.runBlocking {
-                val deferred = kotlinx.coroutines.CompletableDeferred<String?>()
+            val deferred = kotlinx.coroutines.CompletableDeferred<String?>()
+            withContext(Dispatchers.Main) {
                 onAskUser(title, options) { deferred.complete(it) }
-                deferred.await()
-            }.also { result = it }
-            result
+            }
+            deferred.await()
         },
         onOpenFile = { path, startLine, endLine ->
-            onOpenFile(path, startLine, endLine)
+            withContext(Dispatchers.Main) {
+                onOpenFile(path, startLine, endLine)
+            }
             true
         },
         onConfirmInMain = { title, message ->
-            var result = false
-            kotlinx.coroutines.runBlocking {
-                val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+            val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+            withContext(Dispatchers.Main) {
                 onConfirmInMain(title, message) { deferred.complete(it) }
-                deferred.await()
-            }.also { result = it }
-            result
+            }
+            deferred.await()
         }
     )
 
@@ -2659,6 +2706,7 @@ private suspend fun sendMessage(
     try {
         while (true) {
             assistantContent = ""
+            assistantReasoning = ""
             pendingToolCalls.clear()
 
             val apiMessages = buildApiMessages(conversationMessages)
@@ -2672,6 +2720,16 @@ private suspend fun sendMessage(
                         assistantContent += chunk
                         val msg = currentAssistantMessage.copy(
                             content = assistantContent,
+                            reasoning = assistantReasoning,
+                            isStreaming = true
+                        )
+                        setMessages(conversationMessages + msg)
+                    },
+                    onReasoning = { chunk ->
+                        assistantReasoning += chunk
+                        val msg = currentAssistantMessage.copy(
+                            content = assistantContent,
+                            reasoning = assistantReasoning,
                             isStreaming = true
                         )
                         setMessages(conversationMessages + msg)
@@ -2694,7 +2752,8 @@ private suspend fun sendMessage(
                 role = ChatRole.ASSISTANT,
                 content = assistantContent,
                 toolCalls = pendingToolCalls.toList(),
-                isStreaming = false
+                isStreaming = false,
+                reasoning = assistantReasoning
             )
             if (lastApiError != null) {
                 // Error occurred - don't add the empty assistant message, just show error banner
@@ -2708,7 +2767,10 @@ private suspend fun sendMessage(
             if (pendingToolCalls.isEmpty()) break
 
             for (tc in pendingToolCalls) {
-                val result = toolRegistry.execute(tc, toolContext)
+                // 工具读写文件/执行 shell 均为阻塞操作，必须移出主线程（否则大文件读写/等待进程退出直接卡 UI）
+                val result = withContext(Dispatchers.IO) {
+                    toolRegistry.execute(tc, toolContext)
+                }
                 val toolMsg = ChatMessage(
                     id = UUID.randomUUID().toString(),
                     role = ChatRole.TOOL,

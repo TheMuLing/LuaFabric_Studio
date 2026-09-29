@@ -972,7 +972,15 @@ local function createView(layout, views, parentViewClass)
     if _G.THIRD_PARTY_WIDGET_SUPPORT == false and not widgetClassAllowed(view) then
       error("三方控件未启用（设置-编辑器配置-三方控件支持 开启后可用）：" .. view, 2)
     end
-    local success, result = pcall(bindClass, view)
+    -- 三方类解析：__luafabricResolveClass 覆盖宿主 classpath + 项目 libs dex 装载器链
+    local success, result = pcall(function()
+      if _G.__luafabricResolveClass then
+        local c = _G.__luafabricResolveClass(view)
+        if c then return c end
+        error("Class not found: " .. tostring(view), 0)
+      end
+      return bindClass(view)
+    end)
     if success then
       viewClass = result
       view = style and

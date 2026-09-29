@@ -1210,13 +1210,73 @@ fun MainScreen(
                                 )
                             ) {
                                 Text(
-                                    text = stringResource(
-                                        if (loggedInUser.sign == "true") {
-                                            R.string.drawer_sign_card_signed
-                                        } else {
-                                            R.string.sign_in
-                                        }
-                                    )
+                                text = stringResource(
+                                    if (loggedInUser.sign == "true") {
+                                        R.string.drawer_sign_card_signed
+                                    } else {
+                                        R.string.sign_in
+                                    }
+                                )
+                            )
+                        }
+                        }
+                    }
+
+                    // 在线人数卡片：仅登录后显示（签到卡片下方），数据来自 OnlinePresence 心跳
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 12.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.People,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.online_count_title),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(R.string.online_count_update_hint),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (OnlinePresence.lastOnlineCount >= 0) {
+                                Text(
+                                    text = OnlinePresence.lastOnlineCount.toString(),
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Text(
+                                    text = "—",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -2883,7 +2943,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        OnlinePresence.stop()
         com.luafabric.studio.falling.ui.editor.viewmodel.CompletionDataManager.clear()
         System.gc()
     }
@@ -2895,9 +2954,6 @@ class MainActivity : ComponentActivity() {
 
     enableEdgeToEdge()
     WindowCompat.setDecorFitsSystemWindows(window, false)
-
-    // 在线状态心跳：独立后台线程每 60s 上报（绑定应用生命周期，静默失败仅日志）
-    OnlinePresence.start(applicationContext)
 
     val isVersionChanged = intent.getBooleanExtra("isVersionChanged", false)
     val newVersionName = intent.getStringExtra("newVersionName")

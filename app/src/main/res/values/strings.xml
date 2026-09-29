@@ -28,6 +28,8 @@
     <string name="sign_in_now">立即登录</string>
     <string name="sign_in">签到</string>
     <string name="drawer_sign_card_signed">已签到</string>
+    <string name="online_count_title">在线人数</string>
+    <string name="online_count_update_hint">每60秒自动更新</string>
     <string name="join_group_title">加入我们</string>
     <string name="join">加入</string>
     <string name="no_thanks">不了</string>

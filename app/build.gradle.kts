@@ -223,6 +223,9 @@ dependencies {
     // DataStore
     api(libs.datastore.preferences)
 
+    // WorkManager（后台在线心跳周期任务）
+    api(libs.androidx.work)
+
     // Material & Accompanist
     api(libs.material)
     api(libs.accompanist.permissions)

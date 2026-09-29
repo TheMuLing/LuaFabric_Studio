@@ -888,7 +888,8 @@ internal fun ForumPostDetailScreen(
                     loading = commentsLoading.value,
                     input = commentText.value,
                     onInputChange = { commentText.value = it },
-                    onSend = { sendComment() }
+                    onSend = { sendComment() },
+                    guard = { guard() }
                 )
             }
         }
@@ -905,7 +906,8 @@ private fun CommentSection(
     loading: Boolean,
     input: String,
     onInputChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    guard: () -> Boolean
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1024,6 +1026,8 @@ private fun CommentSection(
                                     onClick = {
                                         val text = replyText.value.trim()
                                         if (text.isEmpty()) return@Button
+                                        // 未登录拦截：跳账户页 + toast「请先登录」，与评论/点赞/收藏一致
+                                        if (!guard()) return@Button
                                         replyText.value = ""
                                         scope.launch {
                                             val ok = withContext(Dispatchers.IO) {
