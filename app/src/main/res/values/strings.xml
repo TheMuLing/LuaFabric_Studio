@@ -28,7 +28,7 @@
     <string name="sign_in_now">立即登录</string>
     <string name="sign_in">签到</string>
     <string name="drawer_sign_card_signed">已签到</string>
-    <string name="online_count_title">在线人数</string>
+    <string name="online_count_title">当前在线</string>
     <string name="online_count_update_hint">每60秒自动更新</string>
     <string name="join_group_title">加入我们</string>
     <string name="join">加入</string>
@@ -220,6 +220,8 @@
     <string name="settings_hex_color_highlight_desc">显示十六进制颜色</string>
     <string name="settings_quick_bar_icon_only">快捷功能栏无字模式</string>
     <string name="settings_quick_bar_icon_only_desc">将快捷功能栏的文本功能更换为图标</string>
+    <string name="settings_per_project_word_wrap">项目间自动换行独立</string>
+    <string name="settings_per_project_word_wrap_desc">为每个项目使用独立的自动换行选项状态</string>
 
     <!-- 通知提示 -->
     <string name="settings_toast_position">弹出位置</string>

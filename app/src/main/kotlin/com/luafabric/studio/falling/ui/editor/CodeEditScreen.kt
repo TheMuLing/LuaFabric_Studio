@@ -734,6 +734,7 @@ fun CodeEditScreen(
                                     ) {
                                         EditorContent(
                                             modifier = Modifier.fillMaxSize(),
+                                            projectPath = projectPath,
                                             showInitialLoader = showInitialLoader,
                                             isBuilding = isBuilding,
                                             isAutoSaving = isAutoSaving,
@@ -1163,6 +1164,7 @@ private fun RowScope.DrawerTabButton(
 @Composable
 fun EditorContent(
     modifier: Modifier = Modifier,
+    projectPath: String,
     showInitialLoader: Boolean,
     isBuilding: Boolean,
     isAutoSaving: Boolean,
@@ -1290,6 +1292,7 @@ fun EditorContent(
                         .weight(1f)
                 ) {
                     FileTabView(
+                        projectPath = projectPath,
                         viewModel = viewModel,
                         lastFileToOpen = lastFileToOpen,
                         onTabBarRendered = onTabBarRendered,

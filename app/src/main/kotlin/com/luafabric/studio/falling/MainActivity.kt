@@ -1158,13 +1158,16 @@ fun MainScreen(
                     }
                 }
 
-                // 签到卡片：仅登录后显示（位于分割线上方，另起一行）
+                // 签到卡片：仅登录后显示；与下方在线人数卡构成上下组合，签到卡上圆角增大
                 if (loggedInUser != null) {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
-                        shape = MaterialTheme.shapes.medium,
+                            .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 4.dp),
+                        shape = RoundedCornerShape(
+                            topStart = 20.dp, topEnd = 20.dp,
+                            bottomStart = 12.dp, bottomEnd = 12.dp
+                        ),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                         )
@@ -1222,12 +1225,15 @@ fun MainScreen(
                         }
                     }
 
-                    // 在线人数卡片：仅登录后显示（签到卡片下方），数据来自 OnlinePresence 心跳
+                    // 在线人数卡片：仅登录后显示（签到卡片下方），下圆角增大；数据来自 OnlinePresence 心跳
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 12.dp),
-                        shape = MaterialTheme.shapes.medium,
+                            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 8.dp),
+                        shape = RoundedCornerShape(
+                            topStart = 12.dp, topEnd = 12.dp,
+                            bottomStart = 20.dp, bottomEnd = 20.dp
+                        ),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                         )
@@ -1253,29 +1259,23 @@ fun MainScreen(
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.online_count_title),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = stringResource(R.string.online_count_update_hint),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                text = stringResource(R.string.online_count_title),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
                             if (OnlinePresence.lastOnlineCount >= 0) {
                                 Text(
                                     text = OnlinePresence.lastOnlineCount.toString(),
-                                    style = MaterialTheme.typography.headlineMedium,
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             } else {
                                 Text(
                                     text = "—",
-                                    style = MaterialTheme.typography.headlineMedium,
+                                    style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.filled.MergeType
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Code
@@ -663,7 +664,7 @@ fun SettingsScreen(
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.settings_editor_font),
@@ -1006,6 +1007,37 @@ fun SettingsScreen(
                             updateSettingsWithSave(currentSettingsState.copy(smartSortingEnabled = !currentSettingsState.smartSortingEnabled))
                         }
                     )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                    )
+
+                    // 项目间自动换行独立：开=每项目独立换行状态；关=全局共享
+                    SettingsListItem(
+                        title = stringResource(R.string.settings_per_project_word_wrap),
+                        subtitle = stringResource(R.string.settings_per_project_word_wrap_desc),
+                        compact = true,
+                        leadingIcon = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.TextSnippet,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = currentSettingsState.perProjectWordWrap,
+                                onCheckedChange = {
+                                    updateSettingsWithSave(currentSettingsState.copy(perProjectWordWrap = it))
+                                }
+                            )
+                        },
+                        onClick = {
+                            updateSettingsWithSave(currentSettingsState.copy(perProjectWordWrap = !currentSettingsState.perProjectWordWrap))
+                        }
+                    )
                 }
             }
 
@@ -1080,7 +1112,7 @@ fun SettingsScreen(
                     icon = Icons.Filled.ColorLens,
                     initiallyExpanded = syntaxHighlightExpanded,
                     onExpandedChange = { syntaxHighlightExpanded = it },
-                    contentSpacing = 4.dp
+                    contentSpacing = 2.dp
                 ) {
                     // 类名高亮
                     SettingsListItem(
@@ -1472,7 +1504,7 @@ fun SettingsListItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (enabled) Modifier.clickable { onClick() } else Modifier)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {

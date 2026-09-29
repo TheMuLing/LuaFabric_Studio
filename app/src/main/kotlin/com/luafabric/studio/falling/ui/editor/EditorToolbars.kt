@@ -253,7 +253,7 @@ fun EditorMoreMenu(
 ) {
     val scope = rememberCoroutineScope()
     val settings = SettingsManager.currentSettings
-    var wordWrap by remember { mutableStateOf(settings.editorWordWrap) }
+    var wordWrap by remember { mutableStateOf(SettingsManager.getEditorWordWrap(context, projectPath)) }
     var isEditSubmenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(expanded) {
@@ -299,9 +299,7 @@ fun EditorMoreMenu(
                 onClick = {
                     val newValue = !wordWrap
                     wordWrap = newValue
-                    val newSettings = settings.copy(editorWordWrap = newValue)
-                    SettingsManager.updateSettings(newSettings)
-                    SettingsManager.saveSettings(context)
+                    SettingsManager.setEditorWordWrap(context, projectPath, newValue)
                     onDismiss()
                 }
             )

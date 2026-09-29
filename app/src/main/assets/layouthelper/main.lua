@@ -181,6 +181,8 @@ try
  catch(e)
   print("不支持编辑此布局." .. e)
   Error(e)
+  -- 三方控件支持关闭时给用户具体提示（Toast 独立于 Activity 窗口，finish 不影响显示）
+  bindClass("android.widget.Toast").makeText(activity, "当前布局存在不受支持的控件：" .. tostring(e), 1).show()
   activity.finish()
 end
 

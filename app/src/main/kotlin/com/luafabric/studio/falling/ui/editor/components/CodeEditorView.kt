@@ -66,6 +66,7 @@ fun CodeEditorView(
     viewModel: EditorViewModel,
     isActiveFile: Boolean = false,
     expansionRatio: Float = 0f,
+    projectPath: String = "",
     onAiCodeReference: ((filePath: String, fileName: String, startLine: Int, endLine: Int, content: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -279,9 +280,11 @@ fun CodeEditorView(
         }
     }
 
-    LaunchedEffect(settingsState.editorWordWrap) {
+    LaunchedEffect(isActiveFile, isEditorReady, settingsState.editorWordWrap, projectPath) {
+        // 换行状态按项目读取（独立开关关时回退全局）；切文件/项目/首次就绪均重应用，
+        // 修复「切项目后勾选状态不生效、需重新 toggle」bug（旧实现仅依赖全局值变化）
         if (isEditorReady) {
-            editor.isWordwrap = settingsState.editorWordWrap
+            editor.isWordwrap = SettingsManager.getEditorWordWrap(context, projectPath)
         }
     }
 

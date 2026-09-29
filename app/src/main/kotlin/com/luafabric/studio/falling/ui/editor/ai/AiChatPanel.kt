@@ -149,6 +149,13 @@ private val TextFieldValueFullSaver = listSaver<TextFieldValue, Any>(
 private const val COMPRESS_THRESHOLD = 30
 private const val KEEP_WINDOW = 20
 
+/** 从工具调用参数 JSON 中提取 path（相对项目目录展示用），取不到返回 null。 */
+private fun toolCallPath(arguments: String): String? {
+    if (arguments.isBlank()) return null
+    val m = Regex("\"(?:path|file_path)\"\\s*:\\s*\"([^\"]+)\"").find(arguments)
+    return m?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+}
+
 // ========== Main Panel ==========
 
 @Composable
@@ -790,8 +797,8 @@ private fun ChatContent(
             }
         }
 
-        // Input area
-        Surface(tonalElevation = 1.dp, shadowElevation = 2.dp) {
+        // Input area（编辑框去阴影：无 shadowElevation）
+        Surface(tonalElevation = 1.dp) {
             Column {
                 // Slash-command skill suggestions
                 val enabledSkills = config.skills.filter { it.enabled }
@@ -1251,17 +1258,7 @@ private fun ChatMessageBubble(
                         Spacer(modifier = Modifier.height(4.dp))
                     }
 
-                    // Tool calls
-                    if (message.toolCalls.isNotEmpty()) {
-                        message.toolCalls.forEach { tc ->
-                            CollapsibleSection(
-                                title = "工具：${tc.name}",
-                                content = tc.arguments.take(200)
-                            )
-                        }
-                    }
-
-                    // 思考过程（thinking 模型 reasoning_content）：流式时展开，正文开始后自动折叠
+                    // 思考过程（thinking 模型 reasoning_content）：容器色圆角卡片，流式时展开，正文开始后自动折叠
                     if (!isUser && !isTool && message.reasoning.isNotBlank()) {
                         var reasoningExpanded by remember(message.id) {
                             // 无正文（思考中，或模型只回了思考链）默认展开；正文出现后自动折叠
@@ -1270,42 +1267,97 @@ private fun ChatMessageBubble(
                         LaunchedEffect(message.content.isNotBlank()) {
                             if (message.content.isNotBlank()) reasoningExpanded = false
                         }
-                        Column(
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { reasoningExpanded = !reasoningExpanded }
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Filled.Psychology,
-                                    contentDescription = "思考过程",
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "思考过程",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Icon(
-                                    if (reasoningExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
-                                    contentDescription = if (reasoningExpanded) "收起" else "展开",
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            AnimatedVisibility(visible = reasoningExpanded) {
-                                Text(
-                                    text = message.reasoning,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
+                            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Filled.Psychology,
+                                        contentDescription = "思考过程",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "思考过程",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(
+                                        if (reasoningExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
+                                        contentDescription = if (reasoningExpanded) "收起" else "展开",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                AnimatedVisibility(visible = reasoningExpanded) {
+                                    Text(
+                                        text = message.reasoning,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
                             }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
+                    }
+
+                    // 工具调用：思考过程下方，「调用 xxx <arrow>」折叠行，展开显示相对路径；完成后新思考/输出在其下方
+                    if (!isUser && !isTool && message.toolCalls.isNotEmpty()) {
+                        message.toolCalls.forEach { tc ->
+                            var tcExpanded by remember(message.id, tc.id) { mutableStateOf(false) }
+                            val relPath = run {
+                                val ap = toolCallPath(tc.arguments)
+                                if (ap.isNullOrBlank() || projectPath.isBlank()) null
+                                else {
+                                    val p = projectPath.trimEnd('/', '\\').replace('\\', '/')
+                                    val f = ap.replace('\\', '/')
+                                    val r = f.removePrefix(p + "/")
+                                    if (r.isNotBlank() && r != f) r else ap
+                                }
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { tcExpanded = !tcExpanded }
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            if (tcExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
+                                            contentDescription = if (tcExpanded) "收起" else "展开",
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "调用 ${tc.name}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    AnimatedVisibility(visible = tcExpanded) {
+                                        Text(
+                                            text = relPath ?: tc.arguments.take(200),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                            modifier = Modifier.padding(top = 3.dp, start = 18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                     }
 
                     // Content with SelectionContainer for system long-press copy
@@ -1389,49 +1441,6 @@ private fun ActionIconButton(icon: ImageVector, label: String, onClick: () -> Un
             modifier = Modifier.size(14.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         )
-    }
-}
-
-// ========== Collapsible Section ==========
-
-@Composable
-private fun CollapsibleSection(title: String, content: String) {
-    var expanded by remember { mutableStateOf(false) }
-    Column {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .clickable { expanded = !expanded }
-                .padding(vertical = 2.dp, horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-            )
-        }
-        AnimatedVisibility(visible = expanded) {
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(4.dp),
-                modifier = Modifier.padding(start = 8.dp)
-            ) {
-                Text(
-                    text = content,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(6.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
 }
 

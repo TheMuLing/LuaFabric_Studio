@@ -67,6 +67,7 @@ import java.io.File
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileTabView(
+    projectPath: String,
     viewModel: EditorViewModel,
     lastFileToOpen: String?,
     onTabBarRendered: () -> Unit,
@@ -463,6 +464,7 @@ fun FileTabView(
                                 viewModel = viewModel,
                                 isActiveFile = isActiveFile,
                                 expansionRatio = panelState.expansionRatio,
+                                projectPath = projectPath,
                                 onAiCodeReference = onAiCodeReference
                             )
                         } else {
