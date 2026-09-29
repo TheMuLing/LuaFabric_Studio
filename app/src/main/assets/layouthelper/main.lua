@@ -32,6 +32,25 @@ function Error(str)
   end
 end
 
+-- 三方控件支持：预载项目 libs 目录下的 dex/jar，使 bindClass 可解析第三方控件类
+if _G.THIRD_PARTY_WIDGET_SUPPORT then
+  local libsDir = File(luadir .. "/libs")
+  if libsDir.exists() then
+    local ls = libsDir.listFiles()
+    for n = 0, #ls - 1 do
+      local f = ls[n]
+      local name = f.getName()
+      if name:find("%.dex$") or name:find("%.jar$") then
+        local ok, err = pcall(function() activity.loadDex(f.getAbsolutePath()) end)
+        if not ok then
+          print("加载三方 dex 失败: " .. name .. " " .. tostring(err))
+          Error("加载三方 dex 失败: " .. name .. " " .. tostring(err))
+        end
+      end
+    end
+  end
+end
+
 function onError(title, message)
   MaterialAlertDialogBuilder(this)
   .setTitle(tostring(title))
@@ -219,12 +238,17 @@ el, add_title = mDialogListView, mDialogTitle
 local mAdapter = ArrayExpandableListAdapter(activity)
 
 for k, v in ipairs(ns) do
-  for i = 1, #wds2[k] do
-    wds2[k][i] = wds[k][i] .. (" - " .. wds2[k][i] or "")
+  local src, src2 = wds[k], wds2[k]
+  local dst = {}
+  for i = 1, #src do
+    local e = src[i]
+    if e then
+      local cn = src2 and src2[i] or nil
+      dst[i] = cn and (e .. " - " .. cn) or e
+    end
   end
-
   ns[k] = ns2[k] or ""
-  mAdapter.add(ns[k], wds2[k])
+  mAdapter.add(ns[k], dst)
 end
 
 el.setAdapter(mAdapter)

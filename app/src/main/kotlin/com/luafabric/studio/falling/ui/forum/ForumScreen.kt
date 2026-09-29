@@ -1,6 +1,8 @@
 package com.luafabric.studio.falling.ui.forum
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -52,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -69,6 +74,7 @@ import com.luafabric.studio.falling.ui.icons.HeartOutlineIcon
 import com.luafabric.studio.falling.ui.login.YunJuResponse
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import muling.views.tool.utils.NonBlockingToastState
@@ -106,13 +112,18 @@ fun ForumScreen(
     onRefresh: (Int) -> Unit,
     fabGap: Dp,
     /** 当前登录用户（未登录为 null，互动以管理员兜底） */
-    loggedInUser: YunJuResponse?
+    loggedInUser: YunJuResponse?,
+    /** 未登录点击互动时跳转账户界面 */
+    onRequireLogin: () -> Unit,
+    /** 打开发帖页（独立界面，由 MainScreen 全屏覆盖层承载） */
+    onOpenCompose: () -> Unit,
+    /** 打开帖子详情页（独立界面，由 MainScreen 全屏覆盖层承载） */
+    onOpenDetail: (ForumItem) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var layer1Index by remember { mutableIntStateOf(0) }
     // 第一层切换时第二层回到首个分类
     var layer2Index by remember(layer1Index) { mutableIntStateOf(0) }
-    var showCompose by remember { mutableStateOf(false) }
     // 发帖 FAB 展开态：列表到顶显示文字，滚动后收起（复制自创建项目 FAB）
     var showExtendedFab by remember { mutableStateOf(true) }
 
@@ -171,14 +182,6 @@ fun ForumScreen(
 
     // 互动身份：优先登录用户，未登录以管理员兜底
     val activeUser = loggedInUser
-
-    if (showCompose) {
-        ForumComposeScreen(
-            toast = toast,
-            onBack = { showCompose = false }
-        )
-        return
-    }
 
     Box(
         modifier = Modifier
@@ -284,7 +287,9 @@ fun ForumScreen(
                                 ForumPostCard(
                                     post = post,
                                     activeUser = activeUser,
-                                    toast = toast
+                                    toast = toast,
+                                    onRequireLogin = onRequireLogin,
+                                    onOpenDetail = { onOpenDetail(post) }
                                 )
                             }
                         }
@@ -295,7 +300,7 @@ fun ForumScreen(
 
         // 右下角发帖 FAB：复制创建项目 FAB——列表到顶展开显示文字，滚动后收起，停靠导航栏上方
         ExtendedFloatingActionButton(
-            onClick = { showCompose = true },
+            onClick = onOpenCompose,
             icon = {
                 Icon(
                     Icons.Filled.Add,
@@ -333,86 +338,72 @@ private fun forumIdentity(activeUser: YunJuResponse?): ForumIdentity {
 }
 
 /**
- * 帖子卡片（朋友圈式）：头像 + 昵称 + 日期 + 标题 + 正文节选 + 配图 + 收藏/点赞/评论。
- * 评论内联展开：评论列表 + 输入框 + 回复。
+ * 论坛独立界面（发帖页 / 帖子详情页）：不再嵌入论坛导航页内，
+ * 由 MainScreen 以全屏覆盖层承载，覆盖底部导航与顶栏，返回后回到论坛列表。
+ */
+sealed interface ForumOverlay {
+    data object Compose : ForumOverlay
+    data class Detail(val post: ForumItem) : ForumOverlay
+}
+
+/**
+ * 帖子卡片（朋友圈式）：头像 + 昵称 + 日期 + 标题 + 正文节选 + 配图 + 点赞/评论/收藏。
+ * 点击卡片或评论按钮进入详情页；点赞/收藏为乐观反馈（本地填充 + 脉冲动画），
+ * 未登录点击互动弹提示并跳转账户界面。
  */
 @Composable
 private fun ForumPostCard(
     post: ForumItem,
     activeUser: YunJuResponse?,
-    toast: NonBlockingToastState
+    toast: NonBlockingToastState,
+    onRequireLogin: () -> Unit,
+    onOpenDetail: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = SettingsManager.currentSettings
     val identity = forumIdentity(activeUser)
-    // 本卡片互动状态（收藏/点赞不持久态，纯反馈型；评论展开独立）
-    val showComments = remember(post.postId) { mutableStateOf(false) }
-    // 评论输入
-    val commentText = remember(post.postId) { mutableStateOf("") }
-    // 评论列表（宽松解析数据缓存：原始 JSON 数组）
-    val commentsRaw = remember(post.postId) { mutableStateOf<JsonArray?>(null) }
-    val commentsLoading = remember(post.postId) { mutableStateOf(false) }
+    // 本卡片点赞/收藏本地乐观态（后端无状态查询，纯反馈型）
+    val praised = remember(post.postId) { mutableStateOf(false) }
+    val favored = remember(post.postId) { mutableStateOf(false) }
 
-    // 点击收藏：Follow.php（qq=操作者）
-    fun doFollow() {
-        scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                ForumRepository.follow(context, post.postId, identity.user, identity.qq)
-            }
-            toast.showToast(
-                context.getString(if (ok) R.string.forum_follow_ok else R.string.forum_action_fail)
-            )
+    fun guard(): Boolean {
+        if (activeUser == null) {
+            toast.showToast(context.getString(R.string.forum_need_login))
+            onRequireLogin()
+            return false
         }
+        return true
     }
 
-    // 点击点赞：Praise.php（qq=操作者）
+    // 点赞/取消：Praise.php 为 toggle 接口（qq=操作者）；未登录拦截，失败回滚本地状态
     fun doPraise() {
+        if (!guard()) return
+        val next = !praised.value
+        praised.value = next
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
                 ForumRepository.praise(context, post.postId, identity.user, identity.qq)
             }
+            if (!ok) praised.value = !next
             toast.showToast(
                 context.getString(if (ok) R.string.forum_praise_ok else R.string.forum_action_fail)
             )
         }
     }
 
-    // 展开评论：加载 CommentList（数据字段先埋点确认，宽松展示）
-    fun loadComments() {
-        showComments.value = !showComments.value
-        if (showComments.value && commentsRaw.value == null) {
-            commentsLoading.value = true
-            scope.launch {
-                val raw = withContext(Dispatchers.IO) {
-                    ForumRepository.loadComments(context, post.postId, identity.user)
-                }
-                commentsLoading.value = false
-                commentsRaw.value = parseCommentsArray(raw)
-            }
-        }
-    }
-
-    // 发表评论：Comment.php
-    fun sendComment() {
-        val text = commentText.value.trim()
-        if (text.isEmpty()) return
-        commentText.value = ""
+    // 收藏/取消收藏：Follow.php 为 toggle 接口（qq=操作者）；未登录拦截，失败回滚本地状态
+    fun doFollow() {
+        if (!guard()) return
+        val next = !favored.value
+        favored.value = next
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
-                ForumRepository.comment(
-                    context, post.postId, identity.user, identity.qq, identity.nickname, text
-                )
+                ForumRepository.follow(context, post.postId, identity.user, identity.qq)
             }
-            // 提交成功后重新拉取评论列表
-            if (ok) {
-                val raw = withContext(Dispatchers.IO) {
-                    ForumRepository.loadComments(context, post.postId, identity.user)
-                }
-                commentsRaw.value = parseCommentsArray(raw)
-            }
+            if (!ok) favored.value = !next
             toast.showToast(
-                context.getString(if (ok) R.string.forum_comment_ok else R.string.forum_action_fail)
+                context.getString(if (ok) R.string.forum_follow_ok else R.string.forum_action_fail)
             )
         }
     }
@@ -420,6 +411,7 @@ private fun ForumPostCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onOpenDetail)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         // 头像 + 昵称 + 日期（相对日期开关控制显示格式）
@@ -516,103 +508,386 @@ private fun ForumPostCard(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 动作条：收藏 / 点赞 / 评论
-        Row(modifier = Modifier.fillMaxWidth()) {
-            PostAction(
-                icon = BookmarkOutlineIcon,
-                label = stringResource(R.string.forum_follow),
-                onClick = { doFollow() }
-            )
+        // 动作条：居右，顺序 点赞 / 评论 / 收藏
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
             PostAction(
                 icon = HeartOutlineIcon,
+                filledIcon = Icons.Filled.Favorite,
                 label = stringResource(R.string.forum_praise),
+                active = praised.value,
                 onClick = { doPraise() }
             )
             PostAction(
                 icon = CommentOutlineIcon,
+                filledIcon = null,
                 label = stringResource(R.string.forum_comment),
-                onClick = { loadComments() }
+                active = false,
+                onClick = onOpenDetail
             )
-        }
-
-        // 评论内联展开帧
-        if (showComments.value) {
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-            )
-            CommentSection(
-                post = post,
-                identity = identity,
-                toast = toast,
-                raw = commentsRaw.value,
-                loading = commentsLoading.value,
-                input = commentText.value,
-                onInputChange = { commentText.value = it },
-                onSend = { sendComment() }
+            PostAction(
+                icon = BookmarkOutlineIcon,
+                filledIcon = Icons.Filled.Bookmark,
+                label = stringResource(R.string.forum_follow),
+                active = favored.value,
+                onClick = { doFollow() }
             )
         }
     }
 }
 
-/** 帖子头像：QQ 头像（qlogo）；「隐藏非己头像」开启且非本人时降级首字色块 */
+/** 帖子头像：只显示 QQ 头像（qlogo）；qq 无效或「隐藏非己头像」开启时显示纯色占位（无文字头像） */
 @Composable
 private fun Avatar(qq: String, nickname: String, hideAvatar: Boolean, size: Dp) {
-    val fallback = Box(
+    val placeholder = Box(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = nickname.take(1).takeIf { it.isNotBlank() } ?: "·",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-    }
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    )
     if (hideAvatar || qq.isBlank()) {
-        fallback
+        placeholder
     } else {
         SubcomposeAsyncImage(
             model = ForumRepository.avatarUrl(qq),
             contentDescription = nickname,
             contentScale = ContentScale.Crop,
-            loading = { fallback },
-            error = { fallback },
+            loading = { placeholder },
+            error = { placeholder },
             modifier = Modifier.size(size).clip(CircleShape)
         )
     }
 }
 
-/** 动作条单项：图标 + 文字（点击波纹） */
+/**
+ * 动作条单项：图标 + 文字（点击波纹）。
+ * 传入 filledIcon 的项激活时填充图标 + 主题色，并伴有脉冲放大动画（点赞/收藏反馈）。
+ */
 @Composable
 private fun PostAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    filledIcon: androidx.compose.ui.graphics.vector.ImageVector?,
     label: String,
+    active: Boolean,
     onClick: () -> Unit
 ) {
+    var pulse by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (pulse) 1.35f else 1f,
+        animationSpec = tween(280),
+        label = "post_action_scale"
+    )
+    LaunchedEffect(pulse) {
+        if (pulse) {
+            delay(280)
+            pulse = false
+        }
+    }
+    val tint = if (active) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(themeRadius()))
-            .clickable(onClick = onClick)
+            .clickable(onClick = {
+                if (filledIcon != null) pulse = true
+                onClick()
+            })
+            .scale(scale)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = icon,
+            imageVector = if (active && filledIcon != null) filledIcon else icon,
             contentDescription = label,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = tint,
             modifier = Modifier.size(18.dp)
         )
         Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = tint
         )
+    }
+}
+
+/**
+ * 帖子详情页：完整内容 + 评论区，独立界面由 MainScreen 全屏承载。
+ * 点赞/收藏/评论未登录时弹提示并跳转账户界面。
+ */
+@Composable
+internal fun ForumPostDetailScreen(
+    post: ForumItem,
+    activeUser: YunJuResponse?,
+    toast: NonBlockingToastState,
+    onRequireLogin: () -> Unit,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settings = SettingsManager.currentSettings
+    val identity = forumIdentity(activeUser)
+    val praised = remember(post.postId) { mutableStateOf(false) }
+    val favored = remember(post.postId) { mutableStateOf(false) }
+    val commentText = remember(post.postId) { mutableStateOf("") }
+    val commentsRaw = remember(post.postId) { mutableStateOf<JsonArray?>(null) }
+    val commentsLoading = remember(post.postId) { mutableStateOf(false) }
+
+    // 进入详情页即拉取评论列表
+    LaunchedEffect(post.postId) {
+        commentsLoading.value = true
+        val raw = withContext(Dispatchers.IO) {
+            ForumRepository.loadComments(context, post.postId, identity.user)
+        }
+        commentsLoading.value = false
+        commentsRaw.value = parseCommentsArray(raw)
+    }
+
+    fun guard(): Boolean {
+        if (activeUser == null) {
+            toast.showToast(context.getString(R.string.forum_need_login))
+            onRequireLogin()
+            return false
+        }
+        return true
+    }
+
+    fun doPraise() {
+        if (!guard()) return
+        val next = !praised.value
+        praised.value = next
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                ForumRepository.praise(context, post.postId, identity.user, identity.qq)
+            }
+            if (!ok) praised.value = !next
+            toast.showToast(
+                context.getString(if (ok) R.string.forum_praise_ok else R.string.forum_action_fail)
+            )
+        }
+    }
+
+    fun doFollow() {
+        if (!guard()) return
+        val next = !favored.value
+        favored.value = next
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                ForumRepository.follow(context, post.postId, identity.user, identity.qq)
+            }
+            if (!ok) favored.value = !next
+            toast.showToast(
+                context.getString(if (ok) R.string.forum_follow_ok else R.string.forum_action_fail)
+            )
+        }
+    }
+
+    fun sendComment() {
+        if (!guard()) return
+        val text = commentText.value.trim()
+        if (text.isEmpty()) return
+        commentText.value = ""
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                ForumRepository.comment(
+                    context, post.postId, identity.user, identity.qq, identity.nickname, text
+                )
+            }
+            if (ok) {
+                val raw = withContext(Dispatchers.IO) {
+                    ForumRepository.loadComments(context, post.postId, identity.user)
+                }
+                commentsRaw.value = parseCommentsArray(raw)
+            }
+            toast.showToast(
+                context.getString(if (ok) R.string.forum_comment_ok else R.string.forum_action_fail)
+            )
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // 顶栏：返回箭头 + 帖子标题
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = null
+                )
+            }
+            Text(
+                text = post.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 24.dp)
+        ) {
+            item(key = "post") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Avatar(
+                            qq = post.qq,
+                            nickname = post.nickname,
+                            hideAvatar = settings.forumHideOtherAvatars &&
+                                post.qq != identity.qq,
+                            size = 40.dp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = post.nickname.ifBlank { post.qq },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (settings.forumRelativeDate) {
+                                    ForumRepository.formatRelativeTime(post.createTime)
+                                } else {
+                                    post.createTime
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = post.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    if (post.content.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = post.content,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (post.img.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SubcomposeAsyncImage(
+                            model = post.img,
+                            contentDescription = post.title,
+                            contentScale = ContentScale.Crop,
+                            loading = { Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } },
+                            error = {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(120.dp)
+                                        .clip(RoundedCornerShape(themeRadius()))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.forum_img_failed),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .clip(RoundedCornerShape(themeRadius()))
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 动作条：居右，顺序 点赞 / 评论 / 收藏（与列表一致）
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        PostAction(
+                            icon = HeartOutlineIcon,
+                            filledIcon = Icons.Filled.Favorite,
+                            label = stringResource(R.string.forum_praise),
+                            active = praised.value,
+                            onClick = { doPraise() }
+                        )
+                        PostAction(
+                            icon = CommentOutlineIcon,
+                            filledIcon = null,
+                            label = stringResource(R.string.forum_comment),
+                            active = false,
+                            onClick = {}
+                        )
+                        PostAction(
+                            icon = BookmarkOutlineIcon,
+                            filledIcon = Icons.Filled.Bookmark,
+                            label = stringResource(R.string.forum_follow),
+                            active = favored.value,
+                            onClick = { doFollow() }
+                        )
+                    }
+                }
+            }
+
+            item(key = "comments") {
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                )
+                CommentSection(
+                    post = post,
+                    identity = identity,
+                    toast = toast,
+                    raw = commentsRaw.value,
+                    loading = commentsLoading.value,
+                    input = commentText.value,
+                    onInputChange = { commentText.value = it },
+                    onSend = { sendComment() }
+                )
+            }
+        }
     }
 }
 
@@ -837,9 +1112,9 @@ private fun parseCommentsArray(json: String?): JsonArray? {
     }
 }
 
-/** 发帖编辑页：标题 + 正文 + 提交按钮（发帖接口待接入） */
+/** 发帖编辑页：标题 + 正文 + 提交按钮（发帖接口待接入），独立界面由 MainScreen 全屏承载 */
 @Composable
-private fun ForumComposeScreen(
+internal fun ForumComposeScreen(
     toast: NonBlockingToastState,
     onBack: () -> Unit
 ) {

@@ -22,11 +22,9 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -65,7 +63,6 @@ import com.luafabric.studio.falling.CATEGORY_ALL
 import com.luafabric.studio.falling.CATEGORY_FAVORITE
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.components.FilePickerDialog
-import com.luafabric.studio.falling.ui.components.MarkdownDialog
 import com.luafabric.studio.falling.ui.components.SelectionMode
 import com.luafabric.studio.falling.ui.components.SwitchBar
 import com.luafabric.studio.falling.ui.settings.SettingsManager
@@ -1121,7 +1118,6 @@ fun ProjectInfoPage(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CompactUtilCard(
     util: GlobalUtilItem,
@@ -1129,8 +1125,6 @@ fun CompactUtilCard(
     onSelectedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showMarkdownDialog by remember { mutableStateOf(false) }
-
     val backgroundColor by animateColorAsState(
         targetValue = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
@@ -1166,10 +1160,7 @@ fun CompactUtilCard(
                 color = borderColor,
                 shape = MaterialTheme.shapes.medium
             )
-            .combinedClickable(
-                onClick = { onSelectedChange(!selected) },
-                onLongClick = { showMarkdownDialog = true }
-            ),
+            .clickable(onClick = { onSelectedChange(!selected) }),
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor
         ),
@@ -1199,14 +1190,5 @@ fun CompactUtilCard(
                 )
             }
         }
-    }
-
-    if (showMarkdownDialog) {
-        val mdFileName = util.description.substringAfter("doc/")
-
-        MarkdownDialog(
-            mdFileName = mdFileName,
-            onDismissRequest = { showMarkdownDialog = false }
-        )
     }
 }

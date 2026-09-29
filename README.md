@@ -4,6 +4,26 @@
 
 # 更新日志
 
+## 26.09.29
+
+- 布局助手（layouthelper）崩溃修复：修复控件列表拼接 nil 导致的 `attempt to concatenate a nil value` 崩溃（英文类名表与中文显示名表长度不对齐 + `..` 优先级陷阱），任意 layout.aly 均可正常打开编辑
+
+- 布局助手支持三方控件预览：开启「三方控件支持」后，预载项目 `libs/` 目录下的 dex / jar（如 LiquidBottomTabs 等第三方控件），布局助手内可正常绑定并预览含三方控件的布局
+
+- 源码论坛：
+
+  - 点赞 / 收藏改为可取消 toggle：再次点击取消（Praise.php / Follow.php 为 toggle 接口），失败自动回滚本地状态
+
+  - 发帖页与帖子详情页改为独立界面：由主框架全屏覆盖层承载、覆盖顶栏与底部导航，返回箭头 / 系统返回键关闭并回到论坛列表，不再嵌入论坛导航页内
+
+  - 帖子头像仅显示 QQ 头像（删净文字头像残留）；帖子底部操作按钮居右排列（点赞 / 评论 / 收藏）；点赞 / 收藏填充图标 + 脉冲动画；点击帖子 / 评论交互带波纹效果
+
+  - 未登录点击 点赞 / 收藏 / 评论 时提示「请先登录」并跳转「账户」页
+
+- 手册：新增 ViewPager2 教程（pages 属性入门 + OnPageChangeCallback 实战）与 RecyclerView 教程（createAdapter 入门 + 多类型列表）；重写作 Android Http 教程，明确 同步 `require "http"`（http.get / post / download / upload）与 异步 `com.android.Http`（Http.get / post / download 回调式、HttpTask、127 并发限制）的区别
+
+- 全局工具移除「长按看文档」逻辑，改回普通点击；UiUtil / RecyclerAdapterUtil 用法文档转为手册格式收录至「工具类」分类
+
 ## 26.09.28
 
 - 新增防火墙（侧滑栏-设置 →「防火墙」，wall 图标）：

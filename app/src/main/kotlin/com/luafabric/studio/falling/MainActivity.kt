@@ -36,6 +36,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -104,7 +105,10 @@ import com.luafabric.studio.falling.ui.editor.buildProject
 import com.luafabric.studio.falling.ui.editor.installApk
 import com.luafabric.studio.falling.ui.manual.ManualScreen
 import com.luafabric.studio.falling.ui.project.NewProjectScreen
+import com.luafabric.studio.falling.ui.forum.ForumComposeScreen
 import com.luafabric.studio.falling.ui.forum.ForumItem
+import com.luafabric.studio.falling.ui.forum.ForumOverlay
+import com.luafabric.studio.falling.ui.forum.ForumPostDetailScreen
 import com.luafabric.studio.falling.ui.forum.ForumRepository
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
@@ -442,6 +446,14 @@ fun MainScreen(
 
     // 论坛设置弹层（仅 FORUM 页可触发）：cog 图标点开后展示三显示开关
     var showForumSettings by remember { mutableStateOf(false) }
+
+    // 论坛独立界面覆盖层：发帖页 / 帖子详情页全屏承载，覆盖顶栏与底部导航（null=论坛列表页）
+    var forumOverlay by remember { mutableStateOf<ForumOverlay?>(null) }
+
+    // 论坛覆盖层激活时吞掉系统返回键：先关覆盖层回论坛列表，而非直接退出/关抽屉
+    BackHandler(enabled = forumOverlay != null) {
+        forumOverlay = null
+    }
 
     // 搜索相关状态
     var isSearchActive by remember { mutableStateOf(false) }
@@ -1039,6 +1051,8 @@ fun MainScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        // 论坛覆盖层激活时禁用抽屉边缘手势，避免详情/发帖页被侧滑拉出抽屉
+        gesturesEnabled = forumOverlay == null,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.widthIn(max = 280.dp),
@@ -1393,6 +1407,8 @@ fun MainScreen(
         Scaffold(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
+                // 论坛独立界面覆盖层激活时隐藏顶栏（覆盖层为全窗，参展后自备独立页头）
+                if (forumOverlay == null) {
                 LargeTopAppBar(
                     title = {
                         if (isSearchActive && currentContentType == MainContentType.PROJECTS) {
@@ -1568,8 +1584,12 @@ fun MainScreen(
                     },
                     scrollBehavior = scrollBehavior
                 )
+                }
             }
         ) { paddingValues ->
+            // 外层全窗 Box：论坛独立界面覆盖层放置于此，不受 Scaffold padding 约束，
+            // 可覆盖顶栏与底部导航；内层保留原有 padding/ime 逻辑
+            Box(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1687,7 +1707,11 @@ fun MainScreen(
                                 onEnsureLoaded = { ensureForumPosts(it) },
                                 onRefresh = { refreshForumPosts(it) },
                                 fabGap = fabGap,
-                                loggedInUser = loggedInUser
+                                loggedInUser = loggedInUser,
+                                // 未登录点击互动时跳转「账户」页
+                                onRequireLogin = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
+                                onOpenCompose = { forumOverlay = ForumOverlay.Compose },
+                                onOpenDetail = { forumOverlay = ForumOverlay.Detail(it) }
                             )
                         }
 
@@ -1853,6 +1877,37 @@ fun MainScreen(
                             .padding(bottom = fabGap)
                     )
                 }
+            }
+
+            // 论坛独立界面覆盖层：发帖页 / 详情页全屏承载，置于底部导航与 FAB 之上；
+            // clickable 空实现吞掉点击，防止触摸穿透到底层导航/FAB；返回后回到论坛列表
+            if (forumOverlay != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .imePadding()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {}
+                ) {
+                    when (val ov = forumOverlay) {
+                        is ForumOverlay.Compose -> ForumComposeScreen(
+                            toast = toast,
+                            onBack = { forumOverlay = null }
+                        )
+                        is ForumOverlay.Detail -> ForumPostDetailScreen(
+                            post = ov.post,
+                            activeUser = loggedInUser,
+                            toast = toast,
+                            onRequireLogin = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
+                            onBack = { forumOverlay = null }
+                        )
+                        null -> {}
+                    }
+                }
+            }
             }
         }
     }

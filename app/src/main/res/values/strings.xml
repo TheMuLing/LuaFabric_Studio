@@ -305,7 +305,7 @@
     <string name="new_project_package_label">包名 (Package Name)</string>
     <string name="new_project_package_hint">如: com.example.myapp</string>
     <string name="new_project_global_utils_title">全局Utils</string>
-    <string name="new_project_global_utils_desc">选择需要导入的全局工具类（长按查看文档）</string>
+    <string name="new_project_global_utils_desc">选择需要导入的全局工具类</string>
     <string name="new_project_loading_templates">加载模板中…</string>
     <string name="new_project_no_templates">暂无可用模板</string>
     <string name="new_project_no_templates_hint">请在 assets/templates 中添加模板文件</string>
@@ -585,6 +585,7 @@
     <string name="forum_comment_ok">评论成功</string>
     <string name="forum_reply_ok">回复成功</string>
     <string name="forum_action_fail">操作失败，请重试</string>
+    <string name="forum_need_login">请先登录</string>
 
     <!-- 属性页面 -->
     <string name="attribute_build_options">构建选项</string>
@@ -616,7 +617,7 @@
     <string name="attribute_permission_select_title">选择权限</string>
     <string name="attribute_permission_search_placeholder">搜索权限…</string>
     <string name="attribute_global_utils_title">全局工具</string>
-    <string name="attribute_global_utils_hint">选择需要导入的工具类（长按查看文档）</string>
+    <string name="attribute_global_utils_hint">选择需要导入的工具类</string>
     <string name="attribute_save_success">保存成功</string>
     <string name="attribute_save_failed">保存失败: %s</string>
 

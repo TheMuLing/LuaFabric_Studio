@@ -4,7 +4,7 @@
       "title": "com.androlua.Http 网络请求",
       "subtitle": "同步 / 异步、表单、上传、下载",
       "category": "网络请求",
-      "tags": ["网络", "同步", "异步", "POST", "上传", "下载"],
+      "tags": ["网络", "同步", "异步", "GET", "POST", "上传", "下载"],
       "file": "doc/network/http.md",
       "order": 1
     },
@@ -17,12 +17,44 @@
       "order": 2
     },
     {
+      "title": "ViewPager2 页面滑动容器",
+      "subtitle": "pages 属性、滑动监听、底部导航联动",
+      "category": "界面组件",
+      "tags": ["界面组件", "ViewPager2", "翻页", "滑动", "底部导航"],
+      "file": "doc/ui/viewpager2.md",
+      "order": 1
+    },
+    {
+      "title": "RecyclerView 列表控件",
+      "subtitle": "单/多类型适配器、增删改、事件绑定",
+      "category": "界面组件",
+      "tags": ["界面组件", "RecyclerView", "列表", "适配器"],
+      "file": "doc/ui/recyclerview.md",
+      "order": 2
+    },
+    {
       "title": "无障碍库 LuaAccessibilityService",
       "subtitle": "自动化点击、节点查找、全局操作",
       "category": "系统能力",
       "tags": ["无障碍", "自动化", "节点查找", "全局操作"],
       "file": "doc/system/accessibility.md",
       "order": 1
+    },
+    {
+      "title": "UiUtil 屏幕尺寸工具",
+      "subtitle": "dp/sp 换算、屏幕宽高、百分比、Edge-to-Edge",
+      "category": "工具类",
+      "tags": ["工具类", "UiUtil", "尺寸", "单位转换", "屏幕适配"],
+      "file": "doc/tool/UiUtil.md",
+      "order": 1
+    },
+    {
+      "title": "RecyclerAdapterUtil 列表适配器",
+      "subtitle": "单/多类型适配器、数据增删改查、事件绑定",
+      "category": "工具类",
+      "tags": ["工具类", "RecyclerAdapterUtil", "列表", "适配器"],
+      "file": "doc/tool/RecyclerAdapterUtil.md",
+      "order": 2
     }
   ]
 }
