@@ -12,6 +12,8 @@
 
 - 源码论坛：
 
+  - 帖子头像修复根因：占位圆曾被直接赋值给 val（恒定进场），与 QQ 头像图共存 → 双头像；改为 @Composable lambda 后条件渲染
+
   - 点赞 / 收藏改为可取消 toggle：再次点击取消（Praise.php / Follow.php 为 toggle 接口），失败自动回滚本地状态
 
   - 发帖页与帖子详情页改为独立界面：由主框架全屏覆盖层承载、覆盖顶栏与底部导航，返回箭头 / 系统返回键关闭并回到论坛列表，不再嵌入论坛导航页内
@@ -20,9 +22,13 @@
 
   - 未登录点击 点赞 / 收藏 / 评论 时提示「请先登录」并跳转「账户」页
 
+- 手册去重：移除与 RecyclerAdapterUtil（工具类）重复的「RecyclerView 列表控件」（界面组件）教程，仅保留工具类文档
+
 - 手册：新增 ViewPager2 教程（pages 属性入门 + OnPageChangeCallback 实战）与 RecyclerView 教程（createAdapter 入门 + 多类型列表）；重写作 Android Http 教程，明确 同步 `require "http"`（http.get / post / download / upload）与 异步 `com.android.Http`（Http.get / post / download 回调式、HttpTask、127 并发限制）的区别
 
 - 全局工具移除「长按看文档」逻辑，改回普通点击；UiUtil / RecyclerAdapterUtil 用法文档转为手册格式收录至「工具类」分类
+
+- 新增在线状态上报：后台 worker 线程每 60s POST zaixian.php（native mbedTLS 直发 yuju:81），绑定应用生命周期（启动 / 停止随 MainActivity），未登录不上报，任何失败静默仅日志（tag=Online），不影响其他逻辑
 
 ## 26.09.28
 

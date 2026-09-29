@@ -139,6 +139,7 @@ import io.github.tarifchakder.ktoast.ToastHost
 import kotlinx.coroutines.*
 
 import com.luafabric.studio.falling.native.YunJuBridge
+import com.luafabric.studio.falling.core.OnlinePresence
 import com.luafabric.studio.falling.ui.login.LoginRepository
 import com.luafabric.studio.falling.ui.login.LoginScreen
 import com.luafabric.studio.falling.ui.login.LoginStore
@@ -2879,6 +2880,14 @@ data class ManifestInfo(
 )
 
 class MainActivity : ComponentActivity() {
+
+    override fun onDestroy() {
+        super.onDestroy()
+        OnlinePresence.stop()
+        com.luafabric.studio.falling.ui.editor.viewmodel.CompletionDataManager.clear()
+        System.gc()
+    }
+
     @Suppress("DEPRECATION")
     @RequiresApi(Build.VERSION_CODES.Q)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -2886,6 +2895,9 @@ class MainActivity : ComponentActivity() {
 
     enableEdgeToEdge()
     WindowCompat.setDecorFitsSystemWindows(window, false)
+
+    // 在线状态心跳：独立后台线程每 60s 上报（绑定应用生命周期，静默失败仅日志）
+    OnlinePresence.start(applicationContext)
 
     val isVersionChanged = intent.getBooleanExtra("isVersionChanged", false)
     val newVersionName = intent.getStringExtra("newVersionName")
@@ -2989,12 +3001,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        com.luafabric.studio.falling.ui.editor.viewmodel.CompletionDataManager.clear()
-        System.gc()
-    }
 }
 
 /** 论坛/项目页 FAB 圆角：跟随 luafabric 主题 shapeSizeIndex（与 ForumScreen.themeRadius 一致） */

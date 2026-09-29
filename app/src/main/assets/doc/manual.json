@@ -25,14 +25,6 @@
       "order": 1
     },
     {
-      "title": "RecyclerView 列表控件",
-      "subtitle": "单/多类型适配器、增删改、事件绑定",
-      "category": "界面组件",
-      "tags": ["界面组件", "RecyclerView", "列表", "适配器"],
-      "file": "doc/ui/recyclerview.md",
-      "order": 2
-    },
-    {
       "title": "无障碍库 LuaAccessibilityService",
       "subtitle": "自动化点击、节点查找、全局操作",
       "category": "系统能力",

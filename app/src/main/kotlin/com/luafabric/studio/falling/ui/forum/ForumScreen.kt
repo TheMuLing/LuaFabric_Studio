@@ -541,21 +541,25 @@ private fun ForumPostCard(
 /** 帖子头像：只显示 QQ 头像（qlogo）；qq 无效或「隐藏非己头像」开启时显示纯色占位（无文字头像） */
 @Composable
 private fun Avatar(qq: String, nickname: String, hideAvatar: Boolean, size: Dp) {
-    val placeholder = Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-    )
+    // 占位圆：必须用 @Composable lambda（直接 val=Box(...) 会在 if/else 前恒定进场，
+    // 与成功后头像图共存 → 两个圆重叠/并排 —— 论坛双头像根因）
+    val placeholder: @Composable () -> Unit = {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        )
+    }
     if (hideAvatar || qq.isBlank()) {
-        placeholder
+        placeholder()
     } else {
         SubcomposeAsyncImage(
             model = ForumRepository.avatarUrl(qq),
             contentDescription = nickname,
             contentScale = ContentScale.Crop,
-            loading = { placeholder },
-            error = { placeholder },
+            loading = { placeholder() },
+            error = { placeholder() },
             modifier = Modifier.size(size).clip(CircleShape)
         )
     }

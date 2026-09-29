@@ -49,6 +49,23 @@ if _G.THIRD_PARTY_WIDGET_SUPPORT then
       end
     end
   end
+
+  -- 诊断埋点：探测三方控件类能否经 bindClass 解析 + 当前 dex 装载器数量（adb 取证用）
+  do
+    local msgs = {}
+    local loaders = activity.getClassLoaders()
+    msgs[#msgs + 1] = "[Layouthelper] dex loaders=" .. tostring(#loaders) ..
+      " third_party=" .. tostring(_G.THIRD_PARTY_WIDGET_SUPPORT ~= nil)
+    local ok, err = pcall(function() return bindClass("LiquidBottomTabs") end)
+    if ok then
+      msgs[#msgs + 1] = "[Layouthelper] probe bindClass LiquidBottomTabs => ok"
+    else
+      msgs[#msgs + 1] = "[Layouthelper] probe bindClass LiquidBottomTabs => fail " .. tostring(err)
+    end
+    local joined = table.concat(msgs, "\n")
+    print(joined)
+    Error(joined)
+  end
 end
 
 function onError(title, message)

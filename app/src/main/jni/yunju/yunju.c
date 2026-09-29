@@ -633,3 +633,43 @@ Java_com_luafabric_studio_falling_native_YunJuBridge_nativeCommentReply(JNIEnv *
     (*env)->ReleaseStringUTFChars(env, content, c_content);
     return js;
 }
+
+/*
+ * JNI 入口：POST zaixian.php（在线状态心跳，yuju:81 同论坛）。
+ * backstage/appid 为后台常量（YUNJU_ADMIN / YUNJU_APP_ID），user=当前登录账号。
+ * 失败静默（Kotlin 侧仅日志），不经任何 UI。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeOnlineSubmit(JNIEnv *env,
+                                                                        jclass clazz,
+                                                                        jobject context,
+                                                                        jstring backstage,
+                                                                        jstring appid,
+                                                                        jstring user) {
+    (void)clazz;
+    const char *c_bg = (*env)->GetStringUTFChars(env, backstage, NULL);
+    const char *c_aid = (*env)->GetStringUTFChars(env, appid, NULL);
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    if (!c_bg || !c_aid || !c_user) {
+        if (c_bg) (*env)->ReleaseStringUTFChars(env, backstage, c_bg);
+        if (c_aid) (*env)->ReleaseStringUTFChars(env, appid, c_aid);
+        if (c_user) (*env)->ReleaseStringUTFChars(env, user, c_user);
+        return NULL;
+    }
+    char *e_bg = url_encode(c_bg);
+    char *e_aid = url_encode(c_aid);
+    char *e_user = url_encode(c_user);
+    jstring js = NULL;
+    if (e_bg && e_aid && e_user) {
+        char body[512];
+        snprintf(body, sizeof(body), "backstage=%s&appid=%s&user=%s", e_bg, e_aid, e_user);
+        js = forum_interact(env, context, "/lua/zaixian.php", body);
+    }
+    if (e_bg) free(e_bg);
+    if (e_aid) free(e_aid);
+    if (e_user) free(e_user);
+    (*env)->ReleaseStringUTFChars(env, backstage, c_bg);
+    (*env)->ReleaseStringUTFChars(env, appid, c_aid);
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    return js;
+}

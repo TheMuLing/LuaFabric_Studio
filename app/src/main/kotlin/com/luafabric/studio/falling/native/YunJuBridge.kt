@@ -79,4 +79,17 @@ object YunJuBridge {
         nickname: String,
         content: String
     ): String?
+
+    /**
+     * 在线状态心跳上报（zaixian.php，native 直发 yuju:81）。
+     * @param backstage 云居后台账号（恒 YUNJU_ADMIN）；appid 恒 YUNJU_APP_ID；
+     *        user 当前登录用户账号（未登录不上报，Kotlin 侧控流）
+     * @return 响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON）；被门控拦截或网络失败返回 null
+     */
+    external fun nativeOnlineSubmit(
+        context: Context,
+        backstage: String,
+        appid: String,
+        user: String
+    ): String?
 }
