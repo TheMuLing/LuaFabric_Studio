@@ -92,4 +92,69 @@ object YunJuBridge {
         appid: String,
         user: String
     ): String?
+
+    /**
+     * 云居账号登录（user_dl.php，native 直发，套 VPN/代理门控）。
+     * @param user QQ 账号；pass 密码
+     * @return 响应体字符串；被门控拦截或网络失败返回 null
+     */
+    external fun nativeLogin(context: Context, user: String, pass: String): String?
+
+    /** 签到（user_qiandao.php，native 直发，套门控）。@return 同上 */
+    external fun nativeSignIn(context: Context, user: String): String?
+
+    /** 拉取用户实时信息（user_yhxx.php，native 直发，套门控）。@return 同上 */
+    external fun nativeFetchUserInfo(context: Context, user: String): String?
+
+    /**
+     * 注册（user_azc.php，native 直发，套门控）。
+     * @param qq 账号；pass 密码；name 昵称；email 邮箱；code 验证码
+     */
+    external fun nativeRegister(
+        context: Context,
+        user: String,
+        pass: String,
+        qq: String,
+        name: String,
+        email: String,
+        code: String
+    ): String?
+
+    /** 发送注册验证码（user_yzm.php，native 直发，套门控）。@param email 邮箱 */
+    external fun nativeSendCode(context: Context, email: String): String?
+
+    /** 找回密码（user_zhmm.php，native 直发，套门控）。@param email 邮箱 */
+    external fun nativeFindPassword(context: Context, email: String): String?
+
+    /**
+     * 图片单次直传（FileUpload.php，multipart/form-data，native 直发 yuju:81，套门控）。
+     * @param backstage 云居后台账号（恒 YUNJU_ADMIN）；appid 恒 YUNJU_APP_ID
+     * @param filePath 本地压缩后图片绝对路径；fileName 原始文件名；fileType MIME（如 image/jpeg）
+     * @return 响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON）；被门控拦截或网络失败返回 null
+     */
+    external fun nativeUploadImage(
+        context: Context,
+        backstage: String,
+        appid: String,
+        filePath: String,
+        fileName: String,
+        fileType: String
+    ): String?
+
+    /**
+     * 发帖（Issue.php，native 直发 yuju:81，套门控）。
+     * @param user 恒 YUNJU_ADMIN；qq/nickname 当前登录用户；forumId 板块 ID；
+     *        title/content/img 帖子标题/正文（含分类标志前缀）/图片直链
+     * @return 响应体字符串；被门控拦截或网络失败返回 null
+     */
+    external fun nativeIssuePost(
+        context: Context,
+        user: String,
+        qq: String,
+        nickname: String,
+        forumId: Int,
+        title: String,
+        content: String,
+        img: String
+    ): String?
 }

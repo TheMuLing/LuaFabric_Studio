@@ -229,7 +229,7 @@ fun MainApp() {
         if (saved.keepLoggedIn && saved.qq.isNotBlank() && saved.pass.isNotBlank()) {
             loginChecking = true
             try {
-                val result = LoginRepository.login(saved.qq, saved.pass)
+                val result = LoginRepository.login(context, saved.qq, saved.pass)
                 android.util.Log.d(
                     "LoginRecheck",
                     "resp: success=${result.success} code=${result.code} msg=${result.message} user=${result.user?.name}"
@@ -1027,13 +1027,13 @@ fun MainScreen(
             signingIn = true
             scope.launch {
                 try {
-                    val (ok, msg) = LoginRepository.signIn(user.qq)
+                    val (ok, msg) = LoginRepository.signIn(context, user.qq)
                     toast.showToast(msg.ifBlank {
                         context.getString(if (ok) R.string.login_sign_success else R.string.login_sign_failed)
                     })
                     if (ok) {
                         // 签到成功后拉取用户实时信息（金币/经验/等级），失败弹提示并降级使用本地数据
-                        val fresh = LoginRepository.fetchUserInfo(user.qq)
+                        val fresh = LoginRepository.fetchUserInfo(context, user.qq)
                         val updated = (fresh ?: user).copy(sign = "true")
                         onUserUpdated(updated)
                         runCatching { LoginStore.updateUser(context, updated) }
@@ -1158,15 +1158,18 @@ fun MainScreen(
                     }
                 }
 
-                // 签到卡片：仅登录后显示；与下方在线人数卡构成上下组合，签到卡上圆角增大
+                // 签到卡片：仅登录后显示；与下方在线人数卡构成上下组合，签到卡上圆角增大（圆角跟随 luafabric 主题）
                 if (loggedInUser != null) {
+                    val themeRadius = when (SettingsManager.currentSettings.shapeSizeIndex) {
+                        0 -> 4.dp; 1 -> 8.dp; 2 -> 12.dp; else -> 16.dp
+                    }
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 4.dp),
                         shape = RoundedCornerShape(
-                            topStart = 20.dp, topEnd = 20.dp,
-                            bottomStart = 12.dp, bottomEnd = 12.dp
+                            topStart = themeRadius + 8.dp, topEnd = themeRadius + 8.dp,
+                            bottomStart = themeRadius, bottomEnd = themeRadius
                         ),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -1225,14 +1228,14 @@ fun MainScreen(
                         }
                     }
 
-                    // 在线人数卡片：仅登录后显示（签到卡片下方），下圆角增大；数据来自 OnlinePresence 心跳
+                    // 在线人数卡片：仅登录后显示（签到卡片下方），下圆角增大（圆角跟随 luafabric 主题）；数据来自 OnlinePresence 心跳
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 8.dp),
                         shape = RoundedCornerShape(
-                            topStart = 12.dp, topEnd = 12.dp,
-                            bottomStart = 20.dp, bottomEnd = 20.dp
+                            topStart = themeRadius, topEnd = themeRadius,
+                            bottomStart = themeRadius + 8.dp, bottomEnd = themeRadius + 8.dp
                         ),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -1956,7 +1959,11 @@ fun MainScreen(
                     when (val ov = forumOverlay) {
                         is ForumOverlay.Compose -> ForumComposeScreen(
                             toast = toast,
-                            onBack = { forumOverlay = null }
+                            activeUser = loggedInUser,
+                            onRequireLogin = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
+                            onBack = { forumOverlay = null },
+                            // 发帖成功：强制重拉源码论坛（forum_id=1）列表，返回列表即展示新帖
+                            onPosted = { refreshForumPosts(1) }
                         )
                         is ForumOverlay.Detail -> ForumPostDetailScreen(
                             post = ov.post,

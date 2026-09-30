@@ -1,5 +1,17 @@
 package com.luafabric.studio.falling.ui.forum
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -27,18 +39,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.ScrollableTabRow
@@ -64,6 +82,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import coil.compose.SubcomposeAsyncImage
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -79,6 +98,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import muling.views.tool.utils.NonBlockingToastState
 import muling.views.tool.utils.TransitionUtil
+import java.io.File
+import java.io.FileOutputStream
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /** 源码实例 第二层分类：默认「全部」，7 类两字扩写为四字 + 「其他」 */
 private val SOURCE_CATEGORIES =
@@ -465,7 +488,7 @@ private fun ForumPostCard(
         if (post.content.isNotBlank()) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = post.content,
+                text = ForumRepository.stripCategoryMarker(post.content),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 4,
@@ -806,7 +829,7 @@ internal fun ForumPostDetailScreen(
                     if (post.content.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = post.content,
+                            text = ForumRepository.stripCategoryMarker(post.content),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1120,15 +1143,181 @@ private fun parseCommentsArray(json: String?): JsonArray? {
     }
 }
 
-/** 发帖编辑页：标题 + 正文 + 提交按钮（发帖接口待接入），独立界面由 MainScreen 全屏承载 */
+/**
+ * 发帖编辑页（独立界面，由 MainScreen 全屏承载）：
+ * 标题 + 详细分类下拉 + 正文 + 图片（相册选图 → 压缩 1920px → native 单次直传）→ 提交 Issue.php。
+ * 提交正文自动在首行拼分类隐藏标志（JSON 单行，显示端剥离）；未登录拦截跳账户页。
+ */
 @Composable
 internal fun ForumComposeScreen(
     toast: NonBlockingToastState,
-    onBack: () -> Unit
+    activeUser: YunJuResponse?,
+    onRequireLogin: () -> Unit,
+    onBack: () -> Unit,
+    onPosted: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
+    // 详细分类：发帖下拉（不含「全部」），默认首个具体分类
+    val categories = remember { SOURCE_CATEGORIES.filter { it != "全部" } }
+    var category by remember { mutableStateOf(categories.first()) }
+    var categoryMenuOpen by remember { mutableStateOf(false) }
+    // 图片：原始 Uri（预览）+ 压缩后本地文件（上传用）+ 原始文件名
+    var imageFile by remember { mutableStateOf<File?>(null) }
+    var imageName by remember { mutableStateOf("image.jpg") }
+    var processing by remember { mutableStateOf(false) }
+    var submitting by remember { mutableStateOf(false) }
+
+    /** 选图处理：压缩到最长边 1920px JPEG 质量 85，写入 cacheDir */
+    fun onImagePicked(uri: Uri) {
+        processing = true
+        scope.launch {
+            try {
+                val displayName = runCatching {
+                    context.contentResolver.query(
+                        uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+                    )?.use { c ->
+                        if (c.moveToFirst()) c.getString(0) else null
+                    }
+                }.getOrNull()
+                val file = withContext(Dispatchers.IO) {
+                    val src = ImageDecoder.createSource(context.contentResolver, uri)
+                    val bmp = ImageDecoder.decodeBitmap(src) { decoder, info, _ ->
+                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        val longEdge = max(info.size.width, info.size.height)
+                        if (longEdge > 1920) {
+                            decoder.setTargetSampleSize(longEdge / 1920)
+                        }
+                    }
+                    val longEdge = max(bmp.width, bmp.height)
+                    val scale = if (longEdge > 1920) 1920f / longEdge else 1f
+                    val decoded = if (scale < 1f) {
+                        Bitmap.createScaledBitmap(
+                            bmp,
+                            (bmp.width * scale).roundToInt(),
+                            (bmp.height * scale).roundToInt(),
+                            true
+                        )
+                    } else {
+                        bmp
+                    }
+                    if (decoded !== bmp) bmp.recycle()
+                    val out = File(context.cacheDir, "forum_upload_${System.currentTimeMillis()}.jpg")
+                    FileOutputStream(out).use { os ->
+                        decoded.compress(Bitmap.CompressFormat.JPEG, 85, os)
+                    }
+                    decoded.recycle()
+                    out
+                }
+                imageFile = file
+                // 文件名进入 multipart Content-Disposition 头，净化为纯 ASCII 防头注入
+                val raw = displayName?.takeIf { it.isNotBlank() } ?: "image.jpg"
+                imageName = raw.map { c ->
+                    if (c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") c else '_'
+                }.joinToString("").ifBlank { "image.jpg" }
+            } catch (e: Exception) {
+                android.util.Log.i("ForumCompose", "图片处理失败：$e")
+                toast.showToast(context.getString(R.string.forum_compose_image_fail))
+            } finally {
+                processing = false
+            }
+        }
+    }
+
+    /** API<33：系统相册 Intent（先声明，权限回调内引用） */
+    val legacyAlbumLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        if (uri != null) onImagePicked(uri)
+    }
+
+    /** API<33：检查相册权限，无则弹窗申请，通过后调系统相册 */
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            legacyAlbumLauncher.launch(
+                Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+            )
+        } else {
+            toast.showToast(context.getString(R.string.forum_compose_no_permission))
+        }
+    }
+
+    /** API≥33：系统 Photo Picker（免权限） */
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) onImagePicked(uri)
+    }
+
+    fun pickImage() {
+        if (processing || submitting) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            photoPickerLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        } else {
+            val granted = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                legacyAlbumLauncher.launch(
+                    Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                )
+            } else {
+                permissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+    }
+
+    fun doSubmit() {
+        if (activeUser == null) {
+            toast.showToast(context.getString(R.string.forum_need_login))
+            onRequireLogin()
+            return
+        }
+        val t = title.trim()
+        if (t.isEmpty()) {
+            toast.showToast(context.getString(R.string.forum_compose_title_empty))
+            return
+        }
+        if (submitting) return
+        submitting = true
+        val user = activeUser
+        scope.launch {
+            var imgUrl = ""
+            val imgFile = imageFile
+            if (imgFile != null) {
+                imgUrl = withContext(Dispatchers.IO) {
+                    ForumRepository.uploadImage(context, imgFile.absolutePath, imageName)
+                }.orEmpty()
+                if (imgUrl.isEmpty()) {
+                    android.util.Log.i("ForumCompose", "图片上传失败（门控/网络/后端回绝）")
+                    submitting = false
+                    toast.showToast(context.getString(R.string.forum_upload_fail))
+                    return@launch
+                }
+            }
+            // 正文首行拼分类隐藏标志（显示端剥离），forum_id 恒 1（仅支持源码论坛）
+            val payload = ForumRepository.withCategoryMarker(content.trim(), category)
+            val nickname = user.name.ifBlank { user.qq }
+            val ok = withContext(Dispatchers.IO) {
+                ForumRepository.submitPost(context, user.qq, nickname, 1, t, payload, imgUrl)
+            }
+            submitting = false
+            if (ok) {
+                toast.showToast(context.getString(R.string.forum_compose_success))
+                onPosted()
+                onBack()
+            } else {
+                toast.showToast(context.getString(R.string.forum_compose_fail))
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1156,6 +1345,11 @@ internal fun ForumComposeScreen(
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        )
 
         OutlinedTextField(
             value = title,
@@ -1168,6 +1362,40 @@ internal fun ForumComposeScreen(
                 .padding(horizontal = 16.dp, vertical = 4.dp)
         )
 
+        // 详细分类下拉（圆角跟随主题）
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            OutlinedButton(
+                onClick = { categoryMenuOpen = true },
+                shape = RoundedCornerShape(themeRadius())
+            ) {
+                Text(
+                    text = stringResource(R.string.forum_compose_category, category),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    Icons.Filled.ArrowDropDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            DropdownMenu(
+                expanded = categoryMenuOpen,
+                onDismissRequest = { categoryMenuOpen = false }
+            ) {
+                categories.forEach { c ->
+                    DropdownMenuItem(
+                        text = { Text(c) },
+                        onClick = {
+                            category = c
+                            categoryMenuOpen = false
+                        }
+                    )
+                }
+            }
+        }
+
         OutlinedTextField(
             value = content,
             onValueChange = { content = it },
@@ -1175,17 +1403,116 @@ internal fun ForumComposeScreen(
             shape = RoundedCornerShape(themeRadius()),
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .weight(1f, fill = true)
                 .padding(horizontal = 16.dp, vertical = 4.dp)
         )
 
+        // 图片区：无图 → 添加图片按钮；有图 → 预览 + 移除 + 重新选择
+        if (imageFile == null) {
+            OutlinedButton(
+                onClick = { pickImage() },
+                enabled = !processing && !submitting,
+                shape = RoundedCornerShape(themeRadius()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                if (processing) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.forum_compose_processing))
+                } else {
+                    Icon(
+                        Icons.Filled.AddPhotoAlternate,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.forum_compose_add_image))
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                SubcomposeAsyncImage(
+                    model = imageFile,
+                    contentDescription = stringResource(R.string.forum_compose_add_image),
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) { CircularProgressIndicator() }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(themeRadius()))
+                )
+                IconButton(
+                    onClick = {
+                        imageFile = null
+                        imageName = "image.jpg"
+                    },
+                    enabled = !submitting,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.forum_compose_remove_image),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = { pickImage() },
+                enabled = !processing && !submitting,
+                shape = RoundedCornerShape(themeRadius()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                if (processing) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.forum_compose_processing))
+                } else {
+                    Icon(
+                        Icons.Filled.AddPhotoAlternate,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.forum_compose_pick_again))
+                }
+            }
+        }
+
         Button(
-            onClick = { toast.showToast(context.getString(R.string.forum_compose_wip)) },
+            onClick = { doSubmit() },
+            enabled = title.trim().isNotEmpty() && !submitting,
+            shape = RoundedCornerShape(themeRadius()),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            Text(stringResource(R.string.forum_submit))
+            if (submitting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.forum_compose_submitting))
+            } else {
+                Text(stringResource(R.string.forum_submit))
+            }
         }
     }
 }

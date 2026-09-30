@@ -177,7 +177,7 @@ fun LoginScreen(
         scope.launch {
             loading = true
             try {
-                val result = LoginRepository.login(trimmedQq, pass)
+                val result = LoginRepository.login(context, trimmedQq, pass)
                 if (result.success && result.user != null) {
                     LoginStore.saveLogin(
                         context, trimmedQq, pass,
@@ -250,11 +250,11 @@ fun LoginScreen(
             loading = true
             try {
                 val reg = LoginRepository.register(
-                    trimmedQq, pass, nickname.trim(), "$trimmedQq@qq.com", code.trim()
+                    context, trimmedQq, pass, nickname.trim(), "$trimmedQq@qq.com", code.trim()
                 )
                 if (reg.first) {
                     // 注册成功 → 自动登录；登录失败则退回登录模式
-                    val login = LoginRepository.login(trimmedQq, pass)
+                    val login = LoginRepository.login(context, trimmedQq, pass)
                     if (login.success && login.user != null) {
                         LoginStore.saveLogin(
                             context, trimmedQq, pass,
@@ -290,7 +290,7 @@ fun LoginScreen(
         scope.launch {
             sendingCode = true
             try {
-                val res = LoginRepository.sendCode("${qq.trim()}@qq.com")
+                val res = LoginRepository.sendCode(context, "${qq.trim()}@qq.com")
                 if (res.first) {
                     LoginStore.writeCooldownUntil(
                         context, CooldownTag.SEND_CODE,
@@ -327,7 +327,7 @@ fun LoginScreen(
         scope.launch {
             loading = true
             try {
-                val res = LoginRepository.findPassword("${qq.trim()}@qq.com")
+                val res = LoginRepository.findPassword(context, "${qq.trim()}@qq.com")
                 if (res.first) {
                     LoginStore.writeCooldownUntil(
                         context, CooldownTag.FIND_PASS,

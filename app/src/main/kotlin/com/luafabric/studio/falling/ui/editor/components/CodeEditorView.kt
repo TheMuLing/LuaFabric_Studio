@@ -133,6 +133,28 @@ fun CodeEditorView(
         }
     }
 
+    // AI 改盘（file_io）后 EditorViewModel.reloadCurrentFile 会更新 state.content：
+    // 只要 content 变化就同步到 Sora 编辑器，不依赖 AndroidView update 的重组时机，
+    // 确保 AI 修改后编辑区立即显示最新磁盘内容（内容相同则跳过，用户输入不受影响）。
+    LaunchedEffect(currentState.content) {
+        val editorText = editor.text.toString()
+        if (editorText != currentState.content) {
+            val cursorLine = editor.cursor.leftLine
+            val cursorColumn = editor.cursor.leftColumn
+            editor.setText(currentState.content)
+            LogCatcher.d("CodeEditorView", "LaunchedEffect 同步内容: ${currentState.file.name}")
+            try {
+                val lineCount = editor.text.lineCount
+                val targetLine = cursorLine.coerceIn(0, maxOf(0, lineCount - 1))
+                val lineLength = editor.text.getColumnCount(targetLine)
+                val targetColumn = cursorColumn.coerceIn(0, lineLength)
+                editor.setSelection(targetLine, targetColumn)
+            } catch (e: Exception) {
+                LogCatcher.e("CodeEditorView", "设置光标位置失败", e)
+            }
+        }
+    }
+
     LaunchedEffect(expansionRatio, lastSyntaxError) {
         when {
             expansionRatio >= 0.4f -> {

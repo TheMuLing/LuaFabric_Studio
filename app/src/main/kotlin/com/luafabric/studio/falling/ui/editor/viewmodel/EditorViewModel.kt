@@ -921,6 +921,41 @@ class EditorViewModel : ViewModel(), CompletionDataManager.OnCompletionDataListe
         }
     }
 
+    /**
+     * 把所有已打开文件与磁盘对齐：磁盘内容（MD5）与 buffer 不一致就重读并刷新编辑器显示。
+     * 用于 AI 任意工具改盘后的统一同步（execute_shell 等不会逐文件通知，只能整体比对）。
+     * @return 发生变更的文件数。
+     */
+    suspend fun syncOpenFilesFromDisk(): Int = withContext(KotlinDispatchers.IO) {
+        val states = openFiles.toList().filter { it.file.isFile }
+        var changed = 0
+        for (state in states) {
+            try {
+                if (!state.file.exists() || !state.file.canRead() || state.file.length() > 1024 * 1024) continue
+                val diskText = state.file.readText(Charsets.UTF_8)
+                val diskHash = try {
+                    java.security.MessageDigest.getInstance("MD5")
+                        .digest(diskText.toByteArray(Charsets.UTF_8))
+                        .joinToString("") { "%02x".format(it) }
+                } catch (_: Exception) { "" }
+                if (diskHash.isEmpty() || diskHash == state.contentHash) continue
+                state.onContentLoaded(diskText)
+                editorInstances[state.file.absolutePath]?.let { editor ->
+                    editor.post {
+                        if (editor.text.toString() != diskText) {
+                            editor.setText(diskText)
+                            LogCatcher.d("EditorViewModel", "syncOpenFilesFromDisk 刷新: ${state.file.name}")
+                        }
+                    }
+                }
+                changed++
+            } catch (e: Exception) {
+                LogCatcher.e("EditorViewModel", "sync 文件失败: ${state.file.name}", e)
+            }
+        }
+        changed
+    }
+
     // 文件操作
     @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     private suspend fun openFileInternal(file: File): Boolean {

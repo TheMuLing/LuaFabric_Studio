@@ -429,7 +429,7 @@ fun ClassListItem(
  * @param classMap 短类名 -> 完整类名列表的映射
  * @return 匹配的完整类名列表
  */
-private suspend fun analyzeCodeForClasses(
+internal suspend fun analyzeCodeForClasses(
     code: String,
     classMap: Map<String, List<String>>
 ): List<String> = withContext(Dispatchers.IO) {

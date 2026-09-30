@@ -36,6 +36,16 @@
 
   - 修复 `execute_shell` 工具相对路径写入报「Read-only file system」：`Runtime.exec` 默认工作目录为 `/`（只读根分区），相对路径（如 `test.txt`）落到根分区报 EROFS；现工作目录指向项目根，相对路径正确落在项目内
 
+- 源码论坛发帖系统上线：
+
+  - 发帖页重做：标题 + 详细分类下拉（8 类，圆角跟随主题）+ 正文 + 图片 + 提交进度态；未登录点击拦截并跳转「账户」页
+  - 图片上传：进发帖页选图前按「双轨制」处理相册权限（Android 13+ 走系统 Photo Picker 免权限；更低版本检查弹窗申请 `READ_EXTERNAL_STORAGE` 后调系统相册）；选图后本地压缩到最长边 1920px（JPEG 质量 85）再经 native 单次直传 `FileUpload.php`（multipart/form-data，code=1 取回直链）
+  - 发帖提交走 native `Issue.php`（code=200 成功），帖子需后台审核（`CheckList` / `CheckPass`）后再现于列表
+  - 详细分类隐藏标志：发帖时正文首行由客户端拼接单行 JSON `{"forum_category":"分类名"}` 标记分类，列表 / 详情渲染时剥离，用户不可见；与论坛列表本地分类过滤兼容
+  - 发帖成功后自动刷新论坛列表（强制重拉 forum_id=1）
+
+- 全部云居后端请求收拢至 native 层（`yunju.c`，统一套 VPN / 代理门控）：登录 / 签到 / 拉取用户信息 / 注册 / 验证码 / 找回密码 6 个账号接口迁移自 OkHttp，与论坛列表 / 互动 / 上传 / 发帖 / DAU 上报同一传输与门控链路；Kotlin 侧保留原 suspend 签名，响应按收尾 `}` 截断后再解析（去除 chunked 终结符等尾部残留）
+
 ## 26.09.29
 
 - 布局助手（layouthelper）崩溃修复：修复控件列表拼接 nil 导致的 `attempt to concatenate a nil value` 崩溃（英文类名表与中文显示名表长度不对齐 + `..` 优先级陷阱），任意 layout.aly 均可正常打开编辑

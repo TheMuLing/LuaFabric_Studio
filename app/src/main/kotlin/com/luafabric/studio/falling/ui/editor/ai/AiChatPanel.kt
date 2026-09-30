@@ -238,7 +238,8 @@ fun AiChatPanel(
     onClearReference: () -> Unit,
     onOpenFile: (filePath: String, startLine: Int, endLine: Int) -> Unit,
     onConfirmInMain: (title: String, message: String, callback: (Boolean) -> Unit) -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    projectOps: ProjectOps
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -282,6 +283,10 @@ fun AiChatPanel(
             register(GetMemoriesTool {
                 config.value.memories.map { it.content }
             })
+            register(DebugRunProjectTool())
+            register(BuildProjectTool())
+            register(ImportAnalysisTool())
+            register(GetSyntaxErrorsTool())
         }
     }
 
@@ -416,6 +421,7 @@ fun AiChatPanel(
                                     },
                                     onConfirmInMain = onConfirmInMain,
                                     onOpenFile = onOpenFile,
+                                    projectOps = projectOps,
                                     onError = { errorBanners = errorBanners + it; wasInterrupted = true }
                                 )
                             }
@@ -499,13 +505,14 @@ fun AiChatPanel(
                                         summary = summary,
                                         setSummary = { summary = it },
                                         onAskUser = { title, description, options, multi, callback ->
-                                        session.pendingAsk.value = AskUserPromptState(title, description, options, multi, callback)
-                                    },
-                                    onConfirmInMain = onConfirmInMain,
-                                    onOpenFile = onOpenFile,
-                                    onError = { errorBanners = errorBanners + it; wasInterrupted = true }
-                                )
-                            }
+                                            session.pendingAsk.value = AskUserPromptState(title, description, options, multi, callback)
+                                        },
+                                        onConfirmInMain = onConfirmInMain,
+                                        onOpenFile = onOpenFile,
+                                        projectOps = projectOps,
+                                        onError = { errorBanners = errorBanners + it; wasInterrupted = true }
+                                    )
+                                }
                             }
                         },
                     )
@@ -804,28 +811,19 @@ private fun ChatContent(
     onAskUserRespond: (List<String>?) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // 滚动跟随策略：AI 输出时贴底则持续跟随；手动上滑脱离底部 → 停止强制跟随；
-        // 滚回底部（或点「回到底部」）→ 恢复跟随
-        var followStream by remember { mutableStateOf(true) }
-        LaunchedEffect(listState) {
-            snapshotFlow {
-                Triple(
-                    listState.isScrollInProgress,
-                    listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0,
-                    listState.layoutInfo.totalItemsCount
-                )
-            }.collect { (scrolling, lastVisible, total) ->
-                val atBottom = total == 0 || lastVisible >= total - 1
-                if (scrolling && !atBottom) followStream = false
-                else if (!scrolling && atBottom) followStream = true
-            }
-        }
-        // 流式内容增长时也持续跟随：流式期间同一 assistant 消息可多次更新，size 不变，
-        // 需以最后一条消息的内容/思考长度变化驱动滚动（否则长文输出时列表停在气泡头部）
+        // 滚动跟随：流式内容增长时，仅当末项完整可见（真贴底）才自动滚动；
+        // 超高气泡中段滚动不算贴底 → 不打断手动浏览；点「回到底部」恢复
         val streamAnchor = messages.lastOrNull()?.let { Triple(it.id, it.content.length, it.reasoning?.length ?: 0) }
-        LaunchedEffect(messages.size, isStreaming, followStream, streamAnchor) {
-            if (messages.isNotEmpty() && isStreaming && followStream) {
-                listState.scrollToBottom(animate = false)
+        LaunchedEffect(messages.size, isStreaming, streamAnchor) {
+            if (messages.isNotEmpty() && isStreaming) {
+                val layout = listState.layoutInfo
+                val total = layout.totalItemsCount
+                val last = layout.visibleItemsInfo.lastOrNull()
+                val atBottom = total > 0 && last != null && last.index == total - 1 &&
+                    last.offset + last.size <= layout.viewportEndOffset + 4f
+                if (atBottom) {
+                    listState.scrollToBottom(animate = false)
+                }
             }
         }
 
@@ -917,8 +915,7 @@ private fun ChatContent(
                     }
                     FilledTonalIconButton(
                         onClick = {
-                            followStream = true
-                            scope.launch { listState.scrollToBottom(animate = true) }
+                            scope.launch { listState.scrollToBottom(animate = false) }
                         },
                         modifier = Modifier.size(34.dp)
                     ) {
@@ -2983,16 +2980,21 @@ private fun formatTimestamp(timestamp: Long): String {
     }
 }
 
-// scrollToItem 直达末条；高气泡时其顶部将对齐视口顶（停在气泡开始处），
-// 需用负向 scrollOffset 让气泡底部对齐视口底，才是真正的「列表底部」
+// 滚动到底：末项顶部对齐后，若末项高于视口，用正 scrollOffset 把其底部对齐视口底
+//（避免长气泡停在开头；正 offset 不会触发该版本 clamp 到顶的漂移问题）
 private suspend fun LazyListState.scrollToBottom(animate: Boolean) {
     val lastIndex = layoutInfo.totalItemsCount - 1
     if (lastIndex < 0) return
-    if (animate) animateScrollToItem(lastIndex) else scrollToItem(lastIndex)
-    val info = layoutInfo.visibleItemsInfo.lastOrNull() ?: return
-    val remain = info.offset + info.size - layoutInfo.viewportEndOffset
-    if (remain > 0) {
-        if (animate) animateScrollToItem(lastIndex, -remain) else scrollToItem(lastIndex, -remain)
+    if (animate) {
+        animateScrollToItem(lastIndex)
+        return
+    }
+    scrollToItem(lastIndex)
+    val last = layoutInfo.visibleItemsInfo.lastOrNull() ?: return
+    if (last.index == lastIndex) {
+        val viewportH = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+        val pos = last.size - viewportH
+        if (pos > 0) scrollToItem(lastIndex, pos)
     }
 }
 
@@ -3025,7 +3027,8 @@ private fun readSkillContent(context: Context, skill: SkillConfig): String? {
 
 private suspend fun buildSystemPrompt(
     context: Context,
-    config: AiConfig
+    config: AiConfig,
+    editorSnapshot: String = ""
 ): String = withContext(Dispatchers.IO) {
     val sb = StringBuilder()
     sb.appendLine("你是运行在 LuaFabric Studio 中的 AI 助手。")
@@ -3036,6 +3039,15 @@ private suspend fun buildSystemPrompt(
     sb.appendLine("- 用户可能引用代码片段，引用时会附带文件名和行号，请结合引用内容回答")
     sb.appendLine("- 回答使用与用户相同的语言，保持简洁准确")
     sb.appendLine()
+
+    // 编辑器快照（当前文件元信息 + 已打开文件路径，不注入内容）：让 AI 即知当前文件、
+    // 语法状态、修改时间、MD5、行数；行首带 * 者为当前活动文件。无活动文件时标注「未打开任何文件」。
+    if (editorSnapshot.isNotBlank()) {
+        sb.appendLine("## 当前编辑器状态")
+        sb.appendLine(editorSnapshot)
+        sb.appendLine("文件内容不在此处展开；需要查看/修改某文件时，使用 file_io 工具（相对路径基于项目根）读取或写入，可用 read_lines 精确定位文件某行或某 N~M 行，可用 get_syntax_errors（可传 path 参数）检查任意文件的语法错误。")
+        sb.appendLine()
+    }
 
     val enabledSkills = config.skills.filter { it.enabled }
     if (enabledSkills.isNotEmpty()) {
@@ -3086,6 +3098,7 @@ private suspend fun sendMessage(
     onAskUser: (title: String, description: String, options: List<String>, multi: Boolean, callback: (List<String>?) -> Unit) -> Unit,
     onConfirmInMain: (title: String, message: String, callback: (Boolean) -> Unit) -> Unit,
     onOpenFile: (filePath: String, startLine: Int, endLine: Int) -> Unit,
+    projectOps: ProjectOps,
     onError: ((String) -> Unit)? = null
 ) {
     android.util.Log.d("AiChat", "sendMessage start msgs=${messages.size} threshold=$COMPRESS_THRESHOLD")
@@ -3139,7 +3152,17 @@ private suspend fun sendMessage(
 
     // Build API messages: system prompt (skills + memories) + rolling summary + full context for code references
     val toolDefs = toolRegistry.getDefinitions()
-    val systemPrompt = buildSystemPrompt(context, config)
+    // 当前编辑文件快照（单文件毫秒级编译）；失败/无活动文件时为空串，不中断发送
+    val editorSnapshot = try {
+        projectOps.onGetEditorSnapshot()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        ""
+    }
+    val systemPrompt = buildSystemPrompt(context, config, editorSnapshot)
+    android.util.Log.d("AiChat", "editorSnapshot len=${editorSnapshot.length} head=${editorSnapshot.take(120).replace('\n', '|')}")
+    android.util.Log.d("AiChat", "systemPrompt len=${systemPrompt.length} hasSnapshotBlock=${systemPrompt.contains("## 当前编辑器状态")}")
     val baseApiMessages = buildList {
         if (systemPrompt.isNotBlank()) {
             add(ChatMessage(id = UUID.randomUUID().toString(), role = ChatRole.SYSTEM, content = systemPrompt))
@@ -3199,7 +3222,8 @@ private suspend fun sendMessage(
                 onConfirmInMain(title, message) { deferred.complete(it) }
             }
             deferred.await()
-        }
+        },
+        projectOps = projectOps
     )
 
     // Main agent loop
@@ -3354,6 +3378,15 @@ private suspend fun sendMessage(
             }
 
             pendingToolCalls.clear()
+
+            // AI 任意工具（file_io / execute_shell 等）改盘后，统一把已打开文件与磁盘对齐，
+            // 避免编辑区仍显示旧 buffer（保存时覆盖 AI 修改）。每轮工具执行完同步一次。
+            try {
+                projectOps.onSyncEditorsFromDisk()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
 
             // Regenerate assistantMsgId for next loop iteration to prevent duplicate LazyColumn keys
             assistantMsgId = UUID.randomUUID().toString()

@@ -51,6 +51,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.androlua.LuaActivity
+import com.luajava.LuaState
+import com.luajava.LuaStateFactory
+import com.luafabric.studio.falling.langs.lua.tools.CompleteHashmapUtils
+import com.luafabric.studio.falling.ui.analyse.analyzeCodeForClasses
 import com.luafabric.studio.falling.ProjectItem
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.files.FileTree
@@ -60,6 +64,7 @@ import com.luafabric.studio.falling.ui.components.ColorPickerDialog
 import com.luafabric.studio.falling.ui.components.EdgeSwipeDismissibleDrawer
 import com.luafabric.studio.falling.ui.editor.ai.AiChatPanel
 import com.luafabric.studio.falling.ui.editor.ai.CodeReference
+import com.luafabric.studio.falling.ui.editor.ai.tools.ProjectOps
 import com.luafabric.studio.falling.ui.editor.viewmodel.EditorViewModel
 import com.luafabric.studio.falling.ui.javaapi.JavaApiScreen
 import com.luafabric.studio.falling.ui.settings.SettingsManager
@@ -67,6 +72,7 @@ import com.luafabric.studio.falling.ui.sponsor.Sponsorship
 import muling.views.tool.utils.LogCatcher
 import muling.views.tool.utils.NonBlockingToastState
 import muling.views.tool.utils.TransitionUtil
+import muling.views.tool.utils.ConsoleUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -371,6 +377,135 @@ fun CodeEditScreen(
         }
     }
 
+    // ========== AI 项目控制能力（调试运行 / 构建 / 导入分析 / 语法错误） ==========
+    val projectOps = remember {
+        ProjectOps(
+            onDebugRunProject = { runProjectForAi(context, viewModel, projectPath) },
+            onBuildProject = {
+                viewModel.saveAllFilesSilently()
+                withContext(Dispatchers.IO) { buildProject(context, projectPath) }
+            },
+            onImportAnalysis = {
+                val content = viewModel.activeFileState?.content
+                if (content.isNullOrBlank()) "error: 无活动文件"
+                else withContext(Dispatchers.IO) {
+                    val classMap = CompleteHashmapUtils.loadHashMapFromFile2(context, "classMap.dat")
+                        ?: emptyMap<String, List<String>>()
+                    val found = analyzeCodeForClasses(content, classMap)
+                    if (found.isEmpty()) "未识别到可导入的类（无大写开头标识符命中 classMap）"
+                    else "检测到可导入类（共 ${found.distinct().size}）：\n" +
+                        found.distinct().sorted().joinToString("\n")
+                }
+            },
+            onGetSyntaxErrors = {
+                val currentFile = viewModel.activeFileState?.file
+                if (currentFile == null || !currentFile.isFile) "error: 无活动文件"
+                else withContext(Dispatchers.IO) {
+                    var luaState: LuaState? = null
+                    try {
+                        // 注意：不保存编辑器 buffer——AI 可能已通过 file_io 写入磁盘，
+                        // 若回写 buffer 会覆盖 AI 的修改（抢占）。直接编译磁盘内容。
+                        luaState = LuaStateFactory.newLuaState()
+                        luaState.openLibs()
+                        val result = ConsoleUtil.build(luaState, currentFile.absolutePath)
+                        val rt = result as? Map<*, *>
+                        val path = rt?.get("path") as? String
+                        val error = rt?.get("error") as? String
+                        if (path != null) "无语法错误（编译产物: $path）"
+                        else error ?: "语法检查失败（无错误详情）"
+                    } catch (e: Exception) {
+                        "error: ${e.message}"
+                    } finally {
+                        luaState?.let {
+                            try {
+                                it.gc(LuaState.LUA_GCCOLLECT, 1)
+                                it.top = 0
+                            } catch (_: Exception) { }
+                        }
+                    }
+                }
+            },
+            onGetEditorSnapshot = {
+                // 当前（活动）文件元信息 + 已打开文件路径列表（不注入文件内容，省 token）。
+                // AI 可用 file_io / read_lines / get_syntax_errors 自行读取与检查。
+                withContext(Dispatchers.IO) {
+                    val sb = StringBuilder()
+                    val active = viewModel.activeFileState
+                    if (active == null || !active.file.isFile) {
+                        sb.appendLine("未打开任何文件")
+                    } else {
+                        val f = active.file
+                        val text = try { f.readText(Charsets.UTF_8) } catch (_: Exception) { "" }
+                        val md5 = try {
+                            java.security.MessageDigest.getInstance("MD5")
+                                .digest(text.toByteArray(Charsets.UTF_8))
+                                .joinToString("") { "%02x".format(it) }
+                        } catch (_: Exception) { "" }
+                        val modified = try {
+                            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                                .format(java.util.Date(f.lastModified()))
+                        } catch (_: Exception) { "" }
+                        val (_, compileErr) = compileLuaFile(f)
+                        sb.appendLine("当前文件: ${relativeToProject(f, projectPath)}")
+                        sb.appendLine("最后修改时间: $modified")
+                        sb.appendLine("MD5: $md5")
+                        sb.appendLine("总行数: ${text.lines().size}")
+                        sb.appendLine("语法错误: ${compileErr ?: "没有"}")
+                    }
+                    viewModel.openFiles.forEachIndexed { i, st ->
+                        if (st.file.isFile) {
+                            val marker = if (i == viewModel.activeFileIndex) "*" else " "
+                            sb.appendLine("$marker ${relativeToProject(st.file, projectPath)}")
+                        }
+                    }
+                    sb.toString()
+                }
+            },
+            onFileChanged = { path ->
+                // AI 用 file_io 修改了磁盘文件：活动文件直接重读磁盘刷新内容，其它文件重开 tab
+                val f = File(path)
+                if (f.isFile) {
+                    if (viewModel.activeFileState?.file?.absolutePath == f.absolutePath) {
+                        viewModel.reloadCurrentFile()
+                    } else {
+                        viewModel.openFile(f, projectPath)
+                    }
+                }
+                refreshFileTreeKey++
+            },
+            onSyncEditorsFromDisk = {
+                // AI 任意工具改盘后统一对齐：有打开的缓冲区变化则刷新编辑器与文件树。
+                // execute_shell 等工具不逐文件通知，只能整体 MD5 比对（file_io 即时钩子保留作双保险）。
+                val changed = viewModel.syncOpenFilesFromDisk()
+                if (changed > 0) refreshFileTreeKey++
+                android.util.Log.d("CodeEditScreen", "onSyncEditorsFromDisk changed=$changed")
+            },
+            onValidateLuaFile = { path ->
+                if (!path.endsWith(".lua", ignoreCase = true)) null
+                else {
+                    var luaState: LuaState? = null
+                    try {
+                        luaState = LuaStateFactory.newLuaState()
+                        luaState.openLibs()
+                        val result = ConsoleUtil.build(luaState, path)
+                        val rt = result as? Map<*, *>
+                        val ok = rt?.get("path") as? String
+                        if (ok != null) null else (rt?.get("error") as? String) ?: "语法检查失败"
+                    } catch (e: Exception) {
+                        "error: ${e.message}"
+                    } finally {
+                        luaState?.let {
+                            try {
+                                it.gc(LuaState.LUA_GCCOLLECT, 1)
+                                it.top = 0
+                            } catch (_: Exception) { }
+                        }
+                    }
+                }
+            },
+            )
+    }
+
     // ========== 构建项目 ==========
     val onBuildProjectAction: () -> Unit = {
         buildJob = scope.launch {
@@ -639,7 +774,8 @@ fun CodeEditScreen(
                             fileTreeDrawerState.open()
                         }
                     }
-                }
+                },
+                projectOps = projectOps
             )
         },
         content = {
@@ -1003,7 +1139,8 @@ fun ProjectFileTree(
     onClearReference: () -> Unit,
     onOpenFile: (filePath: String, startLine: Int, endLine: Int) -> Unit,
     onConfirmInMain: (title: String, message: String, callback: (Boolean) -> Unit) -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    projectOps: ProjectOps
 ) {
     val scope = rememberCoroutineScope()
     val saveableStateHolder = rememberSaveableStateHolder()
@@ -1047,7 +1184,8 @@ fun ProjectFileTree(
                             onClearReference = onClearReference,
                             onOpenFile = onOpenFile,
                             onConfirmInMain = onConfirmInMain,
-                            onNavigateToSettings = onNavigateToSettings
+                            onNavigateToSettings = onNavigateToSettings,
+                            projectOps = projectOps
                         )
                     }
                 }
@@ -1473,4 +1611,67 @@ fun DownloadProgressDialog(
         },
         dismissButton = {} // 不允许直接关闭，只能取消构建
     )
+}
+
+// ========== AI：调试运行项目 ==========
+
+/** 文件相对项目根的路径（盘符/分隔符统一，供 AI 上下文展示）。 */
+private fun relativeToProject(file: File, projectPath: String): String {
+    val p = projectPath.trimEnd('/', '\\').replace('\\', '/')
+    val f = file.absolutePath.replace('\\', '/')
+    return f.removePrefix(p + "/").ifBlank { file.name }
+}
+
+/** 编译单个 lua 文件（只读磁盘）：返回 (编译产物路径 or null, 错误文本 or null)。 */
+private fun compileLuaFile(file: File): Pair<String?, String?> {
+    var luaState: LuaState? = null
+    return try {
+        luaState = LuaStateFactory.newLuaState()
+        luaState.openLibs()
+        val result = ConsoleUtil.build(luaState, file.absolutePath)
+        val rt = result as? Map<*, *>
+        Pair(rt?.get("path") as? String, rt?.get("error") as? String)
+    } catch (e: Exception) {
+        Pair(null, e.message)
+    } finally {
+        luaState?.let {
+            try {
+                it.gc(LuaState.LUA_GCCOLLECT, 1)
+                it.top = 0
+            } catch (_: Exception) { }
+        }
+    }
+}
+
+/** AI 工具用：启动当前项目入口（与顶栏「运行」同逻辑），成功返回启动描述，失败以 "error:" 开头。 */
+private suspend fun runProjectForAi(
+    context: android.content.Context,
+    viewModel: EditorViewModel,
+    projectPath: String
+): String {
+    val entryFile = runCatching {
+        val settingsFile = File(projectPath, "settings.json")
+        if (settingsFile.exists()) {
+            muling.views.tool.utils.JsonUtil.parseObject(settingsFile.readText())["entryFile"] as? String
+        } else if (muling.views.tool.utils.ProjectUtil.isComposeProject(File(projectPath))) {
+            muling.views.tool.utils.ProjectUtil.loadProjectConfig(File(projectPath))?.get("entry") as? String
+        } else null
+    }.getOrNull() ?: "main.lua"
+
+    val entryLuaFile = File(projectPath, entryFile)
+    if (!entryLuaFile.exists() || !entryLuaFile.isFile) return "error: 入口文件不存在: $entryFile"
+
+    return try {
+        val hostCls = if (muling.views.tool.utils.ProjectUtil.isComposeProject(File(projectPath)))
+            com.luafabric.compose.LuaActivity::class.java
+        else
+            com.androlua.LuaActivity::class.java
+        val intent = Intent(context, hostCls).apply {
+            data = Uri.fromFile(entryLuaFile)
+        }
+        context.startActivity(intent)
+        "已启动运行项目（入口: $entryFile，调试控制台依项目 debugmode 自动激活）"
+    } catch (e: Exception) {
+        "error: 启动失败 ${e.message}"
+    }
 }

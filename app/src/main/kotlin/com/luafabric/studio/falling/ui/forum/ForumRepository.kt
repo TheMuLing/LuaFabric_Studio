@@ -2,11 +2,18 @@ package com.luafabric.studio.falling.ui.forum
 
 import android.content.Context
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
 import com.luafabric.studio.falling.native.YunJuBridge
 import com.luafabric.studio.falling.ui.login.YunJuApi
 import java.text.SimpleDateFormat
 import java.util.Locale
+
+/** 发帖身份兜底：未登录时以管理员账号参与互动（与 ForumScreen 一致） */
+private const val FORUM_ADMIN = "3445352175"
+
+/** 发帖分类隐藏标志 JSON 键：正文首行单行 JSON（显示端剥离，用户不可见） */
+private const val FORUM_MARKER_KEY = "forum_category"
 
 /** 源码论坛帖子（ForumList data 项） */
 data class ForumItem(
@@ -199,6 +206,95 @@ object ForumRepository {
             diff < 86_400_000L -> "${diff / 3_600_000L}小时前"
             diff < 7 * 86_400_000L -> "${diff / 86_400_000L}天前"
             else -> createTime
+        }
+    }
+
+    /** FileUpload 响应体（code=1 成功，url 为图片直链） */
+    private data class ForumUploadResponse(
+        val code: Int = 0,
+        val msg: String = "",
+        val url: String = ""
+    )
+
+    /**
+     * 图片单次直传（FileUpload.php，multipart/form-data，native 直发 yuju:81）。
+     * @param filePath 本地压缩后图片绝对路径；fileName 原始文件名；fileType MIME
+     * @return 上传成功返回图片直链；被门控/失败/解析失败返回 null
+     */
+    fun uploadImage(
+        context: Context,
+        filePath: String,
+        fileName: String,
+        fileType: String = "image/jpeg"
+    ): String? {
+        val raw = YunJuBridge.nativeUploadImage(
+            context, FORUM_ADMIN, YunJuApi.APP_ID, filePath, fileName, fileType
+        )
+        if (raw == null) {
+            android.util.Log.i("ForumUpload", "native 返回 null（门控/网络失败）")
+            return null
+        }
+        val json = extractJson(raw) ?: return null
+        val resp = runCatching { gson.fromJson(json, ForumUploadResponse::class.java) }.getOrNull()
+            ?: run {
+                android.util.Log.i("ForumUpload", "响应解析失败：${json.take(300)}")
+                return null
+            }
+        if (resp.code != 1) {
+            android.util.Log.i("ForumUpload", "code=${resp.code} msg=${resp.msg}")
+            return null
+        }
+        android.util.Log.i("ForumUpload", "code=1 msg=${resp.msg} url=${resp.url}")
+        return resp.url.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * 发帖（Issue.php，native 直发 yuju:81）。
+     * @param content 需已拼接分类隐藏标志前缀（withCategoryMarker）
+     * @param img 图片直链（无图传空串）
+     * @return code==200 成功
+     */
+    fun submitPost(
+        context: Context,
+        qq: String,
+        nickname: String,
+        forumId: Int,
+        title: String,
+        content: String,
+        img: String
+    ): Boolean {
+        val raw = YunJuBridge.nativeIssuePost(
+            context, FORUM_ADMIN, qq, nickname, forumId, title, content, img
+        )
+        val code = actionCode(raw)
+        android.util.Log.i("ForumIssue", "forumId=$forumId title=$title code=$code")
+        return code == 200
+    }
+
+    /** 构建分类隐藏标志：`{"forum_category":"分类名"}`（单行 JSON，显示端剥离，用户不可见） */
+    fun buildCategoryMarker(category: String): String =
+        gson.toJson(mapOf(FORUM_MARKER_KEY to category))
+
+    /** 发帖提交前：标志行 + 换行 + 正文（"其他"类同样拼接，列表过滤对其做兜底归类） */
+    fun withCategoryMarker(content: String, category: String): String {
+        val marker = buildCategoryMarker(category)
+        return if (content.isEmpty()) marker else "$marker\n$content"
+    }
+
+    /**
+     * 剥离正文首行分类隐藏标志（列表卡片/详情渲染时调用）。
+     * 首行恰为 {"forum_category":...} JSON 对象时整行剥除，其余情况（旧帖无标志/用户正文恰好以
+     * 单行 JSON 开头）原样返回，不误伤内容。
+     */
+    fun stripCategoryMarker(content: String): String {
+        if (!content.startsWith("{")) return content
+        val nl = content.indexOf('\n')
+        if (nl < 0) return content
+        return try {
+            val obj = JsonParser.parseString(content.substring(0, nl)).asJsonObject
+            if (obj.has(FORUM_MARKER_KEY)) content.substring(nl + 1) else content
+        } catch (e: Exception) {
+            content
         }
     }
 }

@@ -46,6 +46,18 @@
 #define FORUM_FOLLOW_PATH       "/lt/Follow.php"
 #define FORUM_REPLY_PATH        "/lt/CommentReply.php"
 
+/* 源码论坛发帖 / 图片上传（同 yuju 域名 + 81 端口） */
+#define FORUM_ISSUE_PATH        "/lt/Issue.php"
+#define FORUM_UPLOAD_PATH       "/FileUpload.php"
+
+/* 云居账号接口（yunju 域名 + 443 端口，全部套 VPN/代理门控） */
+#define LOGIN_PATH        "/API/user_dl.php"
+#define SIGN_PATH         "/API/user_qiandao.php"
+#define USER_INFO_PATH    "/API/user_yhxx.php"
+#define REGISTER_PATH     "/API/user_azc.php"
+#define SEND_CODE_PATH    "/API/user_yzm.php"
+#define FIND_PASS_PATH    "/API/user_zhmm.php"
+
 /* ---- VPN 接口模式表（源自 Lua VPN_PATTERNS，54 项） ---- */
 static const char * const VPN_PATTERNS[] = {
     "tun", "ppp", "pptp", "l2tp", "ipsec", "wg", "utun", "tap", "gre", "ipip",
@@ -204,12 +216,15 @@ static int rng_urandom(void *p_rng, unsigned char *output, size_t output_len) {
 
 /*
  * ---- HTTPS POST（泛化）----
- * 参数：host/port/path/body 由调用方传入（tj_add 与 ForumList 共用）。
+ * 参数：host/port/path/body/body_len/content_type 由调用方传入。
+ * body 可为任意字节（如 multipart 二进制文件），body_len 指定长度；
+ * content_type 决定 Content-Type 头（urlencoded / multipart 等）。
  * 返回：成功 → malloc 的完整响应体（含 HTTP 头，调用方 free）；
  *       失败 → NULL。
  */
-static char *yunju_http_post(const char *host, const char *port, const char *path,
-                             const char *body) {
+static char *yunju_http_send(const char *host, const char *port, const char *path,
+                             const char *content_type, const unsigned char *body,
+                             size_t body_len) {
     int ret = -1;
     char *resp = NULL;
     size_t total = 0;
@@ -261,25 +276,40 @@ static char *yunju_http_post(const char *host, const char *port, const char *pat
         goto out;
     }
 
-    /* 5. POST 请求（Host 恒带端口） */
-    char request[512];
-    int req_len = snprintf(request, sizeof(request),
+    /* 5. 请求头（Host 恒带端口；Content-Type/Content-Length 由调用方指定） */
+    char head[640];
+    int head_len = snprintf(head, sizeof(head),
         "POST %s HTTP/1.1\r\n"
         "Host: %s:%s\r\n"
-        "Content-Type: application/x-www-form-urlencoded\r\n"
-        "Content-Length: %d\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %zu\r\n"
         "Connection: close\r\n"
-        "\r\n"
-        "%s", path, host, port, (int)strlen(body), body);
-
-    ret = mbedtls_ssl_write(&ssl, (const unsigned char *)request, (size_t)req_len);
-    if (ret <= 0) {
-        LOGE("ssl_write fail: %d", ret);
+        "\r\n", path, host, port, content_type, body_len);
+    if (head_len <= 0 || head_len >= (int)sizeof(head)) {
+        LOGE("head build fail");
         goto out;
     }
-    LOGI("POST sent (%d bytes) -> %s:%s%s", req_len, host, port, path);
 
-    /* 6. 读响应（Connection: close → 读到 0 或错误结束；缓冲动态扩容防截断） */
+    /* 6. 发送：头部 + body（大 body 分块写，避免单次 ssl_write 超限） */
+    ret = mbedtls_ssl_write(&ssl, (const unsigned char *)head, (size_t)head_len);
+    if (ret <= 0) {
+        LOGE("ssl_write head fail: %d", ret);
+        goto out;
+    }
+    size_t sent = 0;
+    while (sent < body_len) {
+        size_t chunk = body_len - sent;
+        if (chunk > 32768) chunk = 32768;
+        ret = mbedtls_ssl_write(&ssl, body + sent, chunk);
+        if (ret <= 0) {
+            LOGE("ssl_write body fail: %d", ret);
+            goto out;
+        }
+        sent += (size_t)ret;
+    }
+    LOGI("POST sent (%d + %zu bytes) -> %s:%s%s", head_len, body_len, host, port, path);
+
+    /* 7. 读响应（Connection: close → 读到 0 或错误结束；缓冲动态扩容防截断） */
     size_t cap = 4096;
     resp = (char *)malloc(cap);
     if (!resp) goto out;
@@ -314,7 +344,7 @@ static char *yunju_http_post(const char *host, const char *port, const char *pat
         memmove(resp, json_start, strlen(json_start) + 1);
     }
 
-    /* 7. 记响应 code/msg 到日志（静默，不上报 UI） */
+    /* 9. 记响应 code/msg 到日志（静默，不上报 UI） */
     if (resp != NULL) {
         const char *code_at = strstr(resp, "\"code\"");
         const char *msg_at = strstr(resp, "\"msg\"");
@@ -338,6 +368,14 @@ out:
     mbedtls_ssl_config_free(&conf);
     mbedtls_net_free(&server_fd);
     return resp;
+}
+
+/* ---- form-urlencoded 便捷包装（既有调用方语义不变） ---- */
+static char *yunju_http_post(const char *host, const char *port, const char *path,
+                             const char *body) {
+    return yunju_http_send(host, port, path,
+                           "application/x-www-form-urlencoded",
+                           (const unsigned char *)body, strlen(body));
 }
 
 /*
@@ -671,5 +709,436 @@ Java_com_luafabric_studio_falling_native_YunJuBridge_nativeOnlineSubmit(JNIEnv *
     (*env)->ReleaseStringUTFChars(env, backstage, c_bg);
     (*env)->ReleaseStringUTFChars(env, appid, c_aid);
     (*env)->ReleaseStringUTFChars(env, user, c_user);
+    return js;
+}
+
+/*
+ * ---- 云居账号接口公共入口（登录/签到/信息/注册/验证码/找回）----
+ * 门控 + POST（appid/key 前缀由调用方拼入 body）+ 裁剪纯 JSON body。
+ */
+static jstring yunju_acc_interact(JNIEnv *env, jobject context, const char *path,
+                                  const char *body) {
+    if (check_vpn(env, context)) {
+        LOGI("gated: VPN interface detected, account request skipped");
+        clear_exception(env);
+        return NULL;
+    }
+    if (check_wlan(env, context)) {
+        LOGI("gated: WLAN proxy detected, account request skipped");
+        clear_exception(env);
+        return NULL;
+    }
+    char *resp = yunju_http_post(YUNJU_HOST, YUNJU_PORT, path, body);
+    if (resp == NULL) return NULL;
+    jstring js = (*env)->NewStringUTF(env, resp);
+    free(resp);
+    if (clear_exception(env)) return NULL;
+    return js;
+}
+
+/* ---- form-urlencoded 公共参数前缀：appid + key ---- */
+#define ACC_PREFIX "appid=" YUNJU_APP_ID "&key=" YUNJU_ADMIN_KEY
+
+/*
+ * JNI 入口：POST user_dl.php（登录）。user/pass 均 url_encode。
+ * 返回响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON 后 Gson 解析）；
+ * 被门控或失败返回 NULL。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeLogin(JNIEnv *env,
+                                                                 jclass clazz,
+                                                                 jobject context,
+                                                                 jstring user,
+                                                                 jstring pass) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    const char *c_pass = (*env)->GetStringUTFChars(env, pass, NULL);
+    if (!c_user || !c_pass) {
+        if (c_user) (*env)->ReleaseStringUTFChars(env, user, c_user);
+        if (c_pass) (*env)->ReleaseStringUTFChars(env, pass, c_pass);
+        return NULL;
+    }
+    char *e_user = url_encode(c_user);
+    char *e_pass = url_encode(c_pass);
+    jstring js = NULL;
+    if (e_user && e_pass) {
+        char body[1024];
+        snprintf(body, sizeof(body), ACC_PREFIX "&user=%s&pass=%s", e_user, e_pass);
+        js = yunju_acc_interact(env, context, LOGIN_PATH, body);
+    }
+    if (e_user) free(e_user);
+    if (e_pass) free(e_pass);
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    (*env)->ReleaseStringUTFChars(env, pass, c_pass);
+    return js;
+}
+
+/*
+ * JNI 入口：POST user_qiandao.php（签到）。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeSignIn(JNIEnv *env,
+                                                                  jclass clazz,
+                                                                  jobject context,
+                                                                  jstring user) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    if (!c_user) return NULL;
+    char *e_user = url_encode(c_user);
+    jstring js = NULL;
+    if (e_user) {
+        char body[512];
+        snprintf(body, sizeof(body), ACC_PREFIX "&user=%s", e_user);
+        js = yunju_acc_interact(env, context, SIGN_PATH, body);
+        free(e_user);
+    }
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    return js;
+}
+
+/*
+ * JNI 入口：POST user_yhxx.php（拉取用户实时信息）。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeFetchUserInfo(JNIEnv *env,
+                                                                         jclass clazz,
+                                                                         jobject context,
+                                                                         jstring user) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    if (!c_user) return NULL;
+    char *e_user = url_encode(c_user);
+    jstring js = NULL;
+    if (e_user) {
+        char body[512];
+        snprintf(body, sizeof(body), ACC_PREFIX "&user=%s", e_user);
+        js = yunju_acc_interact(env, context, USER_INFO_PATH, body);
+        free(e_user);
+    }
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    return js;
+}
+
+/*
+ * JNI 入口：POST user_azc.php（注册）。nickname/email 含中文/特殊字符，url_encode。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeRegister(JNIEnv *env,
+                                                                    jclass clazz,
+                                                                    jobject context,
+                                                                    jstring user,
+                                                                    jstring pass,
+                                                                    jstring qq,
+                                                                    jstring name,
+                                                                    jstring email,
+                                                                    jstring code) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    const char *c_pass = (*env)->GetStringUTFChars(env, pass, NULL);
+    const char *c_qq = (*env)->GetStringUTFChars(env, qq, NULL);
+    const char *c_name = (*env)->GetStringUTFChars(env, name, NULL);
+    const char *c_email = (*env)->GetStringUTFChars(env, email, NULL);
+    const char *c_code = (*env)->GetStringUTFChars(env, code, NULL);
+    if (!c_user || !c_pass || !c_qq || !c_name || !c_email || !c_code) {
+        if (c_user) (*env)->ReleaseStringUTFChars(env, user, c_user);
+        if (c_pass) (*env)->ReleaseStringUTFChars(env, pass, c_pass);
+        if (c_qq) (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+        if (c_name) (*env)->ReleaseStringUTFChars(env, name, c_name);
+        if (c_email) (*env)->ReleaseStringUTFChars(env, email, c_email);
+        if (c_code) (*env)->ReleaseStringUTFChars(env, code, c_code);
+        return NULL;
+    }
+    char *e_user = url_encode(c_user);
+    char *e_pass = url_encode(c_pass);
+    char *e_qq = url_encode(c_qq);
+    char *e_name = url_encode(c_name);
+    char *e_email = url_encode(c_email);
+    char *e_code = url_encode(c_code);
+    jstring js = NULL;
+    if (e_user && e_pass && e_qq && e_name && e_email && e_code) {
+        char body[2048];
+        snprintf(body, sizeof(body),
+                 ACC_PREFIX "&user=%s&pass=%s&QQ=%s&name=%s&email=%s&code=%s",
+                 e_user, e_pass, e_qq, e_name, e_email, e_code);
+        js = yunju_acc_interact(env, context, REGISTER_PATH, body);
+    }
+    if (e_user) free(e_user);
+    if (e_pass) free(e_pass);
+    if (e_qq) free(e_qq);
+    if (e_name) free(e_name);
+    if (e_email) free(e_email);
+    if (e_code) free(e_code);
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    (*env)->ReleaseStringUTFChars(env, pass, c_pass);
+    (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+    (*env)->ReleaseStringUTFChars(env, name, c_name);
+    (*env)->ReleaseStringUTFChars(env, email, c_email);
+    (*env)->ReleaseStringUTFChars(env, code, c_code);
+    return js;
+}
+
+/*
+ * JNI 入口：POST user_yzm.php（发送注册验证码到邮箱）。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeSendCode(JNIEnv *env,
+                                                                    jclass clazz,
+                                                                    jobject context,
+                                                                    jstring email) {
+    (void)clazz;
+    const char *c_email = (*env)->GetStringUTFChars(env, email, NULL);
+    if (!c_email) return NULL;
+    char *e_email = url_encode(c_email);
+    jstring js = NULL;
+    if (e_email) {
+        char body[512];
+        snprintf(body, sizeof(body), ACC_PREFIX "&email=%s", e_email);
+        js = yunju_acc_interact(env, context, SEND_CODE_PATH, body);
+        free(e_email);
+    }
+    (*env)->ReleaseStringUTFChars(env, email, c_email);
+    return js;
+}
+
+/*
+ * JNI 入口：POST user_zhmm.php（找回密码，密码发往邮箱）。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeFindPassword(JNIEnv *env,
+                                                                        jclass clazz,
+                                                                        jobject context,
+                                                                        jstring email) {
+    (void)clazz;
+    const char *c_email = (*env)->GetStringUTFChars(env, email, NULL);
+    if (!c_email) return NULL;
+    char *e_email = url_encode(c_email);
+    jstring js = NULL;
+    if (e_email) {
+        char body[512];
+        snprintf(body, sizeof(body), ACC_PREFIX "&email=%s", e_email);
+        js = yunju_acc_interact(env, context, FIND_PASS_PATH, body);
+        free(e_email);
+    }
+    (*env)->ReleaseStringUTFChars(env, email, c_email);
+    return js;
+}
+
+/*
+ * ---- multipart/form-data 请求体构造 ----
+ * 普通键值对（text_pairs，值原样写入，multipart 内无需 urlencode）+ 单文件。
+ * 文件字节从磁盘读入内存。返回 malloc 缓冲（调用方 free），*out_len 为总长。
+ */
+static char *build_multipart(const char *boundary,
+                             const char *const *pair_keys,
+                             const char *const *pair_vals,
+                             int pair_count,
+                             const char *file_field,
+                             const char *file_name,
+                             const char *file_type,
+                             const char *file_path,
+                             size_t *out_len) {
+    FILE *f = fopen(file_path, "rb");
+    if (!f) {
+        LOGE("upload open fail: %s", file_path);
+        return NULL;
+    }
+    fseek(f, 0, SEEK_END);
+    long fsz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (fsz < 0 || fsz > 32L * 1024 * 1024) {
+        /* 单次直传上限保护：>32MB 拒传（对应文档单次上传使用场景） */
+        fclose(f);
+        LOGE("upload size rejected: %ld bytes", fsz);
+        return NULL;
+    }
+    unsigned char *fdata = (unsigned char *)malloc((size_t)fsz);
+    if (!fdata) {
+        fclose(f);
+        return NULL;
+    }
+    size_t got = fread(fdata, 1, (size_t)fsz, f);
+    fclose(f);
+    if (got != (size_t)fsz) {
+        free(fdata);
+        LOGE("upload read incomplete: %zu/%ld", got, fsz);
+        return NULL;
+    }
+
+    /* 估算体积：各段头部 + 文件字节 + 收尾 boundary */
+    size_t cap = 4096;
+    for (int i = 0; i < pair_count; i++) {
+        cap += strlen(pair_keys[i]) + strlen(pair_vals[i]);
+    }
+    cap += strlen(file_field) + strlen(file_name) + strlen(file_type) + strlen(boundary) * 2;
+    cap += (size_t)fsz + 64;
+
+    char *buf = (char *)malloc(cap);
+    if (!buf) {
+        free(fdata);
+        return NULL;
+    }
+    size_t o = 0;
+    for (int i = 0; i < pair_count; i++) {
+        int n = snprintf(buf + o, cap - o,
+            "--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n",
+            boundary, pair_keys[i], pair_vals[i]);
+        if (n <= 0 || (size_t)n >= cap - o) { free(buf); free(fdata); return NULL; }
+        o += (size_t)n;
+    }
+    int n = snprintf(buf + o, cap - o,
+        "--%s\r\nContent-Disposition: form-data; name=\"%s\"; filename=\"%s\"\r\n"
+        "Content-Type: %s\r\n\r\n",
+        boundary, file_field, file_name, file_type);
+    if (n <= 0 || (size_t)n >= cap - o) { free(buf); free(fdata); return NULL; }
+    o += (size_t)n;
+    if (fsz > 0) {
+        if (o + (size_t)fsz > cap) { free(buf); free(fdata); return NULL; }
+        memcpy(buf + o, fdata, (size_t)fsz);
+        o += (size_t)fsz;
+    }
+    free(fdata);
+    n = snprintf(buf + o, cap - o, "\r\n--%s--\r\n", boundary);
+    if (n <= 0 || (size_t)n >= cap - o) { free(buf); return NULL; }
+    o += (size_t)n;
+    *out_len = o;
+    return buf;
+}
+
+/*
+ * JNI 入口：POST FileUpload.php（图片单次直传，multipart/form-data）。
+ * backstage/appid/key 为后台常量；filePath 为本地压缩后图片绝对路径。
+ * 返回响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON 后 Gson 解析）；
+ * 被门控或失败返回 NULL。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeUploadImage(JNIEnv *env,
+                                                                       jclass clazz,
+                                                                       jobject context,
+                                                                       jstring backstage,
+                                                                       jstring appid,
+                                                                       jstring filePath,
+                                                                       jstring fileName,
+                                                                       jstring fileType) {
+    (void)clazz;
+    const char *c_bg = (*env)->GetStringUTFChars(env, backstage, NULL);
+    const char *c_aid = (*env)->GetStringUTFChars(env, appid, NULL);
+    const char *c_path = (*env)->GetStringUTFChars(env, filePath, NULL);
+    const char *c_fname = (*env)->GetStringUTFChars(env, fileName, NULL);
+    const char *c_ftype = (*env)->GetStringUTFChars(env, fileType, NULL);
+    if (!c_bg || !c_aid || !c_path || !c_fname || !c_ftype) {
+        if (c_bg) (*env)->ReleaseStringUTFChars(env, backstage, c_bg);
+        if (c_aid) (*env)->ReleaseStringUTFChars(env, appid, c_aid);
+        if (c_path) (*env)->ReleaseStringUTFChars(env, filePath, c_path);
+        if (c_fname) (*env)->ReleaseStringUTFChars(env, fileName, c_fname);
+        if (c_ftype) (*env)->ReleaseStringUTFChars(env, fileType, c_ftype);
+        return NULL;
+    }
+
+    if (check_vpn(env, context)) {
+        LOGI("gated: VPN interface detected, upload skipped");
+        clear_exception(env);
+        goto out_gate;
+    }
+    if (check_wlan(env, context)) {
+        LOGI("gated: WLAN proxy detected, upload skipped");
+        clear_exception(env);
+        goto out_gate;
+    }
+
+    static const char BOUNDARY[] = "----LuaFabricStudioUploadBoundary";
+    static const char KEY[] = YUNJU_ADMIN_KEY;
+    {
+        const char *pair_keys[3] = { "backstage", "appid", "key" };
+        const char *pair_vals[3] = { c_bg, c_aid, KEY };
+        size_t body_len = 0;
+        char *body = build_multipart(BOUNDARY, pair_keys, pair_vals, 3,
+                                     "file", c_fname, c_ftype, c_path, &body_len);
+        if (!body) goto out_gate;
+        char ctype[160];
+        snprintf(ctype, sizeof(ctype), "multipart/form-data; boundary=%s", BOUNDARY);
+        char *resp = yunju_http_send(FORUM_HOST, FORUM_PORT, FORUM_UPLOAD_PATH,
+                                     ctype, (const unsigned char *)body, body_len);
+        free(body);
+        if (resp == NULL) goto out_gate;
+        jstring js = (*env)->NewStringUTF(env, resp);
+        free(resp);
+        if (clear_exception(env)) js = NULL;
+        (*env)->ReleaseStringUTFChars(env, backstage, c_bg);
+        (*env)->ReleaseStringUTFChars(env, appid, c_aid);
+        (*env)->ReleaseStringUTFChars(env, filePath, c_path);
+        (*env)->ReleaseStringUTFChars(env, fileName, c_fname);
+        (*env)->ReleaseStringUTFChars(env, fileType, c_ftype);
+        return js;
+    }
+
+out_gate:
+    (*env)->ReleaseStringUTFChars(env, backstage, c_bg);
+    (*env)->ReleaseStringUTFChars(env, appid, c_aid);
+    (*env)->ReleaseStringUTFChars(env, filePath, c_path);
+    (*env)->ReleaseStringUTFChars(env, fileName, c_fname);
+    (*env)->ReleaseStringUTFChars(env, fileType, c_ftype);
+    return NULL;
+}
+
+/*
+ * JNI 入口：POST Issue.php（发帖）。
+ * user 恒 YUNJU_ADMIN；qq/nickname 为当前登录用户；forumId 板块 ID；
+ * title/content/img 均 url_encode（img 为上传返回的直链）。
+ * 返回响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON 后 Gson 解析）；
+ * 被门控或失败返回 NULL。
+ */
+JNIEXPORT jstring JNICALL
+Java_com_luafabric_studio_falling_native_YunJuBridge_nativeIssuePost(JNIEnv *env,
+                                                                     jclass clazz,
+                                                                     jobject context,
+                                                                     jstring user,
+                                                                     jstring qq,
+                                                                     jstring nickname,
+                                                                     jint forumId,
+                                                                     jstring title,
+                                                                     jstring content,
+                                                                     jstring img) {
+    (void)clazz;
+    const char *c_user = (*env)->GetStringUTFChars(env, user, NULL);
+    const char *c_qq = (*env)->GetStringUTFChars(env, qq, NULL);
+    const char *c_nick = (*env)->GetStringUTFChars(env, nickname, NULL);
+    const char *c_title = (*env)->GetStringUTFChars(env, title, NULL);
+    const char *c_content = (*env)->GetStringUTFChars(env, content, NULL);
+    const char *c_img = (*env)->GetStringUTFChars(env, img, NULL);
+    if (!c_user || !c_qq || !c_nick || !c_title || !c_content || !c_img) {
+        if (c_user) (*env)->ReleaseStringUTFChars(env, user, c_user);
+        if (c_qq) (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+        if (c_nick) (*env)->ReleaseStringUTFChars(env, nickname, c_nick);
+        if (c_title) (*env)->ReleaseStringUTFChars(env, title, c_title);
+        if (c_content) (*env)->ReleaseStringUTFChars(env, content, c_content);
+        if (c_img) (*env)->ReleaseStringUTFChars(env, img, c_img);
+        return NULL;
+    }
+    char *e_user = url_encode(c_user);
+    char *e_qq = url_encode(c_qq);
+    char *e_nick = url_encode(c_nick);
+    char *e_title = url_encode(c_title);
+    char *e_content = url_encode(c_content);
+    char *e_img = url_encode(c_img);
+    jstring js = NULL;
+    if (e_user && e_qq && e_nick && e_title && e_content && e_img) {
+        char body[4096];
+        snprintf(body, sizeof(body),
+                 "user=%s&qq=%s&nickname=%s&forum_id=%d&title=%s&content=%s&img=%s",
+                 e_user, e_qq, e_nick, (int)forumId, e_title, e_content, e_img);
+        js = forum_interact(env, context, FORUM_ISSUE_PATH, body);
+    }
+    if (e_user) free(e_user);
+    if (e_qq) free(e_qq);
+    if (e_nick) free(e_nick);
+    if (e_title) free(e_title);
+    if (e_content) free(e_content);
+    if (e_img) free(e_img);
+    (*env)->ReleaseStringUTFChars(env, user, c_user);
+    (*env)->ReleaseStringUTFChars(env, qq, c_qq);
+    (*env)->ReleaseStringUTFChars(env, nickname, c_nick);
+    (*env)->ReleaseStringUTFChars(env, title, c_title);
+    (*env)->ReleaseStringUTFChars(env, content, c_content);
+    (*env)->ReleaseStringUTFChars(env, img, c_img);
     return js;
 }

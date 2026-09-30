@@ -23,7 +23,9 @@ data class ToolContext(
     /** 询问用户：title/附加说明/选项列表/是否多选；返回选中项（单选=1 项），取消返回 null */
     val onAskUser: suspend (title: String, description: String, options: List<String>, multi: Boolean) -> List<String>?,
     val onOpenFile: suspend (filePath: String, startLine: Int, endLine: Int) -> Boolean,
-    val onConfirmInMain: suspend (title: String, message: String) -> Boolean
+    val onConfirmInMain: suspend (title: String, message: String) -> Boolean,
+    /** 项目控制能力（调试运行 / 构建 / 导入分析 / 语法错误），由宿主界面实现。 */
+    val projectOps: ProjectOps
 )
 
 class ToolRegistry {
