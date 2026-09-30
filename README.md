@@ -34,6 +34,8 @@
 
   - AI 设置新增「用弹窗展示AI询问」开关（默认关=编辑区上方横幅；开=弹窗），两种模式均可输入「其他」自定义内容，编辑框圆角跟随 luafabric 主题
 
+  - 修复 `execute_shell` 工具相对路径写入报「Read-only file system」：`Runtime.exec` 默认工作目录为 `/`（只读根分区），相对路径（如 `test.txt`）落到根分区报 EROFS；现工作目录指向项目根，相对路径正确落在项目内
+
 ## 26.09.29
 
 - 布局助手（layouthelper）崩溃修复：修复控件列表拼接 nil 导致的 `attempt to concatenate a nil value` 崩溃（英文类名表与中文显示名表长度不对齐 + `..` 优先级陷阱），任意 layout.aly 均可正常打开编辑

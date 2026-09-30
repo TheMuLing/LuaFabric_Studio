@@ -1,10 +1,11 @@
 package com.luafabric.studio.falling.ui.editor.ai.tools
 
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 class ShellTool : ChatTool {
     override val name = "execute_shell"
-    override val description = "Execute a shell command on the device. Returns stdout and stderr."
+    override val description = "Execute a shell command on the device. Returns stdout and stderr. Relative paths are resolved against the project root directory."
     override val parameters: Map<String, Any> = mapOf(
         "type" to "object",
         "properties" to mapOf(
@@ -26,7 +27,14 @@ class ShellTool : ChatTool {
         val timeoutSeconds = ((args["timeout_seconds"] as? Number)?.toInt() ?: 30).coerceIn(1, 300)
 
         return try {
-            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
+            // cwd 必须指向项目根：Runtime.exec 默认工作目录为 /（只读根文件系统），
+            // 相对路径（如 test.txt）会落到根分区 → "Read-only file system"
+            val cwd = File(context.projectPath).takeIf { it.isDirectory }
+            val process = if (cwd != null) {
+                Runtime.getRuntime().exec(arrayOf("sh", "-c", command), null, cwd)
+            } else {
+                Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
+            }
             // 并发抽干 stdout/stderr，避免管道写满导致进程永不退出（旧实现读流阻塞无超时）
             val stdout = StringBuilder()
             val stderr = StringBuilder()
