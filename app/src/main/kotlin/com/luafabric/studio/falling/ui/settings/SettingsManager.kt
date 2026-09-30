@@ -76,6 +76,8 @@ private object PreferencesKeys {
     val EDITOR_WORD_WRAP = booleanPreferencesKey("editor_word_wrap")
     // 项目间自动换行独立：开=每项目独立换行状态；关=全局共享
     val EDITOR_WORD_WRAP_INDEPENDENT = booleanPreferencesKey("editor_word_wrap_independent")
+    // AI 询问展示方式：关=编辑区上方横幅（默认）；开=弹窗
+    val ASK_USER_IN_DIALOG = booleanPreferencesKey("ask_user_in_dialog")
 
     // 【新增】十六进制颜色高亮开关
     val HEX_COLOR_HIGHLIGHT_ENABLED = booleanPreferencesKey("hex_color_highlight_enabled")
@@ -287,6 +289,7 @@ object SettingsManager {
 
         val editorWordWrap = preferences[PreferencesKeys.EDITOR_WORD_WRAP] ?: false
         val perProjectWordWrap = preferences[PreferencesKeys.EDITOR_WORD_WRAP_INDEPENDENT] ?: true
+        val askUserInDialog = preferences[PreferencesKeys.ASK_USER_IN_DIALOG] ?: false
 
         // 【新增】加载十六进制颜色高亮开关
         val hexColorHighlightEnabled = preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] ?: true
@@ -352,6 +355,7 @@ object SettingsManager {
                 toastBorderEnabled = toastBorderEnabled,
                 editorWordWrap = editorWordWrap,
                 perProjectWordWrap = perProjectWordWrap,
+                askUserInDialog = askUserInDialog,
                 hexColorHighlightEnabled = hexColorHighlightEnabled,
                 buildCount = buildCount,
                 sponsorRound = sponsorRound,
@@ -421,6 +425,7 @@ object SettingsManager {
         preferences[PreferencesKeys.EDITOR_WORD_WRAP] = currentSettings.editorWordWrap
         preferences[PreferencesKeys.EDITOR_WORD_WRAP_INDEPENDENT] =
             currentSettings.perProjectWordWrap
+        preferences[PreferencesKeys.ASK_USER_IN_DIALOG] = currentSettings.askUserInDialog
 
         // 【新增】保存十六进制颜色高亮开关
         preferences[PreferencesKeys.HEX_COLOR_HIGHLIGHT_ENABLED] = currentSettings.hexColorHighlightEnabled
@@ -537,6 +542,8 @@ data class SettingsData(
     val editorWordWrap: Boolean = false,
     /** 项目间自动换行独立：默认开启（每项目独立换行状态） */
     val perProjectWordWrap: Boolean = true,
+    /** AI 询问展示方式：false=编辑区上方横幅（默认）；true=弹窗 */
+    val askUserInDialog: Boolean = false,
     val hexColorHighlightEnabled: Boolean = true,  // 【新增】十六进制颜色高亮开关
     val buildCount: Int = 0,               // 全局累计构建次数
     val sponsorRound: Int = 0,             // 当前待评估的赞助轮次指针 r（0 视为 1）

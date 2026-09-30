@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+
 package com.luafabric.studio.falling.ui.editor.ai
 
 import android.content.ClipData
@@ -15,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -22,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -46,6 +50,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -53,19 +58,87 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.gson.Gson
+import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.editor.ai.tools.*
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
 private enum class AiPage { CHAT, SETTINGS, HISTORY }
+
+/** AI 提问（横幅/弹窗共用）：AI 询问用户，用户作答后经 callback 回传。 */
+private data class AskUserPromptState(
+    val title: String,
+    val description: String,
+    val options: List<String>,
+    val multi: Boolean,
+    val callback: (List<String>?) -> Unit
+)
+
+/** 编辑框/容器圆角跟随 luafabric 主题 shapeSizeIndex（0-3 → 4/8/12/16dp）。 */
+private fun askUiThemeRadius(): Dp = when (SettingsManager.currentSettings.shapeSizeIndex) {
+    0 -> 4.dp
+    1 -> 8.dp
+    2 -> 12.dp
+    3 -> 16.dp
+    else -> 12.dp
+}
+
+/**
+ * AI 会话内存态：大块数据（对话消息等）放这里而非 rememberSaveable，
+ * 避免 Activity 重建（息屏/横竖屏）时 instance state 超 Binder 1MB 限制
+ * 抛 TransactionTooLargeException。
+ *
+ * 全部状态用真实 MutableState（而非普通 var + commitSession 同步）：
+ * - 重建后新 AiChatPanel 直接订阅同一份状态，消息/流式进度不丢；
+ * - streamScope 为进程级 scope，旋转/重建不取消正在进行的流式输出；
+ * - sendJob 也存这里，重建后「停止」按钮仍能取消同一个流。
+ *
+ * 按项目隔离：对话消息/流式/提问/摘要以项目路径为 key 分区存储，
+ * 切换项目不串记录（修复跨项目共享同一份会话的问题）。
+ */
+private object AiChatSessionState {
+    private val projectStates = mutableMapOf<String, ProjectChatState>()
+
+    fun forProject(projectPath: String): ProjectChatState = synchronized(this) {
+        projectStates.getOrPut(projectPath) { ProjectChatState() }
+    }
+
+    /** 导航页签全局共享（不按项目区分）。 */
+    val currentPage = mutableStateOf(AiPage.CHAT)
+}
+
+/** 单个项目的 AI 会话内存态。 */
+private class ProjectChatState {
+    val messages = mutableStateOf<List<ChatMessage>>(emptyList())
+    val summary = mutableStateOf("")
+    val isStreaming = mutableStateOf(false)
+    val streamingMessageId = mutableStateOf<String?>(null)
+    val inputValue = mutableStateOf(TextFieldValue(""))
+    val wasInterrupted = mutableStateOf(false)
+    val shareMode = mutableStateOf(false)
+    val selectedShareMessages = mutableStateOf<Set<String>>(emptySet())
+
+    /** 进程中待回答的 AI 提问（横幅/弹窗共源，重建不丢）。 */
+    val pendingAsk = mutableStateOf<AskUserPromptState?>(null)
+
+    /** 进程级流式 scope：横竖屏重建不取消，保证流式输出续走。 */
+    val streamScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** 当前进行中的流式任务，存单例使重建后「停止」仍可取消它。 */
+    var sendJob: kotlinx.coroutines.Job? = null
+}
 
 // ========== 自定义 md3 引号图标 ==========
 // 基于 Google Material Icons 官方 format_quote 24px path 数据：
@@ -164,7 +237,6 @@ fun AiChatPanel(
     codeReference: CodeReference?,
     onClearReference: () -> Unit,
     onOpenFile: (filePath: String, startLine: Int, endLine: Int) -> Unit,
-    onAskUser: (title: String, options: List<String>, callback: (String?) -> Unit) -> Unit,
     onConfirmInMain: (title: String, message: String, callback: (Boolean) -> Unit) -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
@@ -175,25 +247,22 @@ fun AiChatPanel(
     // Config
     val config = remember { mutableStateOf(AiSettingsManager.loadConfig(context)) }
 
-    // Chat state (rememberSaveable to survive tab switches via SaveableStateHolder)
-    var messages by rememberSaveable(stateSaver = ChatMessageListSaver) { mutableStateOf<List<ChatMessage>>(emptyList()) }
-    var inputValue by rememberSaveable(stateSaver = TextFieldValueFullSaver) { mutableStateOf(TextFieldValue("")) }
-    var isStreaming by rememberSaveable { mutableStateOf(false) }
+    // Chat state：按项目隔离（AiChatSessionState.forProject），重建后新 AiChatPanel
+    // 订阅同一份状态，消息/流式进度不丢；流式任务在该项目 streamScope（进程级）执行，不随重建取消。
+    val session = AiChatSessionState.forProject(projectPath)
+    var messages by session.messages
+    var inputValue by session.inputValue
+    var isStreaming by session.isStreaming
     var currentConversationId by rememberSaveable { mutableStateOf(AiChatHistoryStore.createNewId()) }
-    var streamingMessageId by rememberSaveable { mutableStateOf<String?>(null) }
-    var currentPage by rememberSaveable { mutableStateOf(AiPage.CHAT) }
+    var streamingMessageId by session.streamingMessageId
+    var currentPage by AiChatSessionState.currentPage
     var showWelcome by remember { mutableStateOf(!AiSettingsManager.isWelcomeDismissed(context)) }
-    var shareMode by rememberSaveable { mutableStateOf(false) }
-    var selectedShareMessages by rememberSaveable { mutableStateOf(setOf<String>()) }
-    var sendJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var errorBanners by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
-    var wasInterrupted by rememberSaveable { mutableStateOf(false) }
-    var selectedProviderIndex by rememberSaveable { mutableStateOf(
-        if (config.value.providers.isNotEmpty() && config.value.selectedProviderIndex in config.value.providers.indices)
-            config.value.selectedProviderIndex
-        else 0
-    ) }
-    var summary by rememberSaveable { mutableStateOf("") }
+    var shareMode by session.shareMode
+    var selectedShareMessages by session.selectedShareMessages
+    var errorBanners by remember { mutableStateOf<List<String>>(emptyList()) }
+    var wasInterrupted by session.wasInterrupted
+    var summary by session.summary
+    var pendingAsk by session.pendingAsk
 
     // Tool registry
     val toolRegistry = remember {
@@ -201,7 +270,8 @@ fun AiChatPanel(
             register(ShellTool())
             register(FileIOTool())
             register(SearchTool())
-            register(AskUserTool())
+            register(AskUserChoiceTool())
+            register(AskUserMultiChoiceTool())
             register(OpenFileTool())
             register(MemoryTool { content ->
                 val memId = UUID.randomUUID().toString()
@@ -212,13 +282,6 @@ fun AiChatPanel(
             register(GetMemoriesTool {
                 config.value.memories.map { it.content }
             })
-        }
-    }
-
-    // Auto-scroll
-    LaunchedEffect(messages.size, isStreaming) {
-        if (messages.isNotEmpty() && isStreaming) {
-            listState.scrollToBottom(animate = false)
         }
     }
 
@@ -274,12 +337,12 @@ fun AiChatPanel(
         AiTitleBar(
             page = currentPage,
             providers = config.value.providers,
-            selectedProviderIndex = selectedProviderIndex,
+            // 与发送链路同源（config.value.selectedProviderIndex），避免顶栏显示与真实路由不一致
+            selectedProviderIndex = config.value.selectedProviderIndex,
             onBackClick = { currentPage = AiPage.CHAT },
             onSettingsClick = { currentPage = AiPage.SETTINGS },
             onHistoryClick = { currentPage = AiPage.HISTORY },
             onSelectProvider = { idx ->
-                selectedProviderIndex = idx
                 config.value = config.value.copy(selectedProviderIndex = idx)
                 AiSettingsManager.saveConfig(context, config.value)
             },
@@ -288,7 +351,6 @@ fun AiChatPanel(
                 providers[providerIdx] = providers[providerIdx].copy(model = model)
                 val newConfig = config.value.copy(providers = providers, selectedProviderIndex = providerIdx)
                 config.value = newConfig
-                selectedProviderIndex = providerIdx
                 AiSettingsManager.saveConfig(context, newConfig)
             }
         )
@@ -331,7 +393,7 @@ fun AiChatPanel(
                         onOpenFile = onOpenFile,
                         onInputChange = { inputValue = it },
                         onSend = {
-                            sendJob = scope.launch {
+                            session.sendJob = session.streamScope.launch {
                                 sendMessage(
                                     inputText = inputValue.text,
                                     config = config.value,
@@ -349,7 +411,9 @@ fun AiChatPanel(
                                     setCurrentConversationId = { currentConversationId = it },
                                     summary = summary,
                                     setSummary = { summary = it },
-                                    onAskUser = onAskUser,
+                                    onAskUser = { title, description, options, multi, callback ->
+                                        session.pendingAsk.value = AskUserPromptState(title, description, options, multi, callback)
+                                    },
                                     onConfirmInMain = onConfirmInMain,
                                     onOpenFile = onOpenFile,
                                     onError = { errorBanners = errorBanners + it; wasInterrupted = true }
@@ -357,7 +421,8 @@ fun AiChatPanel(
                             }
                         },
                         onStop = {
-                            sendJob?.cancel()
+                            session.sendJob?.cancel()
+                            session.sendJob = null
                             wasInterrupted = true
                         },
                         onCopy = { content ->
@@ -403,6 +468,11 @@ fun AiChatPanel(
                         onDismissError = { errorBanners = emptyList() },
                         canSend = canSend,
                         wasInterrupted = wasInterrupted,
+                        pendingAsk = pendingAsk,
+                        onAskUserRespond = { result ->
+                            pendingAsk?.callback?.invoke(result)
+                            session.pendingAsk.value = null
+                        },
                         onResend = {
                             val lastUserIdx = messages.lastIndexOf(messages.lastOrNull { it.role == ChatRole.USER })
                             if (lastUserIdx >= 0) {
@@ -410,7 +480,7 @@ fun AiChatPanel(
                                 messages = messages.take(lastUserIdx)
                                 inputValue = TextFieldValue(lastUserMsg.content, selection = TextRange(lastUserMsg.content.length))
                                 wasInterrupted = false
-                                sendJob = scope.launch {
+                                session.sendJob = session.streamScope.launch {
                                     sendMessage(
                                         inputText = lastUserMsg.content,
                                         config = config.value,
@@ -428,12 +498,14 @@ fun AiChatPanel(
                                         setCurrentConversationId = { currentConversationId = it },
                                         summary = summary,
                                         setSummary = { summary = it },
-                                        onAskUser = onAskUser,
-                                        onConfirmInMain = onConfirmInMain,
-                                        onOpenFile = onOpenFile,
-                                        onError = { errorBanners = errorBanners + it; wasInterrupted = true }
-                                    )
-                                }
+                                        onAskUser = { title, description, options, multi, callback ->
+                                        session.pendingAsk.value = AskUserPromptState(title, description, options, multi, callback)
+                                    },
+                                    onConfirmInMain = onConfirmInMain,
+                                    onOpenFile = onOpenFile,
+                                    onError = { errorBanners = errorBanners + it; wasInterrupted = true }
+                                )
+                            }
                             }
                         },
                     )
@@ -453,14 +525,23 @@ fun AiChatPanel(
                         projectPath = projectPath,
                         currentId = currentConversationId,
                         onSelectConversation = { data ->
+                            session.sendJob?.cancel()
+                            session.sendJob = null
                             messages = data.messages
                             summary = data.summary
+                            isStreaming = false
+                            streamingMessageId = null
                             currentConversationId = data.id
                             currentPage = AiPage.CHAT
                         },
                         onNewChat = {
+                            session.sendJob?.cancel()
+                            session.sendJob = null
                             messages = emptyList()
                             summary = ""
+                            isStreaming = false
+                            streamingMessageId = null
+                            wasInterrupted = false
                             currentConversationId = AiChatHistoryStore.createNewId()
                             currentPage = AiPage.CHAT
                         }
@@ -468,6 +549,44 @@ fun AiChatPanel(
                 }
             }
         }
+    }
+
+    // AI 提问弹窗（设置「用弹窗展示AI询问」开时；横幅模式已在 ChatContent 内，输入框圆角均跟随主题）
+    val pendingAskState = pendingAsk
+    if (pendingAskState != null && SettingsManager.currentSettings.askUserInDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                pendingAskState.callback(null)
+                session.pendingAsk.value = null
+            },
+            title = { Text(pendingAskState.title) },
+            text = {
+                Column {
+                    if (pendingAskState.description.isNotBlank()) {
+                        Text(
+                            text = pendingAskState.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                    AskUserOptionsContent(
+                        state = pendingAskState,
+                        onRespond = { result ->
+                            pendingAskState.callback(result)
+                            session.pendingAsk.value = null
+                        }
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingAskState.callback(null)
+                    session.pendingAsk.value = null
+                }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
 }
 
@@ -680,9 +799,36 @@ private fun ChatContent(
     onDismissError: () -> Unit,
     canSend: Boolean,
     wasInterrupted: Boolean,
-    onResend: () -> Unit
+    onResend: () -> Unit,
+    pendingAsk: AskUserPromptState?,
+    onAskUserRespond: (List<String>?) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        // 滚动跟随策略：AI 输出时贴底则持续跟随；手动上滑脱离底部 → 停止强制跟随；
+        // 滚回底部（或点「回到底部」）→ 恢复跟随
+        var followStream by remember { mutableStateOf(true) }
+        LaunchedEffect(listState) {
+            snapshotFlow {
+                Triple(
+                    listState.isScrollInProgress,
+                    listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0,
+                    listState.layoutInfo.totalItemsCount
+                )
+            }.collect { (scrolling, lastVisible, total) ->
+                val atBottom = total == 0 || lastVisible >= total - 1
+                if (scrolling && !atBottom) followStream = false
+                else if (!scrolling && atBottom) followStream = true
+            }
+        }
+        // 流式内容增长时也持续跟随：流式期间同一 assistant 消息可多次更新，size 不变，
+        // 需以最后一条消息的内容/思考长度变化驱动滚动（否则长文输出时列表停在气泡头部）
+        val streamAnchor = messages.lastOrNull()?.let { Triple(it.id, it.content.length, it.reasoning?.length ?: 0) }
+        LaunchedEffect(messages.size, isStreaming, followStream, streamAnchor) {
+            if (messages.isNotEmpty() && isStreaming && followStream) {
+                listState.scrollToBottom(animate = false)
+            }
+        }
+
         // Messages list
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (messages.isEmpty() && !isStreaming) {
@@ -698,20 +844,52 @@ private fun ChatContent(
                 }
             }
 
+            // 回合聚合渲染：用户消息独立气泡；其后的 assistant/tool 连续消息合并为一个助手气泡；
+            // SYSTEM 消息不渲染
+            val groups = remember(messages, streamingMessageId) {
+                buildList {
+                    val assists = mutableListOf<ChatMessage>()
+                    fun flushAssists() {
+                        if (assists.isNotEmpty()) {
+                            add(ChatGroup(null, assists.toList()))
+                            assists.clear()
+                        }
+                    }
+                    for (m in messages) {
+                        when (m.role) {
+                            ChatRole.USER -> { flushAssists(); add(ChatGroup(m, emptyList())) }
+                            ChatRole.SYSTEM -> { /* 聚合边界提示不显示 */ }
+                            else -> assists.add(m)
+                        }
+                    }
+                    flushAssists()
+                }.also {
+                    android.util.Log.d("AiChat", "groups=${it.size} msgs=${messages.size} roles=${messages.map { m -> m.role.name }.joinToString(",")}")
+                }
+            }
+
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(messages, key = { "${it.id}-${it.timestamp}" }) { msg ->
-                    val isLastUser = msg.role == ChatRole.USER && messages.lastOrNull { it.role == ChatRole.USER }?.id == msg.id
+                items(groups, key = { g -> (g.user?.id ?: (g.assists.firstOrNull()?.id ?: "")) + "-" + (g.user?.timestamp ?: g.assists.firstOrNull()?.timestamp ?: 0L) }) { g ->
+                    val isLastUser = g.user != null &&
+                        messages.lastOrNull { it.role == ChatRole.USER }?.id == g.user.id
+                    val msgId = g.user?.id ?: g.assists.firstOrNull()?.id ?: ""
+                    val streamingGroup = g.assists.any { it.id == streamingMessageId }
+                    // 工具执行/降级重试等「全局流式但 streamingMessageId 已清空」的等待期，
+                    // 最后组仍需以流式态渲染，气泡末尾的加载指示器才可见
+                    val lastGroupStreaming = isStreaming && groups.lastOrNull() == g
                     ChatMessageBubble(
-                        message = msg,
-                        isStreaming = msg.id == streamingMessageId,
+                        user = g.user,
+                        assists = g.assists,
+                        groupId = msgId,
+                        isStreaming = streamingGroup || lastGroupStreaming,
                         shareMode = shareMode,
-                        isSelected = msg.id in selectedShareMessages,
-                        onToggleSelect = { onToggleShareMessage(msg.id) },
+                        isSelected = msgId in selectedShareMessages,
+                        onToggleSelect = { onToggleShareMessage(msgId) },
                         onOpenFile = onOpenFile,
                         onCopy = onCopy,
                         onRegenerate = onRegenerate,
@@ -738,7 +916,10 @@ private fun ChatContent(
                         Icon(ArrowCollapseUpIcon, contentDescription = "回到顶部", modifier = Modifier.size(16.dp))
                     }
                     FilledTonalIconButton(
-                        onClick = { scope.launch { listState.scrollToBottom(animate = true) } },
+                        onClick = {
+                            followStream = true
+                            scope.launch { listState.scrollToBottom(animate = true) }
+                        },
                         modifier = Modifier.size(34.dp)
                     ) {
                         Icon(ArrowCollapseDownIcon, contentDescription = "回到底部", modifier = Modifier.size(16.dp))
@@ -795,6 +976,14 @@ private fun ChatContent(
                     }
                 }
             }
+        }
+
+        // AI 提问横幅（非弹窗模式：默认在编辑框上方显示，同 error banner 位置；弹窗模式另行渲染）
+        if (pendingAsk != null && !SettingsManager.currentSettings.askUserInDialog) {
+            AiAskUserBanner(
+                state = pendingAsk,
+                onRespond = onAskUserRespond
+            )
         }
 
         // Input area（编辑框去阴影：无 shadowElevation）
@@ -900,6 +1089,206 @@ private fun ChatContent(
                 }
             }
         }
+    }
+}
+
+// ========== AI 提问横幅 ==========
+
+/** AI 提问横幅（非弹窗）：显示在 AI 侧边栏编辑框上方，圆角跟随 luafabric 主题。 */
+@Composable
+private fun AiAskUserBanner(
+    state: AskUserPromptState,
+    onRespond: (List<String>?) -> Unit
+) {
+    val radius = askUiThemeRadius()
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(radius),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = state.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (state.description.isNotBlank()) {
+                Text(
+                    text = state.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            AskUserOptionsContent(
+                state = state,
+                onRespond = onRespond
+            )
+        }
+    }
+}
+
+/** 共用选项区：单选用自绘圆点（点击即回）；多选自绘方框勾选后确认；「其他」展开单横线编辑框。
+ *  判断基于选项索引（AskUserToolBase 恒把「其他」追加在末尾），避免字符串匹配。 */
+@Composable
+private fun AskUserOptionsContent(
+    state: AskUserPromptState,
+    onRespond: (List<String>?) -> Unit
+) {
+    var othersText by remember(state) { mutableStateOf("") }
+    var selectedIndices by remember(state) { mutableStateOf(setOf<Int>()) }
+    val otherIndex = state.options.lastIndex
+
+    state.options.forEachIndexed { index, option ->
+        val isOther = index == otherIndex
+        val label = if (isOther) "其他" else option
+        if (state.multi) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        selectedIndices = if (index in selectedIndices) selectedIndices - index else selectedIndices + index
+                    }
+                    .heightIn(min = 28.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 自绘紧凑复选框：紧贴左侧（替代带默认 48dp 触控盒的 M3 Checkbox）
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            if (index in selectedIndices) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (index in selectedIndices) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(label, style = MaterialTheme.typography.bodySmall)
+            }
+            if (isOther && index in selectedIndices) {
+                UnderlineTextField(
+                    value = othersText,
+                    onValueChange = { othersText = it },
+                    placeholder = "输入您的回答",
+                    modifier = Modifier.padding(start = 28.dp)
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (isOther) {
+                            selectedIndices = setOf(index)
+                        } else {
+                            onRespond(listOf(option))
+                        }
+                    }
+                    .heightIn(min = 28.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 自绘紧凑单选圆点：紧贴左侧（替代带默认内边距的 M3 RadioButton）
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .border(
+                            width = 2.dp,
+                            color = if (index in selectedIndices) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (index in selectedIndices) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(label, style = MaterialTheme.typography.bodySmall)
+            }
+            if (isOther && index in selectedIndices) {
+                UnderlineTextField(
+                    value = othersText,
+                    onValueChange = { othersText = it },
+                    placeholder = "输入您的回答",
+                    modifier = Modifier.padding(start = 28.dp)
+                )
+            }
+        }
+    }
+    // 确认行：多选恒显示；单选选了「其他」也显示
+    if (state.multi || selectedIndices.isNotEmpty()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = { onRespond(null) }) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = {
+                // 按索引组装结果：排除末尾的「其他」，未填的自定义文本时视为取消
+                val chosen = selectedIndices.mapNotNull { idx ->
+                    if (idx == otherIndex) null else state.options[idx]
+                }
+                val withCustom = if (othersText.isNotBlank()) chosen + othersText else chosen
+                onRespond(if (withCustom.isEmpty()) null else withCustom)
+            }) { Text(stringResource(R.string.ok)) }
+        }
+    }
+}
+
+/** 单横线编辑框：无外框，仅底部一条线（高信息密度输入样式）。 */
+@Composable
+private fun UnderlineTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    inner()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
 
@@ -1100,11 +1489,45 @@ private fun AiErrorBannerCollection(
     }
 }
 
-// ========== Chat Message Bubble ==========
+// ========== Chat Message Bubble（回合聚合渲染） ==========
+
+/** 一次用户提问及其引发的助手回合（思考/工具调用/工具结果/多段回复）。 */
+private data class ChatGroup(
+    val user: ChatMessage?,
+    val assists: List<ChatMessage>
+)
+
+/** 助手气泡内的展平渲染条目（保持原始顺序）。 */
+private sealed class BubbleItem {
+    data class Think(val text: String) : BubbleItem()
+    data class Tool(val name: String, val args: String, val result: String?) : BubbleItem()
+    data class Text(val text: String, val streaming: Boolean) : BubbleItem()
+}
+
+/** 把助手回合消息展平为有序条目：思考→工具(紧接其结果)→文本。 */
+private fun flattenGroup(assists: List<ChatMessage>): List<BubbleItem> {
+    val out = mutableListOf<BubbleItem>()
+    var pendingResult: String? = null
+    for (m in assists) {
+        if (m.role == ChatRole.TOOL) {
+            pendingResult = m.content
+            continue
+        }
+        if (m.reasoning.isNotBlank()) out += BubbleItem.Think(m.reasoning)
+        for (tc in m.toolCalls) {
+            out += BubbleItem.Tool(tc.name, tc.arguments, pendingResult)
+            pendingResult = null
+        }
+        if (m.content.isNotBlank()) out += BubbleItem.Text(m.content, m.isStreaming)
+    }
+    return out
+}
 
 @Composable
 private fun ChatMessageBubble(
-    message: ChatMessage,
+    user: ChatMessage?,
+    assists: List<ChatMessage>,
+    groupId: String,
     isStreaming: Boolean,
     shareMode: Boolean,
     isSelected: Boolean,
@@ -1117,8 +1540,7 @@ private fun ChatMessageBubble(
     onResend: () -> Unit = {},
     projectPath: String = ""
 ) {
-    val isUser = message.role == ChatRole.USER
-    val isTool = message.role == ChatRole.TOOL
+    val isUser = user != null
     var showResendConfirm by remember { mutableStateOf(false) }
 
     // 圆角跟随 LuaFabric 主题配置（形状圆角）
@@ -1186,241 +1608,268 @@ private fun ChatMessageBubble(
             modifier = Modifier.weight(1f),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
-            Surface(
-                shape = RoundedCornerShape(
-                    topStart = baseSize,
-                    topEnd = baseSize,
-                    bottomStart = if (isUser) baseSize else 4.dp,
-                    bottomEnd = if (isUser) 4.dp else baseSize
-                ),
-                color = if (isUser) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.surfaceVariant,
-                tonalElevation = 0.dp
-            ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    // Code reference in message（两行：引用头 + 可折叠的选区节选）
-                    message.codeReference?.let { ref ->
-                        var refExpanded by remember { mutableStateOf(false) }
-                        val relativePath = run {
-                            val p = projectPath.trimEnd('/', '\\')
-                            val fp = ref.filePath.replace('\\', '/')
-                            val rel = fp.removePrefix(p.trimEnd('/', '\\').replace('\\', '/') + "/")
-                            if (rel.isNotBlank() && rel != fp) rel else ref.fileName
-                        }
-                        val lineText = if (ref.startLine == ref.endLine) "第${ref.startLine}行"
-                        else "第${ref.startLine}~${ref.endLine}行"
-                        val cleaned = ref.content
-                            .replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
-                            .replace(Regex("""\s+"""), " ")
-                            .trim()
-                        val excerpt = if (cleaned.length > 200) cleaned.take(200).trimEnd() + "..." else cleaned
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(4.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { refExpanded = !refExpanded }
-                        ) {
-                            Column(modifier = Modifier.padding(6.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        FormatQuoteOpenIcon,
-                                        contentDescription = "代码引用",
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "$relativePath：$lineText",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Icon(
-                                        if (refExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
-                                        contentDescription = if (refExpanded) "收起" else "展开",
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                                AnimatedVisibility(visible = refExpanded) {
-                                    Text(
-                                        text = excerpt,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
+            if (isUser) {
+                // ===== 用户单气泡 =====
+                val u = user
+                Surface(
+                    shape = RoundedCornerShape(
+                        topStart = baseSize, topEnd = baseSize,
+                        bottomStart = baseSize, bottomEnd = 4.dp
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                    tonalElevation = 0.dp
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        u?.codeReference?.let { ref ->
+                            var refExpanded by remember { mutableStateOf(false) }
+                            val relativePath = run {
+                                val p = projectPath.trimEnd('/', '\\')
+                                val fp = ref.filePath.replace('\\', '/')
+                                val rel = fp.removePrefix(p.trimEnd('/', '\\').replace('\\', '/') + "/")
+                                if (rel.isNotBlank() && rel != fp) rel else ref.fileName
                             }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-
-                    // 思考过程（thinking 模型 reasoning_content）：容器色圆角卡片，流式时展开，正文开始后自动折叠
-                    if (!isUser && !isTool && message.reasoning.isNotBlank()) {
-                        var reasoningExpanded by remember(message.id) {
-                            // 无正文（思考中，或模型只回了思考链）默认展开；正文出现后自动折叠
-                            mutableStateOf(message.content.isBlank())
-                        }
-                        LaunchedEffect(message.content.isNotBlank()) {
-                            if (message.content.isNotBlank()) reasoningExpanded = false
-                        }
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { reasoningExpanded = !reasoningExpanded }
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Filled.Psychology,
-                                        contentDescription = "思考过程",
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "思考过程",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Icon(
-                                        if (reasoningExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
-                                        contentDescription = if (reasoningExpanded) "收起" else "展开",
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                AnimatedVisibility(visible = reasoningExpanded) {
-                                    Text(
-                                        text = message.reasoning,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-
-                    // 工具调用：思考过程下方，「调用 xxx <arrow>」折叠行，展开显示相对路径；完成后新思考/输出在其下方
-                    if (!isUser && !isTool && message.toolCalls.isNotEmpty()) {
-                        message.toolCalls.forEach { tc ->
-                            var tcExpanded by remember(message.id, tc.id) { mutableStateOf(false) }
-                            val relPath = run {
-                                val ap = toolCallPath(tc.arguments)
-                                if (ap.isNullOrBlank() || projectPath.isBlank()) null
-                                else {
-                                    val p = projectPath.trimEnd('/', '\\').replace('\\', '/')
-                                    val f = ap.replace('\\', '/')
-                                    val r = f.removePrefix(p + "/")
-                                    if (r.isNotBlank() && r != f) r else ap
-                                }
-                            }
+                            val lineText = if (ref.startLine == ref.endLine) "第${ref.startLine}行"
+                            else "第${ref.startLine}~${ref.endLine}行"
+                            val cleaned = ref.content
+                                .replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+                                .replace(Regex("""\s+"""), " ")
+                                .trim()
+                            val excerpt = if (cleaned.length > 200) cleaned.take(200).trimEnd() + "..." else cleaned
                             Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(4.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { tcExpanded = !tcExpanded }
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { refExpanded = !refExpanded }
                             ) {
-                                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
+                                Column(modifier = Modifier.padding(6.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            if (tcExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
-                                            contentDescription = if (tcExpanded) "收起" else "展开",
+                                            FormatQuoteOpenIcon,
+                                            contentDescription = "代码引用",
                                             modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
                                         )
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "调用 ${tc.name}",
+                                            text = "$relativePath：$lineText",
                                             style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1f)
                                         )
+                                        Icon(
+                                            if (refExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
+                                            contentDescription = if (refExpanded) "收起" else "展开",
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
                                     }
-                                    AnimatedVisibility(visible = tcExpanded) {
+                                    AnimatedVisibility(visible = refExpanded) {
                                         Text(
-                                            text = relPath ?: tc.arguments.take(200),
+                                            text = excerpt,
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                            modifier = Modifier.padding(top = 3.dp, start = 18.dp)
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                                            modifier = Modifier.padding(top = 4.dp)
                                         )
                                     }
                                 }
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                         }
+                        // 用户文本：覆盖选择手柄色避免与 primary 同色不可见
+                        val userContent = u?.content ?: ""
+                        val userSelectionColors = TextSelectionColors(
+                            handleColor = MaterialTheme.colorScheme.onPrimary,
+                            backgroundColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f)
+                        )
+                        CompositionLocalProvider(LocalTextSelectionColors provides userSelectionColors) {
+                            SelectionContainer {
+                                Text(
+                                    text = userContent + if (isStreaming) " ▌" else "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
                     }
-
-                    // Content with SelectionContainer for system long-press copy
-                    if (message.content.isNotBlank()) {
-                        if (isUser) {
-                            // 用户气泡背景为 primary 色，默认选择手柄同为 primary 导致同色不可见，
-                            // 覆盖为 onPrimary 使手柄在长按选中时可辨识。
-                            val userSelectionColors = TextSelectionColors(
-                                handleColor = MaterialTheme.colorScheme.onPrimary,
-                                backgroundColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f)
-                            )
-                            CompositionLocalProvider(LocalTextSelectionColors provides userSelectionColors) {
-                                SelectionContainer {
-                                    Text(
-                                        text = message.content + if (isStreaming) " ▌" else "",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onPrimary
+                }
+            } else {
+                // ===== 助手回合聚合气泡 =====
+                val items = remember(assists, groupId) { flattenGroup(assists) }
+                Surface(
+                    shape = RoundedCornerShape(
+                        topStart = baseSize, topEnd = baseSize,
+                        bottomStart = 4.dp, bottomEnd = baseSize
+                    ),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    tonalElevation = 0.dp
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        // 流式占位：真实内容（思考/工具/文本）尚未产出时显示循环加载指示器
+                        if (isStreaming && items.isEmpty()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                LoadingIndicator(modifier = Modifier.size(32.dp))
+                            }
+                        }
+                        items.forEach { item ->
+                            when (item) {
+                                is BubbleItem.Think -> {
+                                    var exp by remember(groupId, item.text.length) { mutableStateOf(false) }
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { exp = !exp }
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Filled.Psychology,
+                                                    contentDescription = "思考过程",
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "思考过程",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Icon(
+                                                    if (exp) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
+                                                    contentDescription = if (exp) "收起" else "展开",
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            AnimatedVisibility(visible = exp) {
+                                                Text(
+                                                    text = item.text,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                                    modifier = Modifier.padding(top = 4.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+                                is BubbleItem.Tool -> {
+                                    var exp by remember(groupId, item.name, item.args.length) { mutableStateOf(false) }
+                                    val relPath = run {
+                                        val ap = toolCallPath(item.args)
+                                        if (ap.isNullOrBlank() || projectPath.isBlank()) null
+                                        else {
+                                            val p = projectPath.trimEnd('/', '\\').replace('\\', '/')
+                                            val f = ap.replace('\\', '/')
+                                            val r = f.removePrefix(p + "/")
+                                            if (r.isNotBlank() && r != f) r else ap
+                                        }
+                                    }
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { exp = !exp }
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "调用 ${item.name}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(
+                                                    if (exp) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowLeft,
+                                                    contentDescription = if (exp) "收起" else "展开",
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            AnimatedVisibility(visible = exp) {
+                                                Column(modifier = Modifier.padding(top = 3.dp)) {
+                                                    Text(
+                                                        text = relPath ?: item.args.take(200),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                                                    )
+                                                    // 工具结果并入同一折叠区，不再单独气泡
+                                                    if (!item.result.isNullOrBlank()) {
+                                                        Text(
+                                                            text = item.result,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                                                            modifier = Modifier.padding(top = 4.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+                                is BubbleItem.Text -> {
+                                    AiMessageContent(
+                                        content = item.text + if (item.streaming) " ▌" else "",
+                                        modifier = Modifier.fillMaxWidth()
                                     )
+                                    Spacer(modifier = Modifier.height(4.dp))
                                 }
                             }
-                        } else {
-                            AiMessageContent(
-                                content = message.content,
-                                modifier = Modifier.fillMaxWidth()
-                            )
                         }
-                    } else if (isStreaming && !isUser && message.reasoning.isBlank()) {
-                        AndroidView(
-                            factory = { ctx ->
-                                com.google.android.material.loadingindicator.LoadingIndicator(ctx).apply {
-                                    show()
-                                }
-                            },
-                            modifier = Modifier.size(24.dp)
-                        )
+                        // 工具调用后等待期：工具结果已回传、模型正在处理下一轮，显示小号加载指示
+                        if (isStreaming && items.lastOrNull() is BubbleItem.Tool) {
+                            Row(
+                                modifier = Modifier.padding(top = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                LoadingIndicator(modifier = Modifier.size(24.dp))
+                            }
+                        }
                     }
                 }
             }
 
-            // Action buttons + timestamp for assistant messages
-            if (!isUser && !isTool) {
+            // Action buttons + timestamp for assistant groups
+            if (!isUser) {
+                val contentLen = assists.map { it.content.length }.sum()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 4.dp, top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Timestamp
                     Text(
-                        text = formatTimestamp(message.timestamp),
+                        text = formatTimestamp(assists.firstOrNull()?.timestamp ?: 0L),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.weight(1f)
                     )
                     // Token consumption
                     Text(
-                        text = "~${message.content.length / 4} tokens",
+                        text = "~${maxOf(0, contentLen / 4)} tokens",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                         modifier = Modifier.padding(end = 4.dp)
                     )
                     // Action buttons
-                    ActionIconButton(Icons.Filled.ContentCopy, "复制", onClick = { onCopy(message.content) })
+                    val copyText = assists.map { it.content }.filter { it.isNotBlank() }.joinToString("\n\n")
+                    ActionIconButton(Icons.Filled.ContentCopy, "复制", onClick = { onCopy(copyText) })
                     ActionIconButton(Icons.Filled.Refresh, "重新生成", onClick = onRegenerate)
                     ActionIconButton(Icons.Filled.Share, "分享", onClick = onEnterShareMode)
                 }
@@ -1507,6 +1956,13 @@ private fun AiSettingsPage(
     onConfigChanged: (AiConfig) -> Unit
 ) {
     val context = LocalContext.current
+    // AI 询问展示方式（编辑区上横幅 / 弹窗）
+    var askUserDialogMode by remember { mutableStateOf(SettingsManager.currentSettings.askUserInDialog) }
+    fun updateAskUserDialogMode(v: Boolean) {
+        askUserDialogMode = v
+        SettingsManager.updateSettings(SettingsManager.currentSettings.copy(askUserInDialog = v))
+        SettingsManager.saveSettings(context)
+    }
 
     // Extract bundled skills from raw resources to private directory
     LaunchedEffect(Unit) {
@@ -1920,6 +2376,34 @@ private fun AiSettingsPage(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
+            }
+        }
+
+        SettingsCollapsibleEntry(
+            title = "询问",
+            icon = Icons.Filled.Help,
+            expanded = "询问" !in collapsedSections,
+            onExpandedChange = { toggleSection("询问") }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { updateAskUserDialogMode(!askUserDialogMode) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("用弹窗展示AI询问", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "默认在编辑区上方询问您，开启后以弹窗方式显示AI对您的询问",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = askUserDialogMode,
+                    onCheckedChange = { updateAskUserDialogMode(it) }
+                )
             }
         }
     }
@@ -2499,18 +2983,16 @@ private fun formatTimestamp(timestamp: Long): String {
     }
 }
 
-// 滚动到列表真正的最底部：先滚到最后一个 item，若该 item 高于视口
-// 再按 item 高度计算偏移，让 item 底部与视口底部对齐，避免长消息被截断
+// scrollToItem 直达末条；高气泡时其顶部将对齐视口顶（停在气泡开始处），
+// 需用负向 scrollOffset 让气泡底部对齐视口底，才是真正的「列表底部」
 private suspend fun LazyListState.scrollToBottom(animate: Boolean) {
     val lastIndex = layoutInfo.totalItemsCount - 1
     if (lastIndex < 0) return
     if (animate) animateScrollToItem(lastIndex) else scrollToItem(lastIndex)
-    val info = layoutInfo
-    val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex }
-    if (lastVisible != null) {
-        val viewportHeight = info.viewportEndOffset - info.viewportStartOffset
-        val scrollOffset = viewportHeight - lastVisible.size
-        if (animate) animateScrollToItem(lastIndex, scrollOffset) else scrollToItem(lastIndex, scrollOffset)
+    val info = layoutInfo.visibleItemsInfo.lastOrNull() ?: return
+    val remain = info.offset + info.size - layoutInfo.viewportEndOffset
+    if (remain > 0) {
+        if (animate) animateScrollToItem(lastIndex, -remain) else scrollToItem(lastIndex, -remain)
     }
 }
 
@@ -2601,11 +3083,35 @@ private suspend fun sendMessage(
     setCurrentConversationId: (String) -> Unit,
     summary: String,
     setSummary: (String) -> Unit,
-    onAskUser: (title: String, options: List<String>, callback: (String?) -> Unit) -> Unit,
+    onAskUser: (title: String, description: String, options: List<String>, multi: Boolean, callback: (List<String>?) -> Unit) -> Unit,
     onConfirmInMain: (title: String, message: String, callback: (Boolean) -> Unit) -> Unit,
     onOpenFile: (filePath: String, startLine: Int, endLine: Int) -> Unit,
     onError: ((String) -> Unit)? = null
 ) {
+    android.util.Log.d("AiChat", "sendMessage start msgs=${messages.size} threshold=$COMPRESS_THRESHOLD")
+    val userMsgId = UUID.randomUUID().toString()
+    val userMessage = ChatMessage(
+        id = userMsgId,
+        role = ChatRole.USER,
+        content = inputText,
+        codeReference = codeReference
+    )
+    // 立即反馈：先追加用户消息 + AI 占位气泡并清空输入框，压缩摘要或等待首 token 期间
+    // 即显示占位加载气泡，避免 UI 长时间无响应（大上下文压缩需数秒）
+    var assistantMsgId = UUID.randomUUID().toString()
+    val placeholderAssistant = ChatMessage(
+        id = assistantMsgId,
+        role = ChatRole.ASSISTANT,
+        content = "",
+        isStreaming = true,
+        reasoning = ""
+    )
+    setMessages(messages + userMessage + placeholderAssistant)
+    setInputText("")
+    onClearReference()
+    setStreaming(true)
+    setStreamingMessageId(assistantMsgId)
+
     // 上下文压缩：消息过多时把最旧的压缩进滚动摘要，只保留最近窗口
     var effectiveMessages = messages
     var currentSummary = summary
@@ -2625,22 +3131,11 @@ private suspend fun sendMessage(
             currentSummary = newSummary
             setSummary(newSummary)
             effectiveMessages = kept
-            setMessages(kept)
+            setMessages(kept + userMessage + placeholderAssistant)
         }
     }
 
-    val userMsgId = UUID.randomUUID().toString()
-    val userMessage = ChatMessage(
-        id = userMsgId,
-        role = ChatRole.USER,
-        content = inputText,
-        codeReference = codeReference
-    )
-
     val updatedMessages = effectiveMessages + userMessage
-    setMessages(updatedMessages)
-    setInputText("")
-    onClearReference()
 
     // Build API messages: system prompt (skills + memories) + rolling summary + full context for code references
     val toolDefs = toolRegistry.getDefinitions()
@@ -2669,27 +3164,26 @@ private suspend fun sendMessage(
             } else msg
         }
 
-    var assistantMsgId = UUID.randomUUID().toString()
     var assistantContent = ""
     var assistantReasoning = ""
     var pendingToolCalls = mutableListOf<ToolCallInfo>()
-    var currentAssistantMessage = ChatMessage(
+    val currentAssistantMessage = ChatMessage(
         id = assistantMsgId,
         role = ChatRole.ASSISTANT,
         content = "",
         isStreaming = true
     )
-    setMessages(updatedMessages + currentAssistantMessage)
+    // 占位气泡已在发送时随 setMessages 前置，此处仅确保全局流式态（幂等）
     setStreaming(true)
     setStreamingMessageId(assistantMsgId)
 
     val toolContext = ToolContext(
         projectPath = projectPath,
-        // 对话框回调必须在主线程置状态；等待点击期间只挂起当前协程，禁止 runBlocking（主线程自锁 → ANR）
-        onAskUser = { title, options ->
-            val deferred = kotlinx.coroutines.CompletableDeferred<String?>()
+        // 对话框/横幅回调必须在主线程置状态；等待点击期间只挂起当前协程，禁止 runBlocking（主线程自锁 → ANR）
+        onAskUser = { title, description, options, multi ->
+            val deferred = kotlinx.coroutines.CompletableDeferred<List<String>?>()
             withContext(Dispatchers.Main) {
-                onAskUser(title, options) { deferred.complete(it) }
+                onAskUser(title, description, options, multi) { deferred.complete(it) }
             }
             deferred.await()
         },
@@ -2711,6 +3205,7 @@ private suspend fun sendMessage(
     // Main agent loop
     var conversationMessages = updatedMessages
     var lastApiError: String? = null
+    android.util.Log.d("AiChat", "sendMessage entering loop msgs=${conversationMessages.size} tools=${toolDefs.size}")
 
     try {
         while (true) {
@@ -2719,41 +3214,109 @@ private suspend fun sendMessage(
             pendingToolCalls.clear()
 
             val apiMessages = buildApiMessages(conversationMessages)
+            android.util.Log.d("AiChat", "round api msgs=${apiMessages.size} -> calling streamChat")
 
+            val activeCtx = currentCoroutineContext()
             kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { cont ->
+                // 停止后 OkHttp 回调仍会触发：用协程活跃性守卫，取消后不再写 UI/追加内容
                 AiChatRepository.streamChat(
                     config = config,
                     messages = apiMessages,
                     tools = toolDefs,
                     onChunk = { chunk ->
-                        assistantContent += chunk
-                        val msg = currentAssistantMessage.copy(
-                            content = assistantContent,
-                            reasoning = assistantReasoning,
-                            isStreaming = true
-                        )
-                        setMessages(conversationMessages + msg)
+                        if (activeCtx.isActive) {
+                            assistantContent += chunk
+                            val msg = currentAssistantMessage.copy(
+                                content = assistantContent,
+                                reasoning = assistantReasoning,
+                                isStreaming = true
+                            )
+                            setMessages(conversationMessages + msg)
+                        }
                     },
                     onReasoning = { chunk ->
-                        assistantReasoning += chunk
-                        val msg = currentAssistantMessage.copy(
-                            content = assistantContent,
-                            reasoning = assistantReasoning,
-                            isStreaming = true
-                        )
-                        setMessages(conversationMessages + msg)
+                        if (activeCtx.isActive) {
+                            assistantReasoning += chunk
+                            val msg = currentAssistantMessage.copy(
+                                content = assistantContent,
+                                reasoning = assistantReasoning,
+                                isStreaming = true
+                            )
+                            setMessages(conversationMessages + msg)
+                        }
                     },
                     onToolCall = { tc ->
-                        pendingToolCalls.add(tc)
+                        if (activeCtx.isActive) {
+                            pendingToolCalls.add(tc)
+                        }
                     },
                     onComplete = { error ->
-                        if (error != null) {
-                            lastApiError = error
-                            // Don't set assistantContent with error - just mark error
+                        if (activeCtx.isActive) {
+                            if (error != null) {
+                                lastApiError = error
+                                // Don't set assistantContent with error - just mark error
+                            }
+                            cont.resume(error == null, null)
                         }
-                        cont.resume(error == null, null)
                     }
                 )
+            }
+
+            // 流式降级重试：部分端点（如 SiliconFlow 对部分模型的流式工具兼容问题）在 stream=true 时
+            // 不下发 tool_calls，响应只剩 reasoning 后空结束。本轮无文本且无工具调用（异常空返回）时，
+            // 用同参数非流式重试一次，恢复工具调用能力（对正常流式输出零影响）。
+            if (
+                config.resolvedProtocol == ApiProtocol.OPENAI &&
+                lastApiError == null &&
+                assistantContent.isEmpty() &&
+                pendingToolCalls.isEmpty()
+            ) {
+                android.util.Log.w("AiChat", "stream returned empty(no text/no tool) -> non-stream retry once")
+                assistantContent = ""
+                assistantReasoning = ""
+                pendingToolCalls.clear()
+                val activeCtx2 = currentCoroutineContext()
+                kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { cont ->
+                    AiChatRepository.streamChat(
+                        config = config,
+                        messages = apiMessages,
+                        tools = toolDefs,
+                        stream = false,
+                        onChunk = { chunk ->
+                            if (activeCtx2.isActive) {
+                                assistantContent += chunk
+                                setMessages(conversationMessages + currentAssistantMessage.copy(
+                                    content = assistantContent,
+                                    reasoning = assistantReasoning,
+                                    isStreaming = true
+                                ))
+                            }
+                        },
+                        onReasoning = { chunk ->
+                            if (activeCtx2.isActive) {
+                                assistantReasoning += chunk
+                                setMessages(conversationMessages + currentAssistantMessage.copy(
+                                    content = assistantContent,
+                                    reasoning = assistantReasoning,
+                                    isStreaming = true
+                                ))
+                            }
+                        },
+                        onToolCall = { tc ->
+                            if (activeCtx2.isActive) {
+                                pendingToolCalls.add(tc)
+                            }
+                        },
+                        onComplete = { error ->
+                            if (activeCtx2.isActive) {
+                                if (error != null) {
+                                    lastApiError = error
+                                }
+                                cont.resume(error == null, null)
+                            }
+                        }
+                    )
+                }
             }
 
             val finalAssistantMsg = ChatMessage(

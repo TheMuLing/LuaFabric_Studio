@@ -15,7 +15,14 @@ data class OpenAiChatRequest(
     val maxTokens: Int = 4096,
     val tools: List<OpenAiTool>? = null,
     @SerializedName("tool_choice")
-    val toolChoice: String = "auto"
+    val toolChoice: String = "auto",
+    // 思考开关（按 host/模型注入，参考 rikkahub 适配）：SiliconFlow 等端点对 thinking 模型
+    // 若不显式传 enable_thinking，流式响应只回 reasoning 而不下发 tool_calls，导致工具不可用
+    @SerializedName("enable_thinking")
+    val enableThinking: Boolean? = null,
+    @SerializedName("reasoning_effort")
+    val reasoningEffort: String? = null,
+    val thinking: Map<String, Any>? = null
 )
 
 data class OpenAiMessage(

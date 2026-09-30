@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -154,7 +155,8 @@ fun CodeEditScreen(
 
     // AI 侧边栏状态
     var codeReference by remember { mutableStateOf<CodeReference?>(null) }
-    val drawerSelectedTab = remember { mutableStateOf(DrawerTab.FILE_TREE) }
+    // 抽屉页签：rememberSaveable 持久化，横竖屏重建后仍停留原 tab（AI/文件树）
+    val drawerSelectedTab = rememberSaveable { mutableStateOf(DrawerTab.FILE_TREE) }
 
     val onAiCodeReference: (String, String, Int, Int, String) -> Unit = { filePath, fileName, startLine, endLine, content ->
         codeReference = CodeReference(
@@ -172,8 +174,7 @@ fun CodeEditScreen(
         }
     }
 
-    // AI 对话框状态
-    var askUserDialogState by remember { mutableStateOf<AskUserDialogState?>(null) }
+    // AI 确认对话框状态
     var confirmDialogState by remember { mutableStateOf<ConfirmDialogState?>(null) }
 
     // 后缀选择菜单状态（独立于输入框）
@@ -628,9 +629,6 @@ fun CodeEditScreen(
                         }
                     }
                 },
-                onAskUser = { title, options, callback ->
-                    askUserDialogState = AskUserDialogState(title, options, callback)
-                },
                 onConfirmInMain = { title, message, callback ->
                     confirmDialogState = ConfirmDialogState(title, message, callback)
                 },
@@ -942,39 +940,6 @@ fun CodeEditScreen(
                                 )
                             }
 
-                            // AI 询问用户对话框
-                            askUserDialogState?.let { state ->
-                                AlertDialog(
-                                    onDismissRequest = {
-                                        state.callback(null)
-                                        askUserDialogState = null
-                                    },
-                                    title = { Text(state.title) },
-                                    text = {
-                                        Column {
-                                            state.options.forEachIndexed { index, option ->
-                                                TextButton(
-                                                    onClick = {
-                                                        state.callback(option)
-                                                        askUserDialogState = null
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) {
-                                                    Text(option)
-                                                }
-                                            }
-                                        }
-                                    },
-                                    confirmButton = {},
-                                    dismissButton = {
-                                        TextButton(onClick = {
-                                            state.callback(null)
-                                            askUserDialogState = null
-                                        }) { Text(stringResource(R.string.cancel)) }
-                                    }
-                                )
-                            }
-
                             // AI 确认对话框
                             confirmDialogState?.let { state ->
                                 AlertDialog(
@@ -1020,12 +985,6 @@ fun CodeEditScreen(
 
 enum class DrawerTab { FILE_TREE, AI }
 
-data class AskUserDialogState(
-    val title: String,
-    val options: List<String>,
-    val callback: (String?) -> Unit
-)
-
 data class ConfirmDialogState(
     val title: String,
     val message: String,
@@ -1043,7 +1002,6 @@ fun ProjectFileTree(
     codeReference: CodeReference?,
     onClearReference: () -> Unit,
     onOpenFile: (filePath: String, startLine: Int, endLine: Int) -> Unit,
-    onAskUser: (title: String, options: List<String>, callback: (String?) -> Unit) -> Unit,
     onConfirmInMain: (title: String, message: String, callback: (Boolean) -> Unit) -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
@@ -1088,7 +1046,6 @@ fun ProjectFileTree(
                             codeReference = codeReference,
                             onClearReference = onClearReference,
                             onOpenFile = onOpenFile,
-                            onAskUser = onAskUser,
                             onConfirmInMain = onConfirmInMain,
                             onNavigateToSettings = onNavigateToSettings
                         )
