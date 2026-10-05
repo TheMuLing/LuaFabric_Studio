@@ -53,6 +53,10 @@ class ForumPostDetailActivity : ComponentActivity() {
         /** 未登录跳账户：列表页据返回码切账户界面 */
         const val RESULT_LOGIN_REQUIRED = 1001
 
+        /** 点标签回填搜索：列表页据返回码取 EXTRA_SEARCH_TAG 回填并搜 */
+        const val RESULT_SEARCH_TAG = 1002
+        const val EXTRA_SEARCH_TAG = "search_tag"
+
         fun intent(context: Context, post: ForumItem): Intent =
             Intent(context, ForumPostDetailActivity::class.java)
                 .putExtra(EXTRA_POST, Gson().toJson(post))
@@ -98,6 +102,13 @@ class ForumPostDetailActivity : ComponentActivity() {
                                 toast = toast,
                                 onRequireLogin = {
                                     setResult(RESULT_LOGIN_REQUIRED)
+                                    finishSliding()
+                                },
+                                onTagClick = { tag ->
+                                    setResult(
+                                        RESULT_SEARCH_TAG,
+                                        Intent().putExtra(EXTRA_SEARCH_TAG, "#$tag")
+                                    )
                                     finishSliding()
                                 },
                                 onBack = { finishSliding() }

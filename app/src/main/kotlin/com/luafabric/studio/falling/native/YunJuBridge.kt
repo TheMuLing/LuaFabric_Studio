@@ -32,13 +32,13 @@ object YunJuBridge {
 
     /**
      * 发表评论（Comment.php，native 直发）。
-     * @param postId 帖子 ID；user/qq/nickname 取当前登录用户身份；content 评论内容
+     * user（管理员账号）恒由 native 内部常量填充；qq/nickname 为当前登录用户身份
+     * @param postId 帖子 ID；content 评论内容
      * @return 响应体字符串；被门控拦截或网络失败返回 null
      */
     external fun nativeComment(
         context: Context,
         postId: Long,
-        user: String,
         qq: String,
         nickname: String,
         content: String
@@ -46,35 +46,38 @@ object YunJuBridge {
 
     /**
      * 拉取评论 + 回复列表（CommentList.php，native 直发）。
-     * @param postId 帖子 ID；user 为当前登录用户身份
+     * user 恒由 native 内部常量填充
+     * @param postId 帖子 ID
      * @return 响应体字符串；被门控拦截或网络失败返回 null
      */
-    external fun nativeCommentList(context: Context, postId: Long, user: String): String?
+    external fun nativeCommentList(context: Context, postId: Long): String?
 
     /**
      * 点赞/取消点赞（Praise.php，native 直发）。
-     * @param postId 帖子 ID；user/qq 为当前登录用户身份
+     * user 恒由 native 内部常量填充；qq 为当前登录用户身份
+     * @param postId 帖子 ID
      * @return 响应体字符串；被门控拦截或网络失败返回 null
      */
-    external fun nativePraise(context: Context, postId: Long, user: String, qq: String): String?
+    external fun nativePraise(context: Context, postId: Long, qq: String): String?
 
     /**
      * 收藏/取消收藏（Follow.php，native 直发）。
-     * @param postId 帖子 ID；user/qq 为当前登录用户身份
+     * user 恒由 native 内部常量填充；qq 为当前登录用户身份
+     * @param postId 帖子 ID
      * @return 响应体字符串；被门控拦截或网络失败返回 null
      */
-    external fun nativeFollow(context: Context, postId: Long, user: String, qq: String): String?
+    external fun nativeFollow(context: Context, postId: Long, qq: String): String?
 
     /**
      * 回复评论（CommentReply.php，native 直发）。
-     * @param postId 帖子 ID；commentId 被回复的评论 ID；user/qq/nickname 为当前登录用户身份
+     * user 恒由 native 内部常量填充；qq/nickname 为当前登录用户身份
+     * @param postId 帖子 ID；commentId 被回复的评论 ID
      * @return 响应体字符串；被门控拦截或网络失败返回 null
      */
     external fun nativeCommentReply(
         context: Context,
         postId: Long,
         commentId: Long,
-        user: String,
         qq: String,
         nickname: String,
         content: String
@@ -82,14 +85,12 @@ object YunJuBridge {
 
     /**
      * 在线状态心跳上报（zaixian.php，native 直发 yuju:81）。
-     * @param backstage 云居后台账号（恒 YUNJU_ADMIN）；appid 恒 YUNJU_APP_ID；
-     *        user 当前登录用户账号（未登录不上报，Kotlin 侧控流）
+     * backstage/appid 恒由 native 内部常量填充；user 为当前登录用户账号
+     * （未登录不上报，Kotlin 侧控流）
      * @return 响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON）；被门控拦截或网络失败返回 null
      */
     external fun nativeOnlineSubmit(
         context: Context,
-        backstage: String,
-        appid: String,
         user: String
     ): String?
 
@@ -128,14 +129,12 @@ object YunJuBridge {
 
     /**
      * 图片单次直传（FileUpload.php，multipart/form-data，native 直发 yuju:81，套门控）。
-     * @param backstage 云居后台账号（恒 YUNJU_ADMIN）；appid 恒 YUNJU_APP_ID
+     * backstage/appid 恒由 native 内部常量填充
      * @param filePath 本地压缩后图片绝对路径；fileName 原始文件名；fileType MIME（如 image/jpeg）
      * @return 响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON）；被门控拦截或网络失败返回 null
      */
     external fun nativeUploadImage(
         context: Context,
-        backstage: String,
-        appid: String,
         filePath: String,
         fileName: String,
         fileType: String
@@ -143,13 +142,12 @@ object YunJuBridge {
 
     /**
      * 发帖（Issue.php，native 直发 yuju:81，套门控）。
-     * @param user 恒 YUNJU_ADMIN；qq/nickname 当前登录用户；forumId 板块 ID；
-     *        title/content/img 帖子标题/正文（含分类标志前缀）/图片直链
+     * user 恒由 native 内部常量填充；qq/nickname 为当前登录用户；forumId 板块 ID；
+     * title/content/img 帖子标题/正文（含分类标志前缀）/图片直链
      * @return 响应体字符串；被门控拦截或网络失败返回 null
      */
     external fun nativeIssuePost(
         context: Context,
-        user: String,
         qq: String,
         nickname: String,
         forumId: Int,
@@ -157,4 +155,36 @@ object YunJuBridge {
         content: String,
         img: String
     ): String?
+
+    /**
+     * 拉取云居托管文档正文（wd_query.php，native 直发，套门控）。
+     * 文档 id 恒为 2（标签词表文档），硬编码在 native，不下沉到 Kotlin。
+     * @return 响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON 后取 content 字段）；
+     *         被门控拦截或网络失败返回 null
+     */
+    external fun fetchTagDoc(context: Context): String?
+
+    /**
+     * 加减金币（user_jb.php，native 直发 yunju:443，套门控）。
+     * appid/key 恒由 native 内部常量填充。
+     * @param user 目标用户账号；value > 0 扣币、value < 0 加币
+     * @return 响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON）；被门控拦截或网络失败返回 null
+     */
+    external fun nativeAddCoin(context: Context, user: String, value: Int): String?
+
+    /**
+     * 付费流程审计日志（fk_tj.php，native 直发 yunju:443，套门控）。
+     * appid/key 恒由 native 内部常量填充。
+     * @param user 用户账号；content 最简 JSON 文本
+     * @return 响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON）；被门控拦截或网络失败返回 null
+     */
+    external fun nativeFkSubmit(context: Context, user: String, content: String): String?
+
+    /**
+     * 拉取已购/收藏列表（FollowList.php，native 直发 yuju:81，套门控）。
+     * user 恒由 native 内部常量填充。
+     * @param qq 当前登录 QQ
+     * @return 响应体字符串（含 HTTP 头，Kotlin 侧裁剪 JSON）；被门控拦截或网络失败返回 null
+     */
+    external fun nativeFollowList(context: Context, qq: String): String?
 }

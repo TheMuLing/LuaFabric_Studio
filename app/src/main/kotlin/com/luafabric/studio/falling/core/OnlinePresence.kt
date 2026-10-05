@@ -33,9 +33,6 @@ object OnlinePresence {
     private const val TAG = "Online"
     private const val WORK_NAME = "online_presence_bg"
     private const val BG_INTERVAL_MINUTES = 15L
-    // 与原生层常量一致：云居后台账号 / 应用 APPID
-    private const val BACKSTAGE = "3445352175" // YUNJU_ADMIN
-    private const val APPID = "2283" // YUNJU_APP_ID
 
     @Volatile
     private var running = false
@@ -125,7 +122,7 @@ object OnlinePresence {
 
     private fun submit(context: Context, qq: String): Boolean {
         try {
-            val resp = YunJuBridge.nativeOnlineSubmit(context, BACKSTAGE, APPID, qq)
+            val resp = YunJuBridge.nativeOnlineSubmit(context, qq)
             if (resp == null) {
                 Log.w(TAG, "submit gated/failed, qq=${qq.take(4)}")
                 return false

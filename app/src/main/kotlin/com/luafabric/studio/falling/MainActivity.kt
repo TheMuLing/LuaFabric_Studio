@@ -107,10 +107,11 @@ import com.luafabric.studio.falling.ui.manual.ManualScreen
 import com.luafabric.studio.falling.ui.project.NewProjectScreen
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.luafabric.studio.falling.ui.forum.ForumComposeScreen
+import com.luafabric.studio.falling.ui.forum.ForumComposeActivity
 import com.luafabric.studio.falling.ui.forum.ForumItem
-import com.luafabric.studio.falling.ui.forum.ForumOverlay
+import com.luafabric.studio.falling.ui.forum.ForumMyPostsActivity
 import com.luafabric.studio.falling.ui.forum.ForumPostDetailActivity
+import com.luafabric.studio.falling.ui.forum.ForumPurchasedActivity
 import com.luafabric.studio.falling.ui.forum.ForumRepository
 import com.luafabric.studio.falling.ui.components.applyOpenTransitionIfLegacy
 import androidx.compose.material3.ModalBottomSheet
@@ -451,21 +452,36 @@ fun MainScreen(
     // 论坛设置弹层（仅 FORUM 页可触发）：cog 图标点开后展示三显示开关
     var showForumSettings by remember { mutableStateOf(false) }
 
-    // 论坛独立界面覆盖层：发帖页全屏承载，覆盖顶栏与底部导航（null=论坛列表页）
-    var forumOverlay by remember { mutableStateOf<ForumOverlay?>(null) }
+    // 详情页点标签回填的搜索串（一次性种子，交给 ForumScreen 消费）
+    var forumSearchSeed by remember { mutableStateOf<String?>(null) }
 
-    // 帖子详情为独立 Activity：返回码未登录互动时切账户界面
+    // 帖子详情为独立 Activity：未登录互动切账户界面；点标签则回填列表搜索
     val openPostDetailLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == ForumPostDetailActivity.RESULT_LOGIN_REQUIRED) {
-            onCurrentContentTypeChange(MainContentType.ACCOUNT)
+        when (result.resultCode) {
+            ForumPostDetailActivity.RESULT_LOGIN_REQUIRED ->
+                onCurrentContentTypeChange(MainContentType.ACCOUNT)
+            ForumPostDetailActivity.RESULT_SEARCH_TAG ->
+                forumSearchSeed =
+                    result.data?.getStringExtra(ForumPostDetailActivity.EXTRA_SEARCH_TAG)
         }
     }
 
-    // 论坛覆盖层激活时吞掉系统返回键：先关覆盖层回论坛列表，而非直接退出/关抽屉
-    BackHandler(enabled = forumOverlay != null) {
-        forumOverlay = null
+    // 我的帖子 / 已购帖子为独立 Activity：未登录返回后切账户界面
+    val openMyPostsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == ForumMyPostsActivity.RESULT_LOGIN_REQUIRED) {
+            onCurrentContentTypeChange(MainContentType.ACCOUNT)
+        }
+    }
+    val openPurchasedLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == ForumPurchasedActivity.RESULT_LOGIN_REQUIRED) {
+            onCurrentContentTypeChange(MainContentType.ACCOUNT)
+        }
     }
 
     // 搜索相关状态
@@ -654,6 +670,17 @@ fun MainScreen(
     var forumCache by remember { mutableStateOf<Map<Int, List<ForumItem>>>(emptyMap()) }
     var forumRefreshing by remember { mutableStateOf(false) }
     var forumInitialized by remember { mutableStateOf(false) }
+    // 全局受控标签词表：启动先用本地缓存兜底，再拉取云居托管文档刷新（失败保留缓存）
+    var forumTagWordlist by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        val cached = withContext(Dispatchers.IO) {
+            ForumRepository.loadCachedTagWordlist(context)
+        }
+        if (cached.isNotEmpty()) forumTagWordlist = cached
+        forumTagWordlist = withContext(Dispatchers.IO) {
+            ForumRepository.refreshTagWordlist(context)
+        }
+    }
     fun ensureForumPosts(forumId: Int) {
         if (forumCache.containsKey(forumId)) return
         forumScope.launch {
@@ -671,6 +698,19 @@ fun MainScreen(
             }
             forumCache = forumCache + (forumId to list)
             forumRefreshing = false
+        }
+    }
+    // 发帖页为独立 Activity：发帖成功刷新对应板块；未登录切账户界面
+    val openComposeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        when (result.resultCode) {
+            ForumComposeActivity.RESULT_POSTED ->
+                refreshForumPosts(
+                    result.data?.getIntExtra(ForumComposeActivity.EXTRA_FORUM_ID, 1) ?: 1
+                )
+            ForumComposeActivity.RESULT_LOGIN_REQUIRED ->
+                onCurrentContentTypeChange(MainContentType.ACCOUNT)
         }
     }
     val density = LocalDensity.current.density
@@ -1064,8 +1104,6 @@ fun MainScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // 论坛覆盖层激活时禁用抽屉边缘手势，避免详情/发帖页被侧滑拉出抽屉
-        gesturesEnabled = forumOverlay == null,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.widthIn(max = 280.dp),
@@ -1483,8 +1521,6 @@ fun MainScreen(
         Scaffold(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
-                // 论坛独立界面覆盖层激活时隐藏顶栏（覆盖层为全窗，参展后自备独立页头）
-                if (forumOverlay == null) {
                 LargeTopAppBar(
                     title = {
                         if (isSearchActive && currentContentType == MainContentType.PROJECTS) {
@@ -1660,12 +1696,8 @@ fun MainScreen(
                     },
                     scrollBehavior = scrollBehavior
                 )
-                }
             }
         ) { paddingValues ->
-            // 外层全窗 Box：论坛独立界面覆盖层放置于此，不受 Scaffold padding 约束，
-            // 可覆盖顶栏与底部导航；内层保留原有 padding/ime 逻辑
-            Box(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1786,7 +1818,19 @@ fun MainScreen(
                                 loggedInUser = loggedInUser,
                                 // 未登录点击互动时跳转「账户」页
                                 onRequireLogin = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
-                                onOpenCompose = { forumOverlay = ForumOverlay.Compose },
+                                tagWordlist = forumTagWordlist,
+                                searchSeed = forumSearchSeed,
+                                onSearchSeedConsumed = { forumSearchSeed = null },
+                                onOpenCompose = { forumId ->
+                                    openComposeLauncher.launch(
+                                        ForumComposeActivity.intent(context, forumId)
+                                    )
+                                    // API<34 本页显式播放进入转场；34+ 由目标页 overrideActivityTransition(OPEN) 接管
+                                    (context as? android.app.Activity)?.applyOpenTransitionIfLegacy(
+                                        R.anim.slide_in_right,
+                                        R.anim.slide_out_left
+                                    )
+                                },
                                 onOpenDetail = { post ->
                                     openPostDetailLauncher.launch(ForumPostDetailActivity.intent(context, post))
                                     // API<34 本页显式播放进入转场；34+ 由目标页 overrideActivityTransition(OPEN) 接管，
@@ -1810,7 +1854,23 @@ fun MainScreen(
                                     }
                                     toast.showToast(context.getString(R.string.profile_logout_success))
                                 },
-                                onLoginClick = onOpenLogin
+                                onLoginClick = onOpenLogin,
+                                onOpenMyPosts = {
+                                    openMyPostsLauncher.launch(ForumMyPostsActivity.intent(context))
+                                    (context as? android.app.Activity)?.applyOpenTransitionIfLegacy(
+                                        R.anim.slide_in_right,
+                                        R.anim.slide_out_left
+                                    )
+                                },
+                                onOpenPurchased = {
+                                    openPurchasedLauncher.launch(
+                                        ForumPurchasedActivity.intent(context)
+                                    )
+                                    (context as? android.app.Activity)?.applyOpenTransitionIfLegacy(
+                                        R.anim.slide_in_right,
+                                        R.anim.slide_out_left
+                                    )
+                                }
                             )
                         }
 
@@ -1961,34 +2021,6 @@ fun MainScreen(
                             .padding(bottom = fabGap)
                     )
                 }
-            }
-
-            // 论坛独立界面覆盖层：发帖页 / 详情页全屏承载，置于底部导航与 FAB 之上；
-            // clickable 空实现吞掉点击，防止触摸穿透到底层导航/FAB；返回后回到论坛列表
-            if (forumOverlay != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .imePadding()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {}
-                ) {
-                    when (forumOverlay) {
-                        is ForumOverlay.Compose -> ForumComposeScreen(
-                            toast = toast,
-                            activeUser = loggedInUser,
-                            onRequireLogin = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
-                            onBack = { forumOverlay = null },
-                            // 发帖成功：强制重拉源码论坛（forum_id=1）列表，返回列表即展示新帖
-                            onPosted = { refreshForumPosts(1) }
-                        )
-                        null -> {}
-                    }
-                }
-            }
             }
         }
     }

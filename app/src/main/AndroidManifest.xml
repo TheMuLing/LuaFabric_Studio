@@ -217,6 +217,27 @@
             android:theme="@style/AppTheme"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 独立页：发帖（发帖成功回传 RESULT_POSTED 刷新，左右滑 + 系统预测返回） -->
+        <activity
+            android:name=".ui.forum.ForumComposeActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 独立页：我的帖子（本地合并 1/2 板块 ForumList 筛本人） -->
+        <activity
+            android:name=".ui.forum.ForumMyPostsActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 独立页：已购帖子（FollowList 已购列表） -->
+        <activity
+            android:name=".ui.forum.ForumPurchasedActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- 独立页：导入分析（一次返回即关闭，左右滑 + 系统预测返回） -->
         <activity
             android:name=".ui.analyse.AnalyseActivity"

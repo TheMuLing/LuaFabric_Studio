@@ -555,9 +555,17 @@
     <string name="profile_logout_cancel">取消</string>
     <string name="profile_logout_confirm">退出</string>
     <string name="profile_logout_success">已退出登录</string>
+    <string name="profile_my_posts">我的帖子</string>
+    <string name="profile_purchased">已购帖子</string>
 
     <!-- 源码论坛 -->
-    <string name="forum_search_hint">搜索帖子标题 / 作者</string>
+    <string name="forum_search_hint">搜索帖子 / #标签</string>
+    <string name="forum_search_clear">清除</string>
+    <string name="forum_search_history">搜索历史</string>
+    <string name="forum_search_history_clear">清空</string>
+    <string name="forum_search_range_title">标题</string>
+    <string name="forum_search_range_content">正文</string>
+    <string name="forum_search_range_nickname">昵称</string>
     <string name="forum_filter">筛选</string>
     <string name="forum_source">源码实例</string>
     <string name="forum_project">完整项目</string>
@@ -565,7 +573,10 @@
     <string name="forum_empty">暂无帖子</string>
     <string name="forum_compose_title">标题</string>
     <string name="forum_compose_content">正文</string>
-    <string name="forum_compose_category">分类：%1$s</string>
+    <string name="forum_compose_tags">标签</string>
+    <string name="forum_compose_tag_hint">输入标签（# 触发补全），回车添加</string>
+    <string name="forum_compose_tag_remove">移除标签</string>
+    <string name="forum_compose_tag_too_long">标签不超过10个字</string>
     <string name="forum_compose_add_image">添加图片</string>
     <string name="forum_compose_pick_again">重新选择</string>
     <string name="forum_compose_remove_image">移除图片</string>
@@ -579,6 +590,24 @@
     <string name="forum_upload_fail">图片上传失败，请重试</string>
     <string name="forum_submit">提交</string>
     <string name="forum_compose_wip">发帖功能开发中</string>
+    <string name="forum_compose_paid_section">付费设置</string>
+    <string name="forum_compose_free">免费</string>
+    <string name="forum_compose_paid">付费</string>
+    <string name="forum_compose_price_fixed">固定价</string>
+    <string name="forum_compose_price_percent">百分比</string>
+    <string name="forum_compose_fixed_price">固定价格</string>
+    <string name="forum_compose_fixed_price_hint">范围 1~%1$d 金币</string>
+    <string name="forum_compose_percent">价格百分比</string>
+    <string name="forum_compose_percent_hint">范围 1~%1$d%%</string>
+    <string name="forum_compose_percent_floor">最低价（兜底）</string>
+    <string name="forum_compose_floor_hint">不超过 %1$d 金币</string>
+    <string name="forum_compose_fixed_price_range">固定价范围为 1~%1$d 金币</string>
+    <string name="forum_compose_percent_range">百分比范围为 1~%1$d%%</string>
+    <string name="forum_compose_floor_range">最低价不能超过 %1$d 金币</string>
+    <string name="forum_compose_level_section">可见等级</string>
+    <string name="forum_compose_level_unlimited">无限制</string>
+    <string name="forum_compose_level_value">Lv.%1$d 及以上可见</string>
+    <string name="forum_compose_level_hint">当前等级 Lv.%1$d，暂不可设置等级限制</string>
     <string name="forum_settings_title">论坛设置</string>
     <string name="forum_settings_hide_avatar">隐藏非己头像</string>
     <string name="forum_settings_hide_avatar_desc">不显示论坛内其他用户头像</string>
@@ -607,6 +636,26 @@
     <string name="forum_reply_ok">回复成功</string>
     <string name="forum_action_fail">操作失败，请重试</string>
     <string name="forum_need_login">请先登录</string>
+
+    <!-- 付费帖 / 等级可见 -->
+    <string name="forum_badge_price">%1$d 金币</string>
+    <string name="forum_badge_percent">%1$d%% 付费</string>
+    <string name="forum_badge_level">Lv.%1$d 可见</string>
+    <string name="forum_pay_locked">付费内容，购买后可见</string>
+    <string name="forum_pay_cost">%1$d 金币</string>
+    <string name="forum_pay_percent">定价 %1$d%%（底价 %2$d 金币）</string>
+    <string name="forum_pay_my_coin">我的金币：%1$d</string>
+    <string name="forum_pay_unlock">解锁查看</string>
+    <string name="forum_pay_confirm_title">确认购买</string>
+    <string name="forum_pay_row_title">帖子</string>
+    <string name="forum_pay_row_author">作者</string>
+    <string name="forum_pay_row_price">价格</string>
+    <string name="forum_pay_row_balance">我的余额</string>
+    <string name="forum_pay_calculating">计算中…</string>
+    <string name="forum_pay_cancel">取消</string>
+    <string name="forum_pay_confirm">确认支付</string>
+    <string name="forum_pay_ok">购买成功</string>
+    <string name="forum_pay_payout_pending">已购买，卖家到账待补发</string>
 
     <!-- 属性页面 -->
     <string name="attribute_build_options">构建选项</string>

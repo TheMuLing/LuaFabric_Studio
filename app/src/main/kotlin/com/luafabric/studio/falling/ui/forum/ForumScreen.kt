@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -40,36 +42,47 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.ripple
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -89,6 +102,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
@@ -122,19 +136,8 @@ import java.io.FileOutputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** 源码实例 第二层分类：默认「全部」，7 类两字扩写为四字 + 「其他」 */
-private val SOURCE_CATEGORIES =
-    listOf("全部", "控件组件", "动画效果", "布局导航", "网络传输", "安全加密", "系统设备", "媒体处理", "其他")
-
-/** 完整项目 第二层分类 */
-private val PROJECT_CATEGORIES =
-    listOf("全部", "社区论坛", "工具", "外挂", "病毒", "其他")
-
-/** 互动操作身份兜底：未登录时以管理员账号参与互动 */
-private const val FORUM_ADMIN = "3445352175"
-
 /** 圆角跟随 luafabric 主题设置 */
-private fun themeRadius(): Dp = when (SettingsManager.currentSettings.shapeSizeIndex) {
+internal fun themeRadius(): Dp = when (SettingsManager.currentSettings.shapeSizeIndex) {
     0 -> 4.dp
     1 -> 8.dp
     2 -> 12.dp
@@ -142,7 +145,7 @@ private fun themeRadius(): Dp = when (SettingsManager.currentSettings.shapeSizeI
     else -> 12.dp
 }
 
-/** 源码论坛：搜索框 + 双层 tabs + 帖子列表 + 发帖 FAB */
+/** 源码论坛：第一层板块 tabs + 搜索（#标签/文本/范围）+ 帖子列表 + 发帖 FAB */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ForumScreen(
@@ -153,28 +156,40 @@ fun ForumScreen(
     onEnsureLoaded: (Int) -> Unit,
     onRefresh: (Int) -> Unit,
     fabGap: Dp,
-    /** 当前登录用户（未登录为 null，互动以管理员兜底） */
+    /** 当前登录用户（未登录为 null，互动一律先强制登录） */
     loggedInUser: YunJuResponse?,
     /** 未登录点击互动时跳转账户界面 */
     onRequireLogin: () -> Unit,
-    /** 打开发帖页（独立界面，由 MainScreen 全屏覆盖层承载） */
-    onOpenCompose: () -> Unit,
+    /** 全局受控标签词表（用于 `#` 补全），可为空 */
+    tagWordlist: List<String>,
+    /** 详情页点标签回填的搜索串（一次性种子，消费后清空） */
+    searchSeed: String?,
+    onSearchSeedConsumed: () -> Unit,
+    /** 打开发帖页并携带当前板块 ID（独立 Activity，发帖成功返回 RESULT_POSTED 刷新） */
+    onOpenCompose: (Int) -> Unit,
     /** 打开帖子详情页（独立界面，由 MainScreen 全屏覆盖层承载） */
     onOpenDetail: (ForumItem) -> Unit
 ) {
+    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
     var layer1Index by remember { mutableIntStateOf(0) }
-    // 第一层切换时第二层回到首个分类
-    var layer2Index by remember(layer1Index) { mutableIntStateOf(0) }
     // 发帖 FAB 展开态：列表到顶显示文字，滚动后收起（复制自创建项目 FAB）
     var showExtendedFab by remember { mutableStateOf(true) }
+
+    // 搜索历史（完整查询串）、输入焦点、范围过滤开关与范围（仅作用文本匹配）
+    var searchFocused by remember { mutableStateOf(false) }
+    // 下拉被手动关闭后抑制显示，直到再次输入/聚焦（否则关闭后无法再弹出）
+    var dropdownDismissed by remember { mutableStateOf(false) }
+    var showRangeFilter by remember { mutableStateOf(false) }
+    var searchHistory by remember { mutableStateOf(ForumRepository.loadSearchHistory(context)) }
+    var rangeTitle by remember { mutableStateOf(true) }
+    var rangeContent by remember { mutableStateOf(true) }
+    var rangeNickname by remember { mutableStateOf(true) }
 
     val layer1Tabs = listOf(
         stringResource(R.string.forum_source),
         stringResource(R.string.forum_project)
     )
-    val secondLayer = if (layer1Index == 0) SOURCE_CATEGORIES else PROJECT_CATEGORIES
-    val category = secondLayer[layer2Index.coerceIn(secondLayer.indices)]
 
     // 板块 ID：第一层「源码实例」=1，「完整项目」=2（云居后端按板块发帖）
     val layer1ForumIds = listOf(1, 2)
@@ -184,6 +199,15 @@ fun ForumScreen(
     val isLoading = !postsCache.containsKey(layer1ForumId)
 
     LaunchedEffect(layer1ForumId) { onEnsureLoaded(layer1ForumId) }
+
+    // 详情页点标签 → 回填搜索串（消费后清空一次性种子）
+    LaunchedEffect(searchSeed) {
+        val seed = searchSeed
+        if (!seed.isNullOrBlank()) {
+            searchQuery = seed
+            onSearchSeedConsumed()
+        }
+    }
 
     // 发帖 FAB 展开态跟随列表滚动：到顶显示文字，滚动后收起（复制自创建项目 FAB）
     LaunchedEffect(
@@ -195,22 +219,47 @@ fun ForumScreen(
         showExtendedFab = !isScrolled
     }
 
-    // 帖子过滤：搜索（标题/作者/正文）+ 当前分类
-    val filtered = remember(posts, searchQuery, layer1Index, layer2Index) {
-        val q = searchQuery.trim()
-        val specifics = secondLayer.filter { it != "全部" && it != "其他" }
+    // `#` 补全：仅当最后一个词元以 # 开头时，按归一化子串筛选词表
+    val lastToken = remember(searchQuery) {
+        searchQuery.split(Regex("\\s+")).lastOrNull().orEmpty()
+    }
+    val tagSuggestions = remember(lastToken, tagWordlist) {
+        if (lastToken.startsWith("#")) {
+            val prefix = ForumRepository.normalizeTag(lastToken.removePrefix("#"))
+            tagWordlist
+                .filter { ForumRepository.normalizeTag(it).contains(prefix) }
+                .take(20)
+        } else {
+            emptyList()
+        }
+    }
+    // 下拉优先级：# 补全 > 空串时的搜索历史
+    val showTagSuggest = searchFocused && tagSuggestions.isNotEmpty()
+    val showHistory = searchFocused && searchQuery.isBlank() && searchHistory.isNotEmpty()
+
+    // 等级可见性：未登录视为 0 级；作者本人始终可见自己的帖
+    val viewerLevel = loggedInUser?.level?.toIntOrNull() ?: 0
+    val viewerQq = loggedInUser?.qq.orEmpty()
+
+    // 帖子过滤：等级限制彻底隐藏 → `#标签` 归一子串匹配（多标签 OR）→ 标签与文本 AND，范围仅作用文本
+    val filtered = remember(
+        posts, searchQuery, rangeTitle, rangeContent, rangeNickname, viewerLevel, viewerQq
+    ) {
+        val qTags = ForumRepository.parseQueryTags(searchQuery)
+        val qText = ForumRepository.parseQueryText(searchQuery)
         posts.filter { post ->
-            val inSearch = q.isEmpty() ||
-                post.title.contains(q, ignoreCase = true) ||
-                post.nickname.contains(q, ignoreCase = true) ||
-                post.content.contains(q, ignoreCase = true)
-            if (!inSearch) return@filter false
-            val hay = post.forumName + post.title + post.content
-            when (category) {
-                "全部" -> true
-                "其他" -> !specifics.any { hay.contains(it, ignoreCase = true) }
-                else -> hay.contains(category, ignoreCase = true)
+            val meta = ForumRepository.parseMeta(post.content)
+            if (meta.minLevel > viewerLevel && post.qq != viewerQq) return@filter false
+            val tagMatch = qTags.isEmpty() || run {
+                val postTags = meta.tags.map { ForumRepository.normalizeTag(it) }
+                qTags.any { qt -> postTags.any { it.contains(qt) } }
             }
+            if (!tagMatch) return@filter false
+            if (qText.isEmpty()) return@filter true
+            (rangeTitle && post.title.contains(qText, ignoreCase = true)) ||
+                (rangeContent && ForumRepository.stripCategoryMarker(post.content)
+                    .contains(qText, ignoreCase = true)) ||
+                (rangeNickname && post.nickname.contains(qText, ignoreCase = true))
         }
     }
     // 埋点：区分「后端未返回帖子」与「代码过滤导致不显示」
@@ -251,54 +300,135 @@ fun ForumScreen(
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
             )
 
-            // 第二层 tabs：依第一层选择展示不同分类
-            ScrollableTabRow(
-                selectedTabIndex = layer2Index.coerceIn(secondLayer.indices),
-                edgePadding = 16.dp,
-                divider = {}
-            ) {
-                secondLayer.forEachIndexed { i, label ->
-                    Tab(
-                        selected = i == layer2Index,
-                        onClick = { layer2Index = i },
-                        text = { Text(label) }
+            // 搜索框：板块 tabs 下方、列表上方；前导 search 图标 + 末尾 清除/筛选 图标
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = {
+                        searchQuery = it
+                        dropdownDismissed = false
+                    },
+                    placeholder = { Text(stringResource(R.string.forum_search_hint)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    trailingIcon = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = stringResource(R.string.forum_search_clear),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { showRangeFilter = !showRangeFilter }) {
+                                Icon(
+                                    Icons.Filled.FilterAlt,
+                                    contentDescription = stringResource(R.string.forum_filter),
+                                    tint = if (showRangeFilter) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(themeRadius()),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        searchHistory = ForumRepository.pushSearchHistory(context, searchQuery)
+                        dropdownDismissed = true
+                    }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .onFocusChanged {
+                            searchFocused = it.isFocused
+                            if (it.isFocused) dropdownDismissed = false
+                        }
+                )
+                // 下拉：# 标签补全 / 搜索历史
+                DropdownMenu(
+                    expanded = (showTagSuggest || showHistory) && !dropdownDismissed,
+                    onDismissRequest = { dropdownDismissed = true }
+                ) {
+                    if (showTagSuggest) {
+                        tagSuggestions.forEach { tag ->
+                            DropdownMenuItem(
+                                text = { Text("#$tag") },
+                                onClick = {
+                                    searchQuery = replaceLastToken(searchQuery, "#$tag")
+                                    dropdownDismissed = true
+                                }
+                            )
+                        }
+                    } else {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.forum_search_history),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            },
+                            trailingIcon = {
+                                Text(stringResource(R.string.forum_search_history_clear))
+                            },
+                            onClick = {
+                                ForumRepository.clearSearchHistory(context)
+                                searchHistory = emptyList()
+                            }
+                        )
+                        searchHistory.forEach { h ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(h, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                },
+                                onClick = {
+                                    searchQuery = h
+                                    dropdownDismissed = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 范围复选框：仅作用文本匹配（标题/正文/昵称）
+            AnimatedVisibility(visible = showRangeFilter) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = rangeTitle,
+                        onClick = { rangeTitle = !rangeTitle },
+                        label = { Text(stringResource(R.string.forum_search_range_title)) },
+                        shape = RoundedCornerShape(themeRadius())
+                    )
+                    FilterChip(
+                        selected = rangeContent,
+                        onClick = { rangeContent = !rangeContent },
+                        label = { Text(stringResource(R.string.forum_search_range_content)) },
+                        shape = RoundedCornerShape(themeRadius())
+                    )
+                    FilterChip(
+                        selected = rangeNickname,
+                        onClick = { rangeNickname = !rangeNickname },
+                        label = { Text(stringResource(R.string.forum_search_range_nickname)) },
+                        shape = RoundedCornerShape(themeRadius())
                     )
                 }
             }
-            // 第二层 tabs 下方细分割线
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-            )
-
-            // 搜索框：位于两层 tabs 全部下方、列表上方；圆角跟随主题，search 前导图标 + 筛选末尾图标
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text(stringResource(R.string.forum_search_hint)) },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                trailingIcon = {
-                    IconButton(onClick = { /* 过滤功能暂未接入 */ }) {
-                        Icon(
-                            Icons.Filled.FilterAlt,
-                            contentDescription = stringResource(R.string.forum_filter),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(themeRadius()),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            )
 
             when {
                 isLoading -> {
@@ -331,7 +461,13 @@ fun ForumScreen(
                                     activeUser = activeUser,
                                     toast = toast,
                                     onRequireLogin = onRequireLogin,
-                                    onOpenDetail = { onOpenDetail(post) }
+                                    onOpenDetail = { onOpenDetail(post) },
+                                    onTagClick = { tag ->
+                                        searchQuery = "#$tag"
+                                        searchHistory = ForumRepository.pushSearchHistory(
+                                            context, searchQuery
+                                        )
+                                    }
                                 )
                             }
                         }
@@ -342,7 +478,7 @@ fun ForumScreen(
 
         // 右下角发帖 FAB：复制创建项目 FAB——列表到顶展开显示文字，滚动后收起，停靠导航栏上方
         ExtendedFloatingActionButton(
-            onClick = onOpenCompose,
+            onClick = { onOpenCompose(layer1ForumId) },
             icon = {
                 Icon(
                     Icons.Filled.Add,
@@ -370,22 +506,40 @@ fun ForumScreen(
     }
 }
 
-/** 互动身份：user 恒为管理员，qq/nickname 优先登录用户、未登录以管理员兜底 */
-private data class ForumIdentity(val user: String, val qq: String, val nickname: String)
+/** 互动身份：仅取当前登录用户（未登录不参与互动，一律先强制登录）；管理员账号仅在 native 内部使用 */
+private data class ForumIdentity(val qq: String, val nickname: String)
 
 private fun forumIdentity(activeUser: YunJuResponse?): ForumIdentity {
-    val qq = activeUser?.qq?.takeIf { it.isNotBlank() } ?: FORUM_ADMIN
-    val nick = activeUser?.name?.takeIf { it.isNotBlank() } ?: FORUM_ADMIN
-    return ForumIdentity(FORUM_ADMIN, qq, nick)
+    val qq = activeUser?.qq?.takeIf { it.isNotBlank() } ?: ""
+    val nick = activeUser?.name?.takeIf { it.isNotBlank() } ?: qq
+    return ForumIdentity(qq, nick)
 }
 
-/**
- * 论坛独立界面（发帖页）：不再嵌入论坛导航页内，
- * 由 MainScreen 以全屏覆盖层承载，覆盖底部导航与顶栏，返回后回到论坛列表。
- * 帖子详情页已独立为 ForumPostDetailActivity。
- */
-sealed interface ForumOverlay {
-    data object Compose : ForumOverlay
+/** 用新串替换查询串最后一个空白分隔的词元（供 `#` 补全回填）；无空白则整体替换 */
+private fun replaceLastToken(query: String, replacement: String): String {
+    val idx = query.indexOfLast { it.isWhitespace() }
+    return if (idx < 0) replacement else query.substring(0, idx + 1) + replacement
+}
+
+/** 帖子标签 chips 行（点击回填搜索）；无标签不渲染 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PostTagChips(tags: List<String>, onTagClick: (String) -> Unit) {
+    if (tags.isEmpty()) return
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        tags.forEach { tag ->
+            AssistChip(
+                onClick = { onTagClick(tag) },
+                label = { Text("#$tag", style = MaterialTheme.typography.labelMedium) },
+                shape = RoundedCornerShape(themeRadius())
+            )
+        }
+    }
 }
 
 /**
@@ -394,23 +548,24 @@ sealed interface ForumOverlay {
  * 未登录点击互动弹提示并跳转账户界面。
  */
 @Composable
-private fun ForumPostCard(
+internal fun ForumPostCard(
     post: ForumItem,
     activeUser: YunJuResponse?,
     toast: NonBlockingToastState,
     onRequireLogin: () -> Unit,
-    onOpenDetail: () -> Unit
+    onOpenDetail: () -> Unit,
+    onTagClick: (String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = SettingsManager.currentSettings
     val identity = forumIdentity(activeUser)
-    // 本卡片点赞/收藏本地乐观态（后端无状态查询，纯反馈型）
+    val meta = remember(post.postId, post.content) { ForumRepository.parseMeta(post.content) }
+    // 本卡片点赞本地乐观态（后端无状态查询，纯反馈型）
     val praised = remember(post.postId) { mutableStateOf(false) }
-    val favored = remember(post.postId) { mutableStateOf(false) }
 
     fun guard(): Boolean {
-        if (activeUser == null) {
+        if (activeUser == null || identity.qq.isBlank()) {
             toast.showToast(context.getString(R.string.forum_need_login))
             onRequireLogin()
             return false
@@ -425,22 +580,9 @@ private fun ForumPostCard(
         praised.value = next
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
-                ForumRepository.praise(context, post.postId, identity.user, identity.qq)
+                ForumRepository.praise(context, post.postId, identity.qq)
             }
             if (!ok) praised.value = !next
-        }
-    }
-
-    // 收藏/取消收藏：Follow.php 为 toggle 接口（qq=操作者）；未登录拦截，失败回滚本地状态；无 toast
-    fun doFollow() {
-        if (!guard()) return
-        val next = !favored.value
-        favored.value = next
-        scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                ForumRepository.follow(context, post.postId, identity.user, identity.qq)
-            }
-            if (!ok) favored.value = !next
         }
     }
 
@@ -497,17 +639,46 @@ private fun ForumPostCard(
             overflow = TextOverflow.Ellipsis
         )
 
-        // 正文节选
-        if (post.content.isNotBlank()) {
+        // 付费 / 等级限制角标
+        if (meta.paid || meta.minLevel > 0) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (meta.paid) {
+                    PostBadge(
+                        text = if (meta.priceMode == PRICE_MODE_PERCENT) {
+                            stringResource(R.string.forum_badge_percent, meta.percent)
+                        } else {
+                            stringResource(R.string.forum_badge_price, meta.fixedPrice)
+                        },
+                        icon = Icons.Filled.Lock
+                    )
+                }
+                if (meta.minLevel > 0) {
+                    PostBadge(
+                        text = stringResource(R.string.forum_badge_level, meta.minLevel),
+                        icon = Icons.Filled.Person
+                    )
+                }
+            }
+        }
+
+        // 正文节选（完整 Lua 注释语义：剔注释、折叠空白）
+        val excerpt = remember(post.postId, post.content) {
+            ForumRepository.buildExcerpt(post.content)
+        }
+        if (excerpt.isNotBlank()) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = ForumRepository.stripCategoryMarker(post.content),
+                text = excerpt,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis
             )
         }
+
+        // 标签 chips（点击回填搜索）
+        PostTagChips(tags = meta.tags, onTagClick = onTagClick)
 
         // 配图：受「快速帖子列表」开关控制（隐藏其他用户的帖子配图）
         if (post.img.isNotBlank() &&
@@ -544,7 +715,7 @@ private fun ForumPostCard(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 动作条：居右，顺序 点赞 / 评论 / 收藏
+        // 动作条：居右，顺序 点赞 / 评论
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
@@ -563,14 +734,119 @@ private fun ForumPostCard(
                 active = false,
                 onClick = onOpenDetail
             )
-            PostAction(
-                icon = BookmarkOutlineIcon,
-                filledIcon = Icons.Filled.Bookmark,
-                label = stringResource(R.string.forum_follow),
-                active = favored.value,
-                onClick = { doFollow() }
-            )
         }
+    }
+}
+
+/** 帖子角标（付费 / 等级限制）：图标 + 文字的小圆角容器 */
+@Composable
+private fun PostBadge(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Surface(
+        shape = RoundedCornerShape(themeRadius()),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(text, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+/**
+ * 付费墙：仅详情页遮挡付费帖正文，展示价格与解锁按钮。
+ * 固定价 → 直显价；百分比 → 有余额则按余额算成交价，无余额则显「百分比 + 底价」。
+ */
+@Composable
+private fun PaidWallCard(meta: ForumPostMeta, myCoin: Int?, onUnlock: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(themeRadius()),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Lock,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.forum_pay_locked),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            val priceText = if (meta.priceMode == PRICE_MODE_PERCENT) {
+                myCoin?.let { stringResource(R.string.forum_pay_cost, ForumRepository.computeCost(meta, it)) }
+                    ?: stringResource(R.string.forum_pay_percent, meta.percent, meta.percentFloor)
+            } else {
+                stringResource(R.string.forum_pay_cost, meta.fixedPrice)
+            }
+            Text(
+                text = priceText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onUnlock,
+                shape = RoundedCornerShape(themeRadius())
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(stringResource(R.string.forum_pay_unlock))
+            }
+            myCoin?.let { coin ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.forum_pay_my_coin, coin),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/** 购买确认弹窗的键值行（左标签右值） */
+@Composable
+private fun PaySheetRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
@@ -665,21 +941,29 @@ private fun PostAction(
  * 帖子详情页：完整内容 + 评论区，独立界面由 MainScreen 全屏承载。
  * 点赞/收藏/评论未登录时弹提示并跳转账户界面。
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun ForumPostDetailScreen(
     post: ForumItem,
     activeUser: YunJuResponse?,
     toast: NonBlockingToastState,
     onRequireLogin: () -> Unit,
+    onTagClick: (String) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = SettingsManager.currentSettings
     val identity = forumIdentity(activeUser)
+    val meta = remember(post.postId, post.content) { ForumRepository.parseMeta(post.content) }
     val praised = remember(post.postId) { mutableStateOf(false) }
-    val favored = remember(post.postId) { mutableStateOf(false) }
+    // 付费墙：作者本人直出；其余需已购
+    val isAuthor = identity.qq.isNotBlank() && post.qq == identity.qq
+    val needsPurchase = meta.paid && !isAuthor
+    var unlocked by remember(post.postId) { mutableStateOf(!needsPurchase) }
+    var showPurchaseSheet by remember(post.postId) { mutableStateOf(false) }
+    var buyLoading by remember(post.postId) { mutableStateOf(false) }
+    var myCoin by remember(post.postId) { mutableStateOf<Int?>(null) }
     val commentText = remember(post.postId) { mutableStateOf("") }
     val commentsRaw = remember(post.postId) { mutableStateOf<JsonArray?>(null) }
     val commentsLoading = remember(post.postId) { mutableStateOf(false) }
@@ -708,10 +992,20 @@ internal fun ForumPostDetailScreen(
     LaunchedEffect(post.postId) {
         commentsLoading.value = true
         val raw = withContext(Dispatchers.IO) {
-            ForumRepository.loadComments(context, post.postId, identity.user)
+            ForumRepository.loadComments(context, post.postId)
         }
         commentsLoading.value = false
         commentsRaw.value = parseCommentsArray(raw)
+    }
+
+    // 付费帖：进入时判定已购（FollowList ∪ 本地 pending）+ 拉我的余额（显示成交价）
+    LaunchedEffect(post.postId, needsPurchase) {
+        if (!needsPurchase) return@LaunchedEffect
+        val ids = withContext(Dispatchers.IO) {
+            ForumRepository.loadPurchasedIds(context, identity.qq)
+        }
+        if (post.postId in ids) unlocked = true
+        myCoin = withContext(Dispatchers.IO) { ForumRepository.fetchCoin(context, identity.qq) }
     }
 
     // 点击评论 → 键盘弹出后把该条锚定到列表顶（保证完整可见，不被底部输入栏遮挡）
@@ -725,7 +1019,7 @@ internal fun ForumPostDetailScreen(
     }
 
     fun guard(): Boolean {
-        if (activeUser == null) {
+        if (activeUser == null || identity.qq.isBlank()) {
             toast.showToast(context.getString(R.string.forum_need_login))
             onRequireLogin()
             return false
@@ -739,21 +1033,9 @@ internal fun ForumPostDetailScreen(
         praised.value = next
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
-                ForumRepository.praise(context, post.postId, identity.user, identity.qq)
+                ForumRepository.praise(context, post.postId, identity.qq)
             }
             if (!ok) praised.value = !next
-        }
-    }
-
-    fun doFollow() {
-        if (!guard()) return
-        val next = !favored.value
-        favored.value = next
-        scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                ForumRepository.follow(context, post.postId, identity.user, identity.qq)
-            }
-            if (!ok) favored.value = !next
         }
     }
 
@@ -772,17 +1054,17 @@ internal fun ForumPostDetailScreen(
                     // 点击评论/回复聚焦底部框 → 发的是针对该条的回复
                     ForumRepository.commentReply(
                         context, post.postId, target.first,
-                        identity.user, identity.qq, identity.nickname, text
+                        identity.qq, identity.nickname, text
                     )
                 } else {
                     ForumRepository.comment(
-                        context, post.postId, identity.user, identity.qq, identity.nickname, text
+                        context, post.postId, identity.qq, identity.nickname, text
                     )
                 }
             }
             if (ok) {
                 val raw = withContext(Dispatchers.IO) {
-                    ForumRepository.loadComments(context, post.postId, identity.user)
+                    ForumRepository.loadComments(context, post.postId)
                 }
                 val parsed = parseCommentsArray(raw)
                 // 解析失败时保留旧列表，绝不把 commentsRaw 置 null（否则整个列表消失）
@@ -895,7 +1177,17 @@ internal fun ForumPostDetailScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    if (post.content.isNotBlank()) {
+                    if (!unlocked) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        PaidWallCard(
+                            meta = meta,
+                            myCoin = myCoin,
+                            onUnlock = {
+                                if (!guard()) return@PaidWallCard
+                                showPurchaseSheet = true
+                            }
+                        )
+                    } else if (post.content.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = ForumRepository.stripCategoryMarker(post.content),
@@ -903,6 +1195,9 @@ internal fun ForumPostDetailScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+
+                    // 标签 chips（点击回填搜索并返回列表）
+                    PostTagChips(tags = meta.tags, onTagClick = onTagClick)
 
                     if (post.img.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -936,7 +1231,7 @@ internal fun ForumPostDetailScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 动作条：居右，顺序 点赞 / 评论 / 收藏（与列表一致）
+                    // 动作条：居右，顺序 点赞 / 评论（与列表一致）
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
@@ -954,13 +1249,6 @@ internal fun ForumPostDetailScreen(
                             label = stringResource(R.string.forum_comment),
                             active = false,
                             onClick = {}
-                        )
-                        PostAction(
-                            icon = BookmarkOutlineIcon,
-                            filledIcon = Icons.Filled.Bookmark,
-                            label = stringResource(R.string.forum_follow),
-                            active = favored.value,
-                            onClick = { doFollow() }
                         )
                     }
                 }
@@ -1039,6 +1327,97 @@ internal fun ForumPostDetailScreen(
             replyTargetNick = replyTarget?.second,
             focusRequester = commentInputFocus
         )
+    }
+
+    // 购买确认弹窗（ModalBottomSheet）：价格按当前余额实时计算，确认后走 ForumRepository.purchase
+    if (showPurchaseSheet) {
+        val sheetState = rememberModalBottomSheetState()
+        val sheetCost = myCoin?.let { ForumRepository.computeCost(meta, it) }
+        ModalBottomSheet(
+            onDismissRequest = { if (!buyLoading) showPurchaseSheet = false },
+            sheetState = sheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.forum_pay_confirm_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                PaySheetRow(
+                    label = stringResource(R.string.forum_pay_row_title),
+                    value = post.title
+                )
+                PaySheetRow(
+                    label = stringResource(R.string.forum_pay_row_author),
+                    value = post.nickname.ifBlank { post.qq }
+                )
+                PaySheetRow(
+                    label = stringResource(R.string.forum_pay_row_price),
+                    value = sheetCost?.let { stringResource(R.string.forum_pay_cost, it) }
+                        ?: stringResource(R.string.forum_pay_calculating)
+                )
+                PaySheetRow(
+                    label = stringResource(R.string.forum_pay_row_balance),
+                    value = myCoin?.let { stringResource(R.string.forum_pay_cost, it) }
+                        ?: stringResource(R.string.forum_pay_calculating)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(
+                        onClick = { showPurchaseSheet = false },
+                        enabled = !buyLoading,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(themeRadius())
+                    ) {
+                        Text(stringResource(R.string.forum_pay_cancel))
+                    }
+                    Button(
+                        onClick = {
+                            if (buyLoading) return@Button
+                            buyLoading = true
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    ForumRepository.purchase(context, post, identity.qq)
+                                }
+                                buyLoading = false
+                                showPurchaseSheet = false
+                                when (result) {
+                                    is PurchaseResult.Success -> {
+                                        unlocked = true
+                                        toast.showToast(context.getString(R.string.forum_pay_ok))
+                                    }
+                                    is PurchaseResult.PayoutPending -> {
+                                        unlocked = true
+                                        toast.showToast(context.getString(R.string.forum_pay_payout_pending))
+                                    }
+                                    is PurchaseResult.Fail -> toast.showToast(result.message)
+                                }
+                            }
+                        },
+                        enabled = !buyLoading,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(themeRadius())
+                    ) {
+                        if (buyLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text(stringResource(R.string.forum_pay_confirm))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1364,379 +1743,5 @@ private fun parseCommentsArray(json: String?): JsonArray? {
     } catch (e: Exception) {
         android.util.Log.i("ForumComment", "评论 JSON 解析失败：$e")
         null
-    }
-}
-
-/**
- * 发帖编辑页（独立界面，由 MainScreen 全屏承载）：
- * 标题 + 详细分类下拉 + 正文 + 图片（相册选图 → 压缩 1920px → native 单次直传）→ 提交 Issue.php。
- * 提交正文自动在首行拼分类隐藏标志（JSON 单行，显示端剥离）；未登录拦截跳账户页。
- */
-@Composable
-internal fun ForumComposeScreen(
-    toast: NonBlockingToastState,
-    activeUser: YunJuResponse?,
-    onRequireLogin: () -> Unit,
-    onBack: () -> Unit,
-    onPosted: () -> Unit
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var title by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
-    // 详细分类：发帖下拉（不含「全部」），默认首个具体分类
-    val categories = remember { SOURCE_CATEGORIES.filter { it != "全部" } }
-    var category by remember { mutableStateOf(categories.first()) }
-    var categoryMenuOpen by remember { mutableStateOf(false) }
-    // 图片：原始 Uri（预览）+ 压缩后本地文件（上传用）+ 原始文件名
-    var imageFile by remember { mutableStateOf<File?>(null) }
-    var imageName by remember { mutableStateOf("image.jpg") }
-    var processing by remember { mutableStateOf(false) }
-    var submitting by remember { mutableStateOf(false) }
-
-    /** 选图处理：压缩到最长边 1920px JPEG 质量 85，写入 cacheDir */
-    fun onImagePicked(uri: Uri) {
-        processing = true
-        scope.launch {
-            try {
-                val displayName = runCatching {
-                    context.contentResolver.query(
-                        uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-                    )?.use { c ->
-                        if (c.moveToFirst()) c.getString(0) else null
-                    }
-                }.getOrNull()
-                val file = withContext(Dispatchers.IO) {
-                    val src = ImageDecoder.createSource(context.contentResolver, uri)
-                    val bmp = ImageDecoder.decodeBitmap(src) { decoder, info, _ ->
-                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                        val longEdge = max(info.size.width, info.size.height)
-                        if (longEdge > 1920) {
-                            decoder.setTargetSampleSize(longEdge / 1920)
-                        }
-                    }
-                    val longEdge = max(bmp.width, bmp.height)
-                    val scale = if (longEdge > 1920) 1920f / longEdge else 1f
-                    val decoded = if (scale < 1f) {
-                        Bitmap.createScaledBitmap(
-                            bmp,
-                            (bmp.width * scale).roundToInt(),
-                            (bmp.height * scale).roundToInt(),
-                            true
-                        )
-                    } else {
-                        bmp
-                    }
-                    if (decoded !== bmp) bmp.recycle()
-                    val out = File(context.cacheDir, "forum_upload_${System.currentTimeMillis()}.jpg")
-                    FileOutputStream(out).use { os ->
-                        decoded.compress(Bitmap.CompressFormat.JPEG, 85, os)
-                    }
-                    decoded.recycle()
-                    out
-                }
-                imageFile = file
-                // 文件名进入 multipart Content-Disposition 头，净化为纯 ASCII 防头注入
-                val raw = displayName?.takeIf { it.isNotBlank() } ?: "image.jpg"
-                imageName = raw.map { c ->
-                    if (c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") c else '_'
-                }.joinToString("").ifBlank { "image.jpg" }
-            } catch (e: Exception) {
-                android.util.Log.i("ForumCompose", "图片处理失败：$e")
-                toast.showToast(context.getString(R.string.forum_compose_image_fail))
-            } finally {
-                processing = false
-            }
-        }
-    }
-
-    /** API<33：系统相册 Intent（先声明，权限回调内引用） */
-    val legacyAlbumLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val uri = result.data?.data
-        if (uri != null) onImagePicked(uri)
-    }
-
-    /** API<33：检查相册权限，无则弹窗申请，通过后调系统相册 */
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            legacyAlbumLauncher.launch(
-                Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-            )
-        } else {
-            toast.showToast(context.getString(R.string.forum_compose_no_permission))
-        }
-    }
-
-    /** API≥33：系统 Photo Picker（免权限） */
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) onImagePicked(uri)
-    }
-
-    fun pickImage() {
-        if (processing || submitting) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            photoPickerLauncher.launch(
-                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-            )
-        } else {
-            val granted = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.READ_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-            if (granted) {
-                legacyAlbumLauncher.launch(
-                    Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-                )
-            } else {
-                permissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
-        }
-    }
-
-    fun doSubmit() {
-        if (activeUser == null) {
-            toast.showToast(context.getString(R.string.forum_need_login))
-            onRequireLogin()
-            return
-        }
-        val t = title.trim()
-        if (t.isEmpty()) {
-            toast.showToast(context.getString(R.string.forum_compose_title_empty))
-            return
-        }
-        if (submitting) return
-        submitting = true
-        val user = activeUser
-        scope.launch {
-            var imgUrl = ""
-            val imgFile = imageFile
-            if (imgFile != null) {
-                imgUrl = withContext(Dispatchers.IO) {
-                    ForumRepository.uploadImage(context, imgFile.absolutePath, imageName)
-                }.orEmpty()
-                if (imgUrl.isEmpty()) {
-                    android.util.Log.i("ForumCompose", "图片上传失败（门控/网络/后端回绝）")
-                    submitting = false
-                    toast.showToast(context.getString(R.string.forum_upload_fail))
-                    return@launch
-                }
-            }
-            // 正文首行拼分类隐藏标志（显示端剥离），forum_id 恒 1（仅支持源码论坛）
-            val payload = ForumRepository.withCategoryMarker(content.trim(), category)
-            val nickname = user.name.ifBlank { user.qq }
-            val ok = withContext(Dispatchers.IO) {
-                ForumRepository.submitPost(context, user.qq, nickname, 1, t, payload, imgUrl)
-            }
-            submitting = false
-            if (ok) {
-                toast.showToast(context.getString(R.string.forum_compose_success))
-                onPosted()
-                onBack()
-            } else {
-                toast.showToast(context.getString(R.string.forum_compose_fail))
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.login_back),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Text(
-                text = stringResource(R.string.forum_post),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-        HorizontalDivider(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-        )
-
-        OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            label = { Text(stringResource(R.string.forum_compose_title)) },
-            singleLine = true,
-            shape = RoundedCornerShape(themeRadius()),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-        )
-
-        // 详细分类下拉（圆角跟随主题）
-        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            OutlinedButton(
-                onClick = { categoryMenuOpen = true },
-                shape = RoundedCornerShape(themeRadius())
-            ) {
-                Text(
-                    text = stringResource(R.string.forum_compose_category, category),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                    Icons.Filled.ArrowDropDown,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            DropdownMenu(
-                expanded = categoryMenuOpen,
-                onDismissRequest = { categoryMenuOpen = false }
-            ) {
-                categories.forEach { c ->
-                    DropdownMenuItem(
-                        text = { Text(c) },
-                        onClick = {
-                            category = c
-                            categoryMenuOpen = false
-                        }
-                    )
-                }
-            }
-        }
-
-        OutlinedTextField(
-            value = content,
-            onValueChange = { content = it },
-            label = { Text(stringResource(R.string.forum_compose_content)) },
-            shape = RoundedCornerShape(themeRadius()),
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = true)
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-        )
-
-        // 图片区：无图 → 添加图片按钮；有图 → 预览 + 移除 + 重新选择
-        if (imageFile == null) {
-            OutlinedButton(
-                onClick = { pickImage() },
-                enabled = !processing && !submitting,
-                shape = RoundedCornerShape(themeRadius()),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                if (processing) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.forum_compose_processing))
-                } else {
-                    Icon(
-                        Icons.Filled.AddPhotoAlternate,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.forum_compose_add_image))
-                }
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                SubcomposeAsyncImage(
-                    model = imageFile,
-                    contentDescription = stringResource(R.string.forum_compose_add_image),
-                    contentScale = ContentScale.Crop,
-                    loading = {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(160.dp),
-                            contentAlignment = Alignment.Center
-                        ) { CircularProgressIndicator() }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)
-                        .clip(RoundedCornerShape(themeRadius()))
-                )
-                IconButton(
-                    onClick = {
-                        imageFile = null
-                        imageName = "image.jpg"
-                    },
-                    enabled = !submitting,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(32.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.forum_compose_remove_image),
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-            OutlinedButton(
-                onClick = { pickImage() },
-                enabled = !processing && !submitting,
-                shape = RoundedCornerShape(themeRadius()),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                if (processing) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.forum_compose_processing))
-                } else {
-                    Icon(
-                        Icons.Filled.AddPhotoAlternate,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.forum_compose_pick_again))
-                }
-            }
-        }
-
-        Button(
-            onClick = { doSubmit() },
-            enabled = title.trim().isNotEmpty() && !submitting,
-            shape = RoundedCornerShape(themeRadius()),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            if (submitting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.forum_compose_submitting))
-            } else {
-                Text(stringResource(R.string.forum_submit))
-            }
-        }
     }
 }
