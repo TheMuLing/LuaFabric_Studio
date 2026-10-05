@@ -32,6 +32,7 @@ class SettingsTabView(context: Context) : ScrollView(context) {
     private var printSwitch: MaterialSwitch? = null
     private var toastCaptureSwitch: MaterialSwitch? = null
     private var snackbarCaptureSwitch: MaterialSwitch? = null
+    private var unicodeSwitch: MaterialSwitch? = null
 
     init {
         setBackgroundColor(ConsoleTheme.surface)
@@ -47,6 +48,12 @@ class SettingsTabView(context: Context) : ScrollView(context) {
                 }
                 refresh()
             }.also { depthValue = it.second }.first)
+            addBody(divider())
+            addBody(switchRow(
+                "自动Unicode转换",
+                "将Unicode输出转换为可读中文字符",
+                initial = settings.autoUnicode
+            ) { on -> settings.autoUnicode = on }.also { unicodeSwitch = it.second }.first)
         })
 
         // 拦截
@@ -116,6 +123,7 @@ class SettingsTabView(context: Context) : ScrollView(context) {
         printSwitch?.isChecked = settings.capturePrint
         toastCaptureSwitch?.isChecked = settings.captureToast
         snackbarCaptureSwitch?.isChecked = settings.captureSnackbar
+        unicodeSwitch?.isChecked = settings.autoUnicode
     }
 
     /** 折叠卡内设置项行：左侧文本 + 右侧开关。 */

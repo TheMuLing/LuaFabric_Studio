@@ -117,6 +117,9 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
             )
         }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, fade, Gravity.BOTTOM))
         addView(listHolder, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        // 设置变化（如自动Unicode转换开关）即时刷新输出展示
+        settings.addListener { post { refresh() } }
     }
 
     private fun actionText(label: String, onClick: () -> Unit): TextView =
@@ -324,7 +327,7 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
                 )
             }
         }
-        fun checkRow(label: String, onChange: (Boolean) -> Unit): MaterialCheckBox =
+        fun checkRow(label: String, onChange: (Boolean) -> Unit, onUiChange: () -> Unit): MaterialCheckBox =
             MaterialCheckBox(context).apply {
                 text = label
                 textSize = 14f
@@ -336,6 +339,7 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
                 setOnCheckedChangeListener { _, checked ->
                     onChange(checked)
                     rebuild()
+                    onUiChange()
                 }
             }
 
@@ -367,11 +371,41 @@ class OutputTabView(context: Context) : LinearLayout(context), OutputManager.Lis
                     context.dp(1)
                 ).apply { topMargin = context.dp(8) }
             })
-            addView(checkRow("包含Lua层数据类型") { optLua = it })
-            addView(checkRow("包含真实数据类型") { optType = it })
-            addView(checkRow("包含文件路径") { optPath = it })
-            addView(checkRow("包含时间") { optTime = it })
-            addView(checkRow("包含线程信息") { optThread = it })
+            // 内容选项：一键全选/取消全选图标按钮（随态切换 全选/取消 图标）
+            val checkRefs = ArrayList<MaterialCheckBox>()
+            var toggleBtn: ImageButton? = null
+            val refreshToggleIcon: () -> Unit = {
+                toggleBtn?.setImageResource(
+                    if (checkRefs.isNotEmpty() && checkRefs.all { it.isChecked }) R.drawable.ic_select_off
+                    else R.drawable.ic_select_all
+                )
+            }
+            fun newCheckRow(label: String, onChange: (Boolean) -> Unit): MaterialCheckBox =
+                checkRow(label, onChange, refreshToggleIcon).also { checkRefs.add(it) }
+
+            val toggleRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                addView(ImageButton(context).apply {
+                    setImageResource(R.drawable.ic_select_all)
+                    background = null
+                    setPadding(context.dp(8), context.dp(6), context.dp(8), context.dp(6))
+                    imageTintList = android.content.res.ColorStateList.valueOf(ConsoleTheme.primary)
+                    contentDescription = "全选/取消全选"
+                    setOnClickListener {
+                        val all = checkRefs.isNotEmpty() && checkRefs.all { it.isChecked }
+                        for (b in checkRefs) b.isChecked = !all
+                        refreshToggleIcon()
+                        rebuild()
+                    }
+                }.also { toggleBtn = it })
+            }
+            addView(toggleRow)
+            addView(newCheckRow("包含Lua层数据类型") { optLua = it })
+            addView(newCheckRow("包含真实数据类型") { optType = it })
+            addView(newCheckRow("包含文件路径") { optPath = it })
+            addView(newCheckRow("包含时间") { optTime = it })
+            addView(newCheckRow("包含线程信息") { optThread = it })
         }
         rebuild()
 

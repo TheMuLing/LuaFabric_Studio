@@ -15,15 +15,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,9 +79,6 @@ fun AnalyseScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
-
-    // 菜单展开状态
-    var menuExpanded by remember { mutableStateOf(false) }
 
     // 状态
     var isLoading by remember { mutableStateOf(true) }
@@ -212,40 +209,27 @@ fun AnalyseScreen(
                     }
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Default.SelectAll, contentDescription = stringResource(R.string.analyse_select_all))
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.analyse_select_all)) },
-                                onClick = {
-                                    selectAll()
-                                    menuExpanded = false
-                                }
+                    // 全选/取消全选：任意项选中时图标切换为取消，并显示最右侧隐藏的复制按钮
+                    val hasSelection = selectionState.values.any { it }
+                    IconButton(onClick = { if (hasSelection) deselectAll() else selectAll() }) {
+                        Icon(
+                            if (hasSelection) Icons.Default.Close else Icons.Default.SelectAll,
+                            contentDescription = stringResource(
+                                if (hasSelection) R.string.analyse_deselect_all else R.string.analyse_select_all
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.analyse_invert_selection)) },
-                                onClick = {
-                                    invertSelection()
-                                    menuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.analyse_deselect_all)) },
-                                onClick = {
-                                    deselectAll()
-                                    menuExpanded = false
-                                }
-                            )
-                        }
+                        )
                     }
-                    // 复制按钮
-                    IconButton(onClick = { copySelected() }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.analyse_copy_selected))
+                    IconButton(onClick = { invertSelection() }) {
+                        Icon(
+                            Icons.Default.SwapHoriz,
+                            contentDescription = stringResource(R.string.analyse_invert_selection)
+                        )
+                    }
+                    if (hasSelection) {
+                        // 复制按钮：无选中项时隐藏
+                        IconButton(onClick = { copySelected() }) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.analyse_copy_selected))
+                        }
                     }
                 }
             )

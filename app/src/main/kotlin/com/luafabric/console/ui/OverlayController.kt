@@ -90,10 +90,25 @@ class OverlayController(private val appContext: Context) {
     @SuppressLint("NewApi")
     private fun moveBy(dx: Float, dy: Float) {
         if (wm != null && params != null) {
-            val size = maxBallBounds()
-            // END 重力下 x 为距右缘距离：向右拖 dx>0 → 球右移 → x 减小（此前方向反了）
-            params!!.x = (params!!.x - dx).toInt().coerceIn(0, size[0])
-            params!!.y = (params!!.y + dy).toInt().coerceIn(0, size[1])
+            // 用浮球所在 WindowManager 的显示 bounds 计算边界（与 overlay 坐标空间一致），
+            // 不用 hostActivity 的 app 窗口 bounds：两处度量不一致时浮球可被拖出屏幕。
+            val rect = overlayBounds() ?: Rect(
+                0, 0,
+                appContext.resources.displayMetrics.widthPixels,
+                appContext.resources.displayMetrics.heightPixels
+            )
+            val w = rect?.width() ?: 0
+            val h = rect?.height() ?: 0
+            val maxX = maxOf(0, w - appContext.dp(56))
+            val maxY = maxOf(0, h - appContext.dp(56))
+            // END 重力下 x 为距右缘距离：向右拖 dx>0 → 球右移 → x 减小
+            params!!.x = (params!!.x - dx).toInt().coerceIn(0, maxX)
+            params!!.y = (params!!.y + dy).toInt().coerceIn(0, maxY)
+            // 取证：真机仍可拖出时，用此日志核对 bounds 与实际屏幕是否一致
+            android.util.Log.d(
+                "ConsoleBall",
+                "bounds=$rect ball=${params!!.x},${params!!.y} max=$maxX,$maxY"
+            )
             try {
                 wm?.updateViewLayout(ball, params)
             } catch (_: Exception) {
@@ -102,23 +117,36 @@ class OverlayController(private val appContext: Context) {
         }
         if (fallbackAttached) {
             val p = ball?.layoutParams as? FrameLayout.LayoutParams ?: return
-            // END 重力：向右拖动 → marginEnd 减小
-            p.marginEnd = (p.marginEnd - dx).toInt().coerceAtLeast(0)
-            p.topMargin = (p.topMargin + dy).toInt().coerceAtLeast(0)
+            val host = fallbackHost ?: return
+            val bounds = windowBounds(host) ?: return
+            // END 重力：向右拖动 → marginEnd 减小；补上限，防止拖出左侧/底部
+            val maxMarginEnd = maxOf(0, bounds.width() - appContext.dp(56))
+            val maxTop = maxOf(0, bounds.height() - appContext.dp(56))
+            p.marginEnd = (p.marginEnd - dx).toInt().coerceIn(0, maxMarginEnd)
+            p.topMargin = (p.topMargin + dy).toInt().coerceIn(0, maxTop)
             ball?.layoutParams = p
         }
     }
 
+    /**
+     * 浮球 overlay 窗口所在显示的 bounds（API30+ 用 currentWindowMetrics，旧版用 getRealSize）。
+     * 与 moveBy 的坐标空间一致，避免用 app 窗口 bounds 造成拖出屏幕。
+     */
     @SuppressLint("NewApi")
-    private fun maxBallBounds(): IntArray {
-        val activity = hostActivity()
-        val b = windowBounds(activity)
-        val w = b?.width() ?: 0
-        val h = b?.height() ?: 0
-        return intArrayOf(
-            maxOf(0, w - appContext.dp(56)),
-            maxOf(0, h - appContext.dp(56))
-        )
+    private fun overlayBounds(): Rect? {
+        val wmInst = wm ?: return null
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                wmInst.currentWindowMetrics.bounds
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val size = Point()
+            wmInst.defaultDisplay?.getRealSize(size)
+            if (size.x > 0 && size.y > 0) Rect(0, 0, size.x, size.y) else null
+        }
     }
 
     /**

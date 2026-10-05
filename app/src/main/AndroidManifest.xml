@@ -210,6 +210,20 @@
 
         <activity android:name=".ui.crash.CrashLogActivity" />
 
+        <!-- 独立页：帖子详情（一次返回即关闭，左右滑 + 系统预测返回） -->
+        <activity
+            android:name=".ui.forum.ForumPostDetailActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 独立页：导入分析（一次返回即关闭，左右滑 + 系统预测返回） -->
+        <activity
+            android:name=".ui.analyse.AnalyseActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
             android:name="com.luafabric.console.ConsoleInitializer"
             android:authorities="${applicationId}.consoleinit"

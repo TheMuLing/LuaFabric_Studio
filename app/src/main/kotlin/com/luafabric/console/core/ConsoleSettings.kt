@@ -7,6 +7,20 @@ class ConsoleSettings(context: Context) {
 
     private val sp = context.getSharedPreferences("luafabric_console", Context.MODE_PRIVATE)
 
+    /** 设置变化监听（companion 共享：设置页与其他页各自 new ConsoleSettings，需跨实例通知）。 */
+    fun addListener(listener: () -> Unit) {
+        synchronized(Companion._listeners) { Companion._listeners.add(listener) }
+    }
+
+    private fun notifyChanged() {
+        val snapshot = synchronized(Companion._listeners) { Companion._listeners.toList() }
+        snapshot.forEach { it() }
+    }
+
+    companion object {
+        private val _listeners = mutableListOf<() -> Unit>()
+    }
+
     /** 类型解析深度：1=浅（类名/短预览），2=中（默认），>2=深（递归表）。 */
     var parseDepth: Int
         get() = sp.getInt("parse_depth", 2)
@@ -41,4 +55,12 @@ class ConsoleSettings(context: Context) {
     var captureSnackbar: Boolean
         get() = sp.getBoolean("capture_snackbar", false)
         set(v) = sp.edit().putBoolean("capture_snackbar", v).apply()
+
+    /** 自动Unicode转换（默认开）：仅显示层将 \uXXXX、\u{XXXX} 原地转成可读中文；失败回退原文，不增改内容。 */
+    var autoUnicode: Boolean
+        get() = sp.getBoolean("auto_unicode", true)
+        set(v) {
+            sp.edit().putBoolean("auto_unicode", v).apply()
+            notifyChanged()
+        }
 }

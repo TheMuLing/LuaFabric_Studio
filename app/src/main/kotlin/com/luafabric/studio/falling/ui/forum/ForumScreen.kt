@@ -58,11 +58,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,6 +74,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -361,12 +364,12 @@ private fun forumIdentity(activeUser: YunJuResponse?): ForumIdentity {
 }
 
 /**
- * 论坛独立界面（发帖页 / 帖子详情页）：不再嵌入论坛导航页内，
+ * 论坛独立界面（发帖页）：不再嵌入论坛导航页内，
  * 由 MainScreen 以全屏覆盖层承载，覆盖底部导航与顶栏，返回后回到论坛列表。
+ * 帖子详情页已独立为 ForumPostDetailActivity。
  */
 sealed interface ForumOverlay {
     data object Compose : ForumOverlay
-    data class Detail(val post: ForumItem) : ForumOverlay
 }
 
 /**
@@ -774,8 +777,9 @@ internal fun ForumPostDetailScreen(
         )
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp)
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
         ) {
             item(key = "post") {
                 Column(
@@ -909,17 +913,39 @@ internal fun ForumPostDetailScreen(
                     toast = toast,
                     raw = commentsRaw.value,
                     loading = commentsLoading.value,
-                    input = commentText.value,
-                    onInputChange = { commentText.value = it },
-                    onSend = { sendComment() },
-                    guard = { guard() }
+                    guard = { guard() },
+                    hideOtherAvatars = settings.forumHideOtherAvatars
                 )
             }
         }
+
+        // 底部固定评论输入条（朋友圈式）：头像 + 圆角灰底输入 + 发送
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        )
+        MomentsCommentBar(
+            identity = identity,
+            input = commentText.value,
+            onInputChange = { commentText.value = it },
+            onSend = { sendComment() },
+            enabled = commentText.value.isNotBlank()
+        )
     }
 }
 
-/** 评论内联区：列表 + 输入框 + 发送（回复入口暂并入列表项，字段确认后精化） */
+/** 评论条目（宽松解析 CommentList data 项） */
+private data class CommentEntry(
+    val id: Long,
+    val qq: String,
+    val nickname: String,
+    val content: String,
+    val time: String,
+    val replyTo: Long
+)
+
+/** 评论区（朋友圈式）：顶层评论 + 按 reply_to 嵌套回复 + 行内回复编辑框；左右 16dp 边距。 */
 @Composable
 private fun CommentSection(
     post: ForumItem,
@@ -927,18 +953,81 @@ private fun CommentSection(
     toast: NonBlockingToastState,
     raw: JsonArray?,
     loading: Boolean,
-    input: String,
-    onInputChange: (String) -> Unit,
-    onSend: () -> Unit,
-    guard: () -> Boolean
+    guard: () -> Boolean,
+    hideOtherAvatars: Boolean
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // 回复状态：正在回复的评论在列表中的下标（null=未在回复）
-    val replyingIndex = remember(post.postId) { mutableStateOf(-1) }
-    val replyText = remember(post.postId) { mutableStateOf("") }
+    // 正在回复的评论 id（null=未在回复）
+    var replyingTo by remember(post.postId) { mutableStateOf<Long?>(null) }
+    var replyText by remember(post.postId) { mutableStateOf("") }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    // 宽松解析 + 按 reply_to 分组（顶层 = reply_to==0 或父 id 不存在）
+    val entries = remember(raw) {
+        buildList {
+            if (raw == null) return@buildList
+            for (el in raw) {
+                if (!el.isJsonObject) continue
+                val obj = el.asJsonObject
+                val id = obj.longOr("comment_id", "id", "cid") ?: continue
+                val content = obj.stringOr("content", "text") ?: continue
+                add(
+                    CommentEntry(
+                        id = id,
+                        qq = obj.stringOr("qq", "author_qq", "user_qq", "uid").orEmpty(),
+                        nickname = obj.stringOr("nickname", "name", "user") ?: "用户",
+                        content = content,
+                        time = obj.stringOr("create_time", "time", "date").orEmpty(),
+                        replyTo = obj.longOr("reply_to", "replyTo", "pid") ?: 0L
+                    )
+                )
+            }
+        }
+    }
+    val byId = remember(entries) { entries.associateBy { it.id } }
+    val topComments = remember(entries, byId) {
+        entries.filter { it.replyTo == 0L || it.replyTo !in byId }
+    }
+    val repliesByParent = remember(entries, byId, topComments) {
+        // 回复（含回复之回复）归到其最顶层评论下，朋友圈单层缩进展示
+        fun rootOf(e: CommentEntry): Long {
+            var cur = e.replyTo
+            val seen = HashSet<Long>()
+            var last = cur
+            while (cur != 0L && byId.containsKey(cur) && seen.add(cur)) {
+                last = cur
+                cur = byId.getValue(cur).replyTo
+            }
+            return last
+        }
+        entries
+            .filter { it.replyTo != 0L && it.replyTo in byId }
+            .groupBy { rootOf(it) }
+    }
+
+    fun sendReply(target: CommentEntry) {
+        val text = replyText.trim()
+        if (text.isEmpty()) return
+        if (!guard()) return
+        replyText = ""
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                ForumRepository.commentReply(
+                    context, post.postId, target.id,
+                    identity.user, identity.qq, identity.nickname, text
+                )
+            }
+            toast.showToast(
+                context.getString(if (ok) R.string.forum_reply_ok else R.string.forum_action_fail)
+            )
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
         Text(
             text = stringResource(R.string.forum_comment_list),
             style = MaterialTheme.typography.titleSmall,
@@ -971,132 +1060,218 @@ private fun CommentSection(
                 )
             }
             else -> {
-                // 评论列表（宽松渲染：字段名与后端响应一致，缺失则跳过；commit_id 埋点中）
-                raw.forEachIndexed { index, element ->
-                    val obj = element.asJsonObject
-                    // 字段名：CommentList data 待真机确认，先按常见候选读取，缺失即跳过
-                    val nick = obj.stringOr("nickname", "name", "user") ?: "用户"
-                    val content = obj.stringOr("content", "text") ?: return@forEachIndexed
-                    val time = obj.stringOr("create_time", "time", "date") ?: ""
-                    val cid = obj.longOr("comment_id", "id", "cid") ?: index.toLong()
+                // 顶层评论（朋友圈式：左侧 qlogo 头像，昵称加粗，内容/时间，右下「回复」）
+                topComments.forEach { comment ->
+                    MomentsCommentRow(
+                        comment = comment,
+                        replies = repliesByParent[comment.id].orEmpty(),
+                        identity = identity,
+                        hideOtherAvatars = hideOtherAvatars,
+                        replyingTo = replyingTo,
+                        replyText = replyText,
+                        onReplyTextChange = { replyText = it },
+                        onToggleReply = { id ->
+                            replyingTo = if (replyingTo == id) null else id
+                            replyText = ""
+                        },
+                        onSendReply = {
+                            replyingTo?.let { targetId ->
+                                entries.find { it.id == targetId }?.let { sendReply(it) }
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+            }
+        }
+    }
+}
 
-                    Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = nick.take(1),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = nick,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = content,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                if (time.isNotBlank()) {
-                                    Text(
-                                        text = time,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            IconButton(
-                                onClick = {
-                                    replyingIndex.value = if (replyingIndex.value == index) -1 else index
-                                    replyText.value = ""
-                                },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.forum_reply),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
+/** 单条顶层评论 + 其下嵌套回复 + 行内回复编辑框（朋友圈式）。 */
+@Composable
+private fun MomentsCommentRow(
+    comment: CommentEntry,
+    replies: List<CommentEntry>,
+    identity: ForumIdentity,
+    hideOtherAvatars: Boolean,
+    replyingTo: Long?,
+    replyText: String,
+    onReplyTextChange: (String) -> Unit,
+    onToggleReply: (Long) -> Unit,
+    onSendReply: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Top) {
+            Avatar(
+                qq = comment.qq,
+                nickname = comment.nickname,
+                hideAvatar = hideOtherAvatars && comment.qq != identity.qq,
+                size = 32.dp
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = comment.nickname,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = comment.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (comment.time.isNotBlank()) {
+                        Text(
+                            text = comment.time,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = stringResource(R.string.forum_reply),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onToggleReply(comment.id) }
+                    )
+                }
+            }
+        }
+
+        // 嵌套回复（朋友圈式：无头像，「昵称：内容」缩进文本，可继续回复）
+        replies.forEach { reply ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 40.dp, top = 4.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${reply.nickname}：${reply.content}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (reply.time.isNotBlank()) {
+                            Text(
+                                text = reply.time,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        // 回复输入行：针对该条评论
-                        if (replyingIndex.value == index) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                OutlinedTextField(
-                                    value = replyText.value,
-                                    onValueChange = { replyText.value = it },
-                                    placeholder = {
-                                        Text(stringResource(R.string.forum_reply_hint))
-                                    },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(themeRadius()),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Button(
-                                    onClick = {
-                                        val text = replyText.value.trim()
-                                        if (text.isEmpty()) return@Button
-                                        // 未登录拦截：跳账户页 + toast「请先登录」，与评论/点赞/收藏一致
-                                        if (!guard()) return@Button
-                                        replyText.value = ""
-                                        scope.launch {
-                                            val ok = withContext(Dispatchers.IO) {
-                                                ForumRepository.commentReply(
-                                                    context, post.postId, cid,
-                                                    identity.user, identity.qq, identity.nickname, text
-                                                )
-                                            }
-                                            toast.showToast(
-                                                context.getString(
-                                                    if (ok) R.string.forum_reply_ok else R.string.forum_action_fail
-                                                )
-                                            )
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(themeRadius())
-                                ) {
-                                    Text(stringResource(R.string.forum_reply_send))
-                                }
-                            }
-                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = stringResource(R.string.forum_reply),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { onToggleReply(reply.id) }
+                        )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // 评论输入框 + 发送
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = input,
-                onValueChange = onInputChange,
-                placeholder = { Text(stringResource(R.string.forum_comment_hint)) },
-                singleLine = true,
-                shape = RoundedCornerShape(themeRadius()),
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Button(
-                onClick = onSend,
-                shape = RoundedCornerShape(themeRadius()),
-                enabled = input.isNotBlank()
+        // 行内回复编辑框：针对当前正在回复的评论/回复
+        if (replyingTo == comment.id || replies.any { it.id == replyingTo }) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 40.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(R.string.forum_comment_send))
+                MomentsInputField(
+                    value = replyText,
+                    onValueChange = onReplyTextChange,
+                    placeholder = stringResource(R.string.forum_reply_hint),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                TextButton(onClick = onSendReply, enabled = replyText.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.forum_reply_send),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
+        }
+    }
+}
+
+/** 朋友圈式评论输入框：圆角灰底无边框，单行。 */
+@Composable
+private fun MomentsInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = {
+            Text(
+                text = placeholder,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyMedium,
+        shape = RoundedCornerShape(18.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            focusedBorderColor = Color.Transparent,
+            unfocusedBorderColor = Color.Transparent,
+            cursorColor = MaterialTheme.colorScheme.primary
+        ),
+        modifier = modifier
+    )
+}
+
+/** 底部固定评论输入条（朋友圈式）：当前用户 qlogo 头像 + 圆角灰底输入 + 发送。 */
+@Composable
+private fun MomentsCommentBar(
+    identity: ForumIdentity,
+    input: String,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    enabled: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Avatar(
+            qq = identity.qq,
+            nickname = identity.nickname,
+            hideAvatar = false,
+            size = 32.dp
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        MomentsInputField(
+            value = input,
+            onValueChange = onInputChange,
+            placeholder = stringResource(R.string.forum_comment_hint),
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        TextButton(onClick = onSend, enabled = enabled) {
+            Text(
+                text = stringResource(R.string.forum_comment_send),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

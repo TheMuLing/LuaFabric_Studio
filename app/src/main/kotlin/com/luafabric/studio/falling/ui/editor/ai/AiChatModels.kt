@@ -269,7 +269,9 @@ data class AiConfig(
     // Memories
     val memories: List<MemoryItem> = emptyList(),
     // AI 设置页折叠菜单：已折叠的标题列表（缺省时 API 提供商默认展开）
-    val collapsedSections: List<String> = emptyList()
+    val collapsedSections: List<String> = emptyList(),
+    /** 使用独立发送按钮（默认开）：软键盘回车=换行，发送走输入框右侧独立按钮；关=软键盘回车直接发送。 */
+    val useIndependentSendButton: Boolean = true
 ) {
     val activeProvider: ApiProvider?
         get() = if (selectedProviderIndex in providers.indices) providers[selectedProviderIndex]
@@ -324,7 +326,8 @@ data class AiConfig(
         providers = providers.orDefault(emptyList()),
         skills = skills.orDefault(emptyList()),
         memories = memories.orDefault(emptyList()),
-        collapsedSections = collapsedSections.orDefault(emptyList())
+        collapsedSections = collapsedSections.orDefault(emptyList()),
+        useIndependentSendButton = useIndependentSendButton.orDefault(true)
     )
 
     /**

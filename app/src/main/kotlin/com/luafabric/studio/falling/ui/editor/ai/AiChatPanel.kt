@@ -1061,7 +1061,9 @@ private fun ChatContent(
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("问 AI...", style = MaterialTheme.typography.bodySmall) },
                         maxLines = 4,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = if (config.useIndependentSendButton) ImeAction.Default else ImeAction.Send
+                        ),
                         keyboardActions = KeyboardActions(onSend = { if (inputValue.text.isNotBlank() && !isStreaming) onSend() }),
                         textStyle = MaterialTheme.typography.bodySmall,
                         singleLine = false,
@@ -2048,6 +2050,9 @@ private fun AiSettingsPage(
     var providerDeleteMode by remember { mutableStateOf(false) }
     var showDeleteProvider by remember { mutableStateOf<Int?>(null) }
 
+    // 使用独立发送按钮（默认开）：软键盘回车=换行，发送走输入框右侧独立按钮
+    var independentSend by remember { mutableStateOf(config.useIndependentSendButton) }
+
     fun save() {
         onConfigChanged(AiConfig(
             providers = providers,
@@ -2056,8 +2061,14 @@ private fun AiSettingsPage(
             memories = memories,
             maxTokens = config.maxTokens,
             temperature = config.temperature,
-            collapsedSections = collapsedSections.toList()
+            collapsedSections = collapsedSections.toList(),
+            useIndependentSendButton = independentSend
         ))
+    }
+
+    fun updateIndependentSend(v: Boolean) {
+        independentSend = v
+        save()
     }
 
     // 切换某菜单的折叠状态并持久化
@@ -2400,6 +2411,34 @@ private fun AiSettingsPage(
                 Switch(
                     checked = askUserDialogMode,
                     onCheckedChange = { updateAskUserDialogMode(it) }
+                )
+            }
+        }
+
+        SettingsCollapsibleEntry(
+            title = "发送",
+            icon = Icons.Filled.Send,
+            expanded = "发送" !in collapsedSections,
+            onExpandedChange = { toggleSection("发送") }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { updateIndependentSend(!independentSend) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("使用独立发送按钮", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "将软键盘上发送按钮替换为换行",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = independentSend,
+                    onCheckedChange = { updateIndependentSend(it) }
                 )
             }
         }

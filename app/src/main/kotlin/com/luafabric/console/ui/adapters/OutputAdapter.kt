@@ -52,6 +52,21 @@ class OutputAdapter(
         else -> label
     }
 
+    /**
+     * 自动Unicode转换：将 \u{XXXX}（Lua）与 \uXXXX（JSON）原地替换为对应字符。
+     * 仅显示层，允许失败（异常/无效转义回退原文），不新增任何内容。
+     * 顺序：先大括号形式，避免 \u{XXXX} 干扰 4 位十六进制匹配。
+     */
+    private fun safeUnicodeToChinese(s: String): String = try {
+        val uBrace = Regex("""\\u\{([0-9a-fA-F]{1,6})\}""")
+        val u4 = Regex("""\\u([0-9a-fA-F]{4})""")
+        u4.replace(uBrace.replace(s) { m -> m.groupValues[1].toInt(16).toChar().toString() }) { m ->
+            m.groupValues[1].toInt(16).toChar().toString()
+        }
+    } catch (_: Exception) {
+        s
+    }
+
     @SuppressLint("NotifyDataSetChanged")
     fun submit(list: List<OutputEntry>) {
         items.clear()
@@ -223,7 +238,7 @@ class OutputAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val e = items[position]
-        holder.content.text = e.primary
+        holder.content.text = if (settings.autoUnicode) safeUnicodeToChinese(e.primary) else e.primary
 
         // 事件条目：函数名独立药丸 chip（(funcName)）+ 正文
         if (e.eventFunc != null) {

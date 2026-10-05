@@ -58,7 +58,7 @@ import com.luafabric.studio.falling.ui.analyse.analyzeCodeForClasses
 import com.luafabric.studio.falling.ProjectItem
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.files.FileTree
-import com.luafabric.studio.falling.ui.analyse.AnalyseScreen
+import com.luafabric.studio.falling.ui.analyse.AnalyseActivity
 import com.luafabric.studio.falling.ui.attribute.AttributeScreen
 import com.luafabric.studio.falling.ui.components.ColorPickerDialog
 import com.luafabric.studio.falling.ui.components.EdgeSwipeDismissibleDrawer
@@ -82,10 +82,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-// 定义覆盖层密封类
+// 定义覆盖层密封类（导入分析已独立为 AnalyseActivity，不在此列）
 sealed class OverlayScreen {
     object NONE : OverlayScreen()
-    data class ANALYSE(val codeContent: String, val projectPath: String?) : OverlayScreen()
     data class JAVA_API(val initialClass: String? = null) : OverlayScreen()
     object ATTRIBUTE : OverlayScreen()
 }
@@ -698,7 +697,12 @@ fun CodeEditScreen(
             QuickAction(R.string.code_editor_analyse, "导入分析", icon = Icons.Filled.Layers) {
                 viewModel.incrementQuickActionFrequency("导入分析")
                 val codeContent = viewModel.activeFileState?.content ?: ""
-                currentOverlay = OverlayScreen.ANALYSE(codeContent, projectPath)
+                // 导入分析已独立为 Activity：一次返回即关闭，左右滑 + 系统预测返回
+                context.startActivity(AnalyseActivity.intent(context, codeContent, projectPath))
+                (context as? android.app.Activity)?.overridePendingTransition(
+                    R.anim.slide_in_right,
+                    R.anim.slide_out_left
+                )
             },
             QuickAction(R.string.code_editor_api_viewer, "API阅览器", icon = Icons.Filled.Book) {
                 viewModel.incrementQuickActionFrequency("API阅览器")
@@ -785,13 +789,6 @@ fun CodeEditScreen(
                 label = "overlay_transition"
             ) { overlay ->
                 when (overlay) {
-                    is OverlayScreen.ANALYSE -> AnalyseScreen(
-                        codeContent = overlay.codeContent,
-                        projectPath = overlay.projectPath,
-                        onBack = { currentOverlay = OverlayScreen.NONE },
-                        toast = toast
-                    )
-
                     is OverlayScreen.JAVA_API -> JavaApiScreen(
                         initialClass = overlay.initialClass,
                         onBack = { currentOverlay = OverlayScreen.NONE },

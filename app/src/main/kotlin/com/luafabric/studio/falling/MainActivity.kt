@@ -105,10 +105,12 @@ import com.luafabric.studio.falling.ui.editor.buildProject
 import com.luafabric.studio.falling.ui.editor.installApk
 import com.luafabric.studio.falling.ui.manual.ManualScreen
 import com.luafabric.studio.falling.ui.project.NewProjectScreen
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.luafabric.studio.falling.ui.forum.ForumComposeScreen
 import com.luafabric.studio.falling.ui.forum.ForumItem
 import com.luafabric.studio.falling.ui.forum.ForumOverlay
-import com.luafabric.studio.falling.ui.forum.ForumPostDetailScreen
+import com.luafabric.studio.falling.ui.forum.ForumPostDetailActivity
 import com.luafabric.studio.falling.ui.forum.ForumRepository
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
@@ -448,8 +450,17 @@ fun MainScreen(
     // 论坛设置弹层（仅 FORUM 页可触发）：cog 图标点开后展示三显示开关
     var showForumSettings by remember { mutableStateOf(false) }
 
-    // 论坛独立界面覆盖层：发帖页 / 帖子详情页全屏承载，覆盖顶栏与底部导航（null=论坛列表页）
+    // 论坛独立界面覆盖层：发帖页全屏承载，覆盖顶栏与底部导航（null=论坛列表页）
     var forumOverlay by remember { mutableStateOf<ForumOverlay?>(null) }
+
+    // 帖子详情为独立 Activity：返回码未登录互动时切账户界面
+    val openPostDetailLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == ForumPostDetailActivity.RESULT_LOGIN_REQUIRED) {
+            onCurrentContentTypeChange(MainContentType.ACCOUNT)
+        }
+    }
 
     // 论坛覆盖层激活时吞掉系统返回键：先关覆盖层回论坛列表，而非直接退出/关抽屉
     BackHandler(enabled = forumOverlay != null) {
@@ -1775,7 +1786,14 @@ fun MainScreen(
                                 // 未登录点击互动时跳转「账户」页
                                 onRequireLogin = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
                                 onOpenCompose = { forumOverlay = ForumOverlay.Compose },
-                                onOpenDetail = { forumOverlay = ForumOverlay.Detail(it) }
+                                onOpenDetail = { post ->
+                                    openPostDetailLauncher.launch(ForumPostDetailActivity.intent(context, post))
+                                    // 进入详情：新页右滑入 + 本页左滑出
+                                    (context as? android.app.Activity)?.overridePendingTransition(
+                                        R.anim.slide_in_right,
+                                        R.anim.slide_out_left
+                                    )
+                                }
                             )
                         }
 
@@ -1956,7 +1974,7 @@ fun MainScreen(
                             indication = null
                         ) {}
                 ) {
-                    when (val ov = forumOverlay) {
+                    when (forumOverlay) {
                         is ForumOverlay.Compose -> ForumComposeScreen(
                             toast = toast,
                             activeUser = loggedInUser,
@@ -1964,13 +1982,6 @@ fun MainScreen(
                             onBack = { forumOverlay = null },
                             // 发帖成功：强制重拉源码论坛（forum_id=1）列表，返回列表即展示新帖
                             onPosted = { refreshForumPosts(1) }
-                        )
-                        is ForumOverlay.Detail -> ForumPostDetailScreen(
-                            post = ov.post,
-                            activeUser = loggedInUser,
-                            toast = toast,
-                            onRequireLogin = { onCurrentContentTypeChange(MainContentType.ACCOUNT) },
-                            onBack = { forumOverlay = null }
                         )
                         null -> {}
                     }
