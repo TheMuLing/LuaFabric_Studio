@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.components.Toast
+import com.luafabric.studio.falling.ui.components.configureSlideTransitions
+import com.luafabric.studio.falling.ui.components.finishWithSlide
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import com.luafabric.studio.falling.ui.theme.AppThemeWithObserver
 import io.github.tarifchakder.ktoast.ToastData
@@ -56,6 +58,13 @@ class AnalyseActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // 左右滑转场走 overrideActivityTransition（API34+）以支持预测返回跟随拖动
+        configureSlideTransitions(
+            R.anim.slide_in_right,
+            R.anim.slide_out_left,
+            R.anim.slide_in_left,
+            R.anim.slide_out_right
+        )
 
         setContent {
             var settingsLoaded by remember { mutableStateOf(false) }
@@ -108,7 +117,6 @@ class AnalyseActivity : ComponentActivity() {
     }
 
     private fun finishSliding() {
-        overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right)
-        finish()
+        finishWithSlide(R.anim.slide_in_left, R.anim.slide_out_right)
     }
 }

@@ -28,6 +28,8 @@ import androidx.core.view.WindowCompat
 import com.google.gson.Gson
 import com.luafabric.studio.falling.R
 import com.luafabric.studio.falling.ui.components.Toast
+import com.luafabric.studio.falling.ui.components.configureSlideTransitions
+import com.luafabric.studio.falling.ui.components.finishWithSlide
 import com.luafabric.studio.falling.ui.login.LoginStore
 import com.luafabric.studio.falling.ui.settings.SettingsManager
 import com.luafabric.studio.falling.ui.theme.AppThemeWithObserver
@@ -60,6 +62,13 @@ class ForumPostDetailActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // 左右滑转场走 overrideActivityTransition（API34+）以支持预测返回跟随拖动
+        configureSlideTransitions(
+            R.anim.slide_in_right,
+            R.anim.slide_out_left,
+            R.anim.slide_in_left,
+            R.anim.slide_out_right
+        )
 
         setContent {
             var settingsLoaded by remember { mutableStateOf(false) }
@@ -118,9 +127,8 @@ class ForumPostDetailActivity : ComponentActivity() {
         }
     }
 
-    /** 关闭：当前页右滑出 + 下层页左滑回位 */
+    /** 关闭：当前页右滑出 + 下层页左滑回位（API<34 显式转场；34+ 由 CLOSE 转场接管） */
     private fun finishSliding() {
-        overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right)
-        finish()
+        finishWithSlide(R.anim.slide_in_left, R.anim.slide_out_right)
     }
 }

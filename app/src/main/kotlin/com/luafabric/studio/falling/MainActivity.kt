@@ -112,6 +112,7 @@ import com.luafabric.studio.falling.ui.forum.ForumItem
 import com.luafabric.studio.falling.ui.forum.ForumOverlay
 import com.luafabric.studio.falling.ui.forum.ForumPostDetailActivity
 import com.luafabric.studio.falling.ui.forum.ForumRepository
+import com.luafabric.studio.falling.ui.components.applyOpenTransitionIfLegacy
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -1788,8 +1789,9 @@ fun MainScreen(
                                 onOpenCompose = { forumOverlay = ForumOverlay.Compose },
                                 onOpenDetail = { post ->
                                     openPostDetailLauncher.launch(ForumPostDetailActivity.intent(context, post))
-                                    // 进入详情：新页右滑入 + 本页左滑出
-                                    (context as? android.app.Activity)?.overridePendingTransition(
+                                    // API<34 本页显式播放进入转场；34+ 由目标页 overrideActivityTransition(OPEN) 接管，
+                                    // 用 overridePendingTransition 会让预测返回动画失效
+                                    (context as? android.app.Activity)?.applyOpenTransitionIfLegacy(
                                         R.anim.slide_in_right,
                                         R.anim.slide_out_left
                                     )

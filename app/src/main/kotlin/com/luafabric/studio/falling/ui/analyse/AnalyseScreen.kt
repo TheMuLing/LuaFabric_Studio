@@ -1,6 +1,5 @@
 package com.luafabric.studio.falling.ui.analyse
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -195,9 +194,8 @@ fun AnalyseScreen(
         }
     }
 
-    BackHandler {
-        onBack()
-    }
+    // 返回键交由系统处理：不注册 BackHandler，预测返回动画（左右滑跟随拖动）才不会被吞掉；
+    // 独立 Activity 默认返回即 finish（转场见 AnalyseActivity）。
 
     Scaffold(
         topBar = {

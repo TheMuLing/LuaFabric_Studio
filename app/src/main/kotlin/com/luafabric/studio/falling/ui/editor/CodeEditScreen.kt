@@ -61,6 +61,7 @@ import com.luafabric.studio.falling.files.FileTree
 import com.luafabric.studio.falling.ui.analyse.AnalyseActivity
 import com.luafabric.studio.falling.ui.attribute.AttributeScreen
 import com.luafabric.studio.falling.ui.components.ColorPickerDialog
+import com.luafabric.studio.falling.ui.components.applyOpenTransitionIfLegacy
 import com.luafabric.studio.falling.ui.components.EdgeSwipeDismissibleDrawer
 import com.luafabric.studio.falling.ui.editor.ai.AiChatPanel
 import com.luafabric.studio.falling.ui.editor.ai.CodeReference
@@ -699,7 +700,8 @@ fun CodeEditScreen(
                 val codeContent = viewModel.activeFileState?.content ?: ""
                 // 导入分析已独立为 Activity：一次返回即关闭，左右滑 + 系统预测返回
                 context.startActivity(AnalyseActivity.intent(context, codeContent, projectPath))
-                (context as? android.app.Activity)?.overridePendingTransition(
+                // API<34 本页显式播放进入转场；34+ 由目标页 overrideActivityTransition(OPEN) 接管
+                (context as? android.app.Activity)?.applyOpenTransitionIfLegacy(
                     R.anim.slide_in_right,
                     R.anim.slide_out_left
                 )

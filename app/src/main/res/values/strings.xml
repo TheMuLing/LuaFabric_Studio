@@ -593,8 +593,11 @@
     <string name="forum_comment_list">评论列表</string>
     <string name="forum_comment_loading">评论加载中…</string>
     <string name="forum_comment_empty">暂无评论，来抢沙发</string>
-    <string name="forum_comment_hint">说点什么…</string>
+    <string name="forum_comment_hint">良言一句三冬暖，恶语伤人六月寒</string>
+    <string name="forum_comment_hint_reply">回复@%1$s</string>
     <string name="forum_comment_send">发送</string>
+    <string name="forum_comment_len_count">%1$d/%2$d</string>
+    <string name="forum_comment_refresh_fail">评论已发送，但列表刷新失败</string>
     <string name="forum_reply_hint">回复…</string>
     <string name="forum_reply_send">回复</string>
     <string name="forum_img_failed">图片加载失败</string>

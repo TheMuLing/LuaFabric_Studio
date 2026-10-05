@@ -190,22 +190,40 @@ object ForumRepository {
         return code == 200
     }
 
-    /** 后端发帖时间格式：yy-MM-dd HH:mm（如 26-09-28 18:45） */
-    private val FORUM_TIME_FORMAT = SimpleDateFormat("yy-MM-dd HH:mm", Locale.getDefault())
+    /**
+     * 后端发帖/评论时间候选格式（真机样本既有 yy-MM-dd HH:mm 也有 yyyy-MM-dd HH:mm:ss，
+     * 单一格式解析失败会导致相对日期开关「无效」——逐一尝试候选，任一命中即算）。
+     */
+    private val FORUM_TIME_FORMATS = listOf(
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()),
+        SimpleDateFormat("yy-MM-dd HH:mm:ss", Locale.getDefault()),
+        SimpleDateFormat("yy-MM-dd HH:mm", Locale.getDefault())
+    )
 
     /**
-     * 相对发帖时间文案：刚刚 / N分钟前 / N小时前 / N天前（超 7 天回退绝对时间原样）。
+     * 相对发帖时间文案：刚刚 / N分钟前 / N小时前 / N天前 / N个月前 / N年前。
+     * 不再设 7 天封顶——封顶会让「相对发帖日期」开关对旧帖看起来完全无效。
      * 解析失败或格式异常时原样返回 createTime，绝不因格式化问题吞掉时间。
      */
     fun formatRelativeTime(createTime: String): String {
-        val parsed = runCatching { FORUM_TIME_FORMAT.parse(createTime) }.getOrNull() ?: return createTime
-        val diff = System.currentTimeMillis() - parsed.time
+        val parsed = FORUM_TIME_FORMATS.firstNotNullOfOrNull { f ->
+            runCatching { f.parse(createTime) }.getOrNull()
+        } ?: return createTime
+        // 未来时间（设备时钟偏差）按「刚刚」，避免出现负数文案
+        val diff = (System.currentTimeMillis() - parsed.time).coerceAtLeast(0L)
+        val minute = 60_000L
+        val hour = 3_600_000L
+        val day = 86_400_000L
+        val month = 30 * day
+        val year = 365 * day
         return when {
-            diff < 60_000L -> "刚刚"
-            diff < 3_600_000L -> "${diff / 60_000L}分钟前"
-            diff < 86_400_000L -> "${diff / 3_600_000L}小时前"
-            diff < 7 * 86_400_000L -> "${diff / 86_400_000L}天前"
-            else -> createTime
+            diff < minute -> "刚刚"
+            diff < hour -> "${diff / minute}分钟前"
+            diff < day -> "${diff / hour}小时前"
+            diff < month -> "${diff / day}天前"
+            diff < year -> "${diff / month}个月前"
+            else -> "${diff / year}年前"
         }
     }
 

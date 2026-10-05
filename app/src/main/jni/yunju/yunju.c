@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 #include "mbedtls/net_sockets.h"
 #include "mbedtls/ssl.h"
@@ -444,6 +445,31 @@ Java_com_luafabric_studio_falling_native_YunJuBridge_nativeForumList(JNIEnv *env
 }
 
 /*
+ * 动态拼装表单 body：先算实际长度再 malloc，彻底杜绝固定缓冲 snprintf 静默截断。
+ * 背景：Comment/CommentReply 曾用 char body[1024]，超长评论被截断在 %XX 中间，
+ * 服务端存入非法 UTF-8 → CommentList json_encode 失败 → 返回空体 → 列表消失。
+ * 返回 malloc 字符串，调用方 free；失败返回 NULL。
+ */
+static char *build_form(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int need = vsnprintf(NULL, 0, fmt, ap);
+    va_end(ap);
+    if (need < 0) {
+        va_end(ap_copy);
+        return NULL;
+    }
+    char *buf = (char *)malloc((size_t)need + 1);
+    if (buf != NULL) {
+        vsnprintf(buf, (size_t)need + 1, fmt, ap_copy);
+    }
+    va_end(ap_copy);
+    return buf;
+}
+
+/*
  * 表单 URL 编码（RFC 3986：非保留字符 → %XX，空格 → +）。
  * 返回 malloc 字符串，调用方 free；失败返回 NULL。
  */
@@ -526,11 +552,12 @@ Java_com_luafabric_studio_falling_native_YunJuBridge_nativeComment(JNIEnv *env,
     char *e_content = url_encode(c_content);
     jstring js = NULL;
     if (e_qq && e_nick && e_content) {
-        char body[1024];
-        snprintf(body, sizeof(body),
-                 "user=%s&post_id=%lld&qq=%s&nickname=%s&content=%s",
-                 c_user, (long long)postId, e_qq, e_nick, e_content);
-        js = forum_interact(env, context, FORUM_COMMENT_PATH, body);
+        char *body = build_form("user=%s&post_id=%lld&qq=%s&nickname=%s&content=%s",
+                                c_user, (long long)postId, e_qq, e_nick, e_content);
+        if (body != NULL) {
+            js = forum_interact(env, context, FORUM_COMMENT_PATH, body);
+            free(body);
+        }
     }
     if (e_qq) free(e_qq);
     if (e_nick) free(e_nick);
@@ -655,12 +682,13 @@ Java_com_luafabric_studio_falling_native_YunJuBridge_nativeCommentReply(JNIEnv *
     char *e_content = url_encode(c_content);
     jstring js = NULL;
     if (e_qq && e_nick && e_content) {
-        char body[1024];
-        snprintf(body, sizeof(body),
-                 "user=%s&post_id=%lld&comment_id=%lld&qq=%s&nickname=%s&content=%s",
-                 c_user, (long long)postId, (long long)commentId,
-                 e_qq, e_nick, e_content);
-        js = forum_interact(env, context, FORUM_REPLY_PATH, body);
+        char *body = build_form(
+            "user=%s&post_id=%lld&comment_id=%lld&qq=%s&nickname=%s&content=%s",
+            c_user, (long long)postId, (long long)commentId, e_qq, e_nick, e_content);
+        if (body != NULL) {
+            js = forum_interact(env, context, FORUM_REPLY_PATH, body);
+            free(body);
+        }
     }
     if (e_qq) free(e_qq);
     if (e_nick) free(e_nick);
